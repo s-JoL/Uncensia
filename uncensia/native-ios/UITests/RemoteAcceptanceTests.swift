@@ -17,6 +17,29 @@ import XCTest
         XCTAssertTrue(app.descendants(matching: .any)["chat.composer"].waitForExistence(timeout: 20))
         return app
     }
+    func testHistorySidebarAndReopen() throws {
+        let app = try launch()
+        let history = app.buttons["conversation.history"]
+        let id = ProcessInfo.processInfo.environment["UNCENSIA_TEST_CONVERSATION_ID"]!
+        guard let messageID = ProcessInfo.processInfo.environment["UNCENSIA_TEST_MESSAGE_ID"] else { throw XCTSkip("Supply a settled transcript message for reopen validation") }
+        let message = app.descendants(matching: .any)["chat.message." + messageID].firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 20))
+        for index in 0..<2 {
+            history.tap()
+            let newChat = app.buttons["conversation.new"]
+            XCTAssertTrue(newChat.waitForExistence(timeout: 3))
+            if index == 0 {
+                let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "history-sidebar"; shot.lifetime = .keepAlways; add(shot)
+            }
+            newChat.tap()
+            XCTAssertTrue(app.buttons["conversation.history"].waitForExistence(timeout: 3))
+            history.tap()
+            let row = app.buttons["conversation.row." + id]
+            XCTAssertTrue(row.waitForExistence(timeout: 5))
+            row.tap()
+            XCTAssertTrue(message.waitForExistence(timeout: 10), "Reopening must restore the actual old transcript")
+        }
+    }
     func testLongTranscriptReadingDraftAndRelaunch() throws {
         let app = try launch()
         let scroll = app.scrollViews.firstMatch

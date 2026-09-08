@@ -12,7 +12,7 @@ public struct ChatScreen: View {
     @State private var exportDocument = ExportDocument(data: Data())
     @State private var models: [JSONValue] = []
     @State private var editingSeq: Int?
-    @State private var loadedConversationID: String?
+    @State private var didLoad = false
     @Environment(\.scenePhase) private var scenePhase
 
     public init() {}
@@ -29,7 +29,7 @@ public struct ChatScreen: View {
             .navigationTitle(currentTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button { showList = true } label: { Image("lucide-menu") } }
+                ToolbarItem(placement: .topBarLeading) { Button { withAnimation(.easeOut(duration: 0.2)) { showList = true } } label: { Image("lucide-menu") }.accessibilityIdentifier("conversation.history") }
                 ToolbarItem(placement: .principal) {
                     Menu {
                         Picker(uncensiaText("模型"), selection: Binding(get: { store.selectedModelID }, set: { setModel($0) })) {
@@ -40,7 +40,7 @@ public struct ChatScreen: View {
                             Text("Uncensia").font(.headline)
                             Text(selectedModelName).font(.caption2).lineLimit(1).truncationMode(.tail)
                         }.frame(maxWidth: 170)
-                    }.disabled(store.isRunning).accessibilityLabel(uncensiaText("模型"))
+                    }.disabled(store.isRunning || store.isLoading || store.isSending).accessibilityLabel(uncensiaText("模型"))
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Menu {
@@ -53,36 +53,71 @@ public struct ChatScreen: View {
                     } label: { Image("lucide-ellipsis") }
                 }
             }
-            .sheet(isPresented: $showList) { ConversationList(store: store, app: app) }
+
             .sheet(isPresented: $showContext) { ConversationContextSheet(details: store.conversationDetails, id: app.selectedConversationID, api: app.api, store: store) }
             .sheet(isPresented: $showBranches) { BranchSheet(id: app.selectedConversationID, api: app.api, app: app, store: store) }
             .sheet(isPresented: $showTasks) { BackgroundTasksSheet(id: app.selectedConversationID, api: app.api, app: app) }
             .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .json, defaultFilename: "uncensia-conversation.jsonl") { result in if case .failure(let error) = result { store.error = error.localizedDescription } }
             .task {
+                guard !didLoad else { return }
+                didLoad = true
                 if let api = app.api {
-                    do {
-                        let catalogue = try await api.request("GET", "/models")
-                        models = (catalogue["items"].arrayValue ?? []).filter { ($0["kind"].stringValue ?? "chat") == "chat" && $0["enabled"].boolValue != false && $0["configured"].boolValue != false }
-                    } catch { store.error = uncensiaText("无法载入模型：%@", String(describing: error.localizedDescription)) }
-                    await store.loadConversations(api: api)
-                    if let id = app.selectedConversationID { loadedConversationID = id; await store.open(id: id, app: app) }
+                    async let history: Void = store.loadConversations(api: api)
+                    async let catalogue: Void = loadModels(api: api)
+                    if let id = app.selectedConversationID { await store.open(id: id, app: app) }
                     else { let saved = await app.drafts.load(server: api.server, conversationID: nil); store.draft = saved.text; app.pendingAttachments = saved.attachments }
+                    _ = await (history, catalogue)
                 }
             }
             .onChange(of: app.selectedConversationID) { oldID, id in
                 guard oldID != id else { return }
+                // Only our own newly created ID is adopted without reloading.
+                guard !(oldID == nil && id == store.createdConversationID) else { return }
                 let oldDraft = Draft(text: store.draft, attachments: app.pendingAttachments)
                 let server = app.api?.server
-                loadedConversationID = id; editingSeq = nil
-                if !store.isSending { store.clearForConversationSwitch(loading: id != nil) }
+                editingSeq = nil
+                store.clearForConversationSwitch(loading: id != nil)
+                app.pendingAttachments = []
+                if id == nil { store.selectedModelID = app.bootstrap["defaultModelId"].stringValue ?? "" }
                 Task {
                     if let server { await app.drafts.save(oldDraft, server: server, conversationID: oldID) }
-                    if let id, !store.isSending { await store.open(id: id, app: app) }
-                    else if id == nil, let server { let saved = await app.drafts.load(server: server, conversationID: nil); store.messages = []; store.draft = saved.text; app.pendingAttachments = saved.attachments }
+                    guard app.selectedConversationID == id else { return }
+                    if let id { await store.open(id: id, app: app) }
+                    else if let server {
+                        let saved = await app.drafts.load(server: server, conversationID: nil)
+                        guard app.selectedConversationID == nil else { return }
+                        store.draft = saved.text; app.pendingAttachments = saved.attachments
+                    }
                 }
             }
-            .onChange(of: scenePhase) { _, phase in if phase == .active, let id = app.selectedConversationID, let api = app.api { Task { await store.resync(id: id, api: api) } } }
+            .onChange(of: scenePhase) { _, phase in if phase == .active, !store.isLoading, let id = app.selectedConversationID, let api = app.api { Task { await store.resync(id: id, api: api) } } }
         }
+        .toolbar(showList ? .hidden : .visible, for: .tabBar)
+        .overlay {
+            if showList {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Color.black.opacity(0.22).ignoresSafeArea().onTapGesture { closeHistory() }
+                        ConversationList(store: store, app: app, onClose: closeHistory)
+                            .frame(width: min(340, geometry.size.width * 0.88))
+                            .background(.background).shadow(radius: 12, x: 4)
+                            .transition(.move(edge: .leading))
+                    }
+                }.transition(.opacity)
+            }
+        }
+    }
+    private func closeHistory() { withAnimation(.easeOut(duration: 0.2)) { showList = false } }
+    private func loadModels(api: APIClient) async {
+                    do {
+                        let items: [JSONValue]
+                        if let bootstrapped = app.bootstrap["models"].arrayValue { items = bootstrapped }
+                        else { items = try await api.request("GET", "/models")["items"].arrayValue ?? [] }
+                        models = items.filter { ($0["kind"].stringValue ?? "chat") == "chat" && $0["enabled"].boolValue != false && $0["configured"].boolValue != false }
+                        if app.selectedConversationID == nil && store.selectedModelID.isEmpty {
+                            store.selectedModelID = app.bootstrap["defaultModelId"].stringValue ?? ""
+                        }
+                    } catch { store.error = uncensiaText("无法载入模型：%@", String(describing: error.localizedDescription)) }
     }
     private var selectedModelName: String {
         let name = models.first { $0["id"].stringValue == store.selectedModelID }?["name"].stringValue ?? uncensiaText("模型")
@@ -120,7 +155,7 @@ private struct TranscriptView: View {
                     Task { if !(await store.loadOlder(id: conversationID, api: api)) { pendingPrepend = nil } }
                 } }
                 ForEach(store.messages) { message in
-                    MessageRow(message: message, api: api).id(message.id).contextMenu {
+                    MessageRow(message: message, api: api).id(message.id).accessibilityIdentifier("chat.message.\(message.id)").contextMenu {
                         if message.role == "user" { Button(uncensiaText("编辑并重试"), image: "lucide-pencil") { edit(message) } }
                     }
                 }
@@ -158,7 +193,7 @@ private struct TranscriptView: View {
             if phase == .interacting { pendingPrepend = nil; closeToBottom = false; viewport.lastMovementDown = false }
             if phase == .idle && wasUserScrolling { closeToBottom = viewport.nearBottom && viewport.lastMovementDown }
         }
-        .overlay { if store.isLoading { ProgressView() } else if store.messages.isEmpty && !store.isRunning { ContentUnavailableView(uncensiaText("开始对话"), image: "lucide-sparkles", description: Text(uncensiaText("可以聊天、处理资料，也可以直接创作图片和视频。"))) } }
+        .overlay { if store.isLoading && store.messages.isEmpty { ProgressView() } else if store.messages.isEmpty && !store.isRunning { ContentUnavailableView(uncensiaText("开始对话"), image: "lucide-sparkles", description: Text(uncensiaText("可以聊天、处理资料，也可以直接创作图片和视频。"))) } }
         .overlay(alignment: .bottomTrailing) { if !closeToBottom { Button { closeToBottom = true; position.scrollTo(edge: .bottom) } label: { Image("lucide-arrow-down") }.accessibilityLabel(uncensiaText("返回最新消息")).buttonStyle(.borderedProminent).clipShape(Circle()).padding() } }
     }
 }
@@ -218,6 +253,6 @@ private struct ComposerView: View {
                 let text = store.draft; let command = mode
                 Task { if await store.command(command, body: .object(["text": .string(text)]), id: id, api: api), store.draft == text { store.draft = ""; await store.saveDraft(app: app) } }
             } else { let seq = editingSeq; editingSeq = nil; Task { await store.send(app: app, modelID: store.selectedModelID.isEmpty ? nil : store.selectedModelID, fromSeq: seq) } }
-        } label: { Image("lucide-arrow-up") }.accessibilityLabel(editingSeq == nil ? uncensiaText("发送") : uncensiaText("编辑并重试")).buttonStyle(.borderedProminent).clipShape(Circle()).disabled(store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isSending) }
+        } label: { Image("lucide-arrow-up") }.accessibilityLabel(editingSeq == nil ? uncensiaText("发送") : uncensiaText("编辑并重试")).buttonStyle(.borderedProminent).clipShape(Circle()).disabled(store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isSending || store.isLoading) }
     }.padding().background(.bar).toolbar { ToolbarItemGroup(placement: .keyboard) { Spacer(); Button { inputFocused = false } label: { Image("lucide-keyboard") }.accessibilityLabel(uncensiaText("收起键盘")) } }.fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in Task { if case .success(let urls) = result, let api = app.api { for url in urls { guard url.startAccessingSecurityScopedResource() else { continue }; defer { url.stopAccessingSecurityScopedResource() }; if let data = try? Data(contentsOf: url), let uploaded = try? await api.upload(data: data, filename: url.lastPathComponent, mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream") { app.pendingAttachments.append(.object(["file": uploaded, "role": .string("context")])) } }; await store.saveDraft(app: app) } } } }
 }

@@ -4,10 +4,11 @@ import UniformTypeIdentifiers
 struct ConversationList: View {
   let store: ChatStore
   let app: AppModel
-  @Environment(\.dismiss) private var dismiss
+  var onClose: () -> Void
+  private func dismiss() { onClose() }
   @State private var query = ""
   @State private var hits: [JSONValue] = []
-  @State private var cursor: String?
+
   @State private var busy = false
   @State private var error: String?
   @State private var deleting: Conversation?
@@ -19,22 +20,28 @@ struct ConversationList: View {
           dismiss()
         } label: {
           Label(uncensiaText("新对话"), image: "lucide-square-pen")
-        }.accessibilityIdentifier("conversation.new")
+        }.tint(.primary).listRowSeparator(.hidden).accessibilityIdentifier("conversation.new")
         if let error { Text(error).foregroundStyle(.red) }
         if query.trimmingCharacters(in: .whitespaces).isEmpty {
-          ForEach(store.conversations) { item in
+          ForEach(historySections, id: \.title) { section in
+            Section(section.title) {
+          ForEach(section.items) { item in
             Button {
               open(item.id)
             } label: {
-              VStack(alignment: .leading) {
-                Text(item.title).foregroundStyle(.primary)
-                Text(Date(timeIntervalSince1970: item.updatedAt / 1000), style: .relative).font(
-                  .caption
-                ).foregroundStyle(.secondary)
-              }
-            }.swipeActions { Button(uncensiaText("删除"), role: .destructive) { deleting = item } }
+              HStack {
+                Text(item.title).foregroundStyle(.primary).lineLimit(1)
+                Spacer(minLength: 0)
+                if item.id == app.selectedConversationID { Image("lucide-check").foregroundStyle(.secondary) }
+              }.padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }.listRowSeparator(.hidden)
+             .listRowBackground(item.id == app.selectedConversationID ? Color.primary.opacity(0.06) : Color.clear)
+             .accessibilityIdentifier("conversation.row.\(item.id)")
+             .swipeActions { Button(uncensiaText("删除"), role: .destructive) { deleting = item } }
           }
-          if cursor != nil {
+            }
+          }
+          if store.conversationCursor != nil {
             Button(busy ? uncensiaText("正在载入…") : uncensiaText("载入更多")) { Task { await more() } }.disabled(busy)
           }
         } else if hits.isEmpty && !busy {
@@ -53,9 +60,10 @@ struct ConversationList: View {
             }
           }
         }
-      }.searchable(text: $query, prompt: uncensiaText("搜索所有对话正文")).navigationTitle(uncensiaText("对话")).toolbar {
+      }.listStyle(.plain).scrollContentBackground(.hidden)
+       .searchable(text: $query, prompt: uncensiaText("搜索所有对话正文")).navigationTitle("Uncensia").navigationBarTitleDisplayMode(.inline).toolbar {
         Button(uncensiaText("关闭")) { dismiss() }
-      }.task { await reload() }.task(id: query) {
+      }.task { if let api = app.api { await store.loadConversations(api: api) } }.task(id: query) {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
           hits = []
           return
@@ -83,17 +91,23 @@ struct ConversationList: View {
       error = uncensiaText("请先连接 Uncensia 服务")
       return
     }
-    busy = true
-    defer { busy = false }
-    do {
-      let page = try await api.request("GET", "/conversations?limit=30")
-      store.conversations = page["items"].arrayValue?.compactMap(Conversation.init) ?? []
-      cursor = page["nextCursor"].stringValue
-      error = nil
-    } catch { self.error = error.localizedDescription }
+    await store.loadConversations(api: api, force: true)
+  }
+  private var historySections: [(title: String, items: [Conversation])] {
+    let calendar = Calendar.current
+    let today = calendar.startOfDay(for: Date())
+    let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
+    let week = calendar.date(byAdding: .day, value: -7, to: today)!
+    let labels = [uncensiaText("今天"), uncensiaText("昨天"), uncensiaText("过去 7 天"), uncensiaText("更早")]
+    var groups = Array(repeating: [Conversation](), count: 4)
+    for item in store.conversations {
+      let date = Date(timeIntervalSince1970: item.updatedAt / 1000)
+      groups[date >= today ? 0 : date >= yesterday ? 1 : date >= week ? 2 : 3].append(item)
+    }
+    return groups.enumerated().filter { !$0.element.isEmpty }.map { (labels[$0.offset], $0.element) }
   }
   private func more() async {
-    guard let api = app.api, let cursor else { return }
+    guard let api = app.api, let cursor = store.conversationCursor else { return }
     busy = true
     defer { busy = false }
     do {
@@ -101,7 +115,7 @@ struct ConversationList: View {
       let old = Set(store.conversations.map(\.id))
       store.conversations += (page["items"].arrayValue?.compactMap(Conversation.init) ?? []).filter
       { !old.contains($0.id) }
-      self.cursor = page["nextCursor"].stringValue
+      store.conversationCursor = page["nextCursor"].stringValue
       error = nil
     } catch { self.error = error.localizedDescription }
   }
@@ -110,9 +124,10 @@ struct ConversationList: View {
     busy = true
     defer { busy = false }
     do {
-      hits =
-        try await api.request("GET", "/conversations/search?q=\(urlPart(query))&limit=50")["items"]
-        .arrayValue ?? []
+      let requestedQuery = query
+      let results = try await api.request("GET", "/conversations/search?q=\(urlPart(requestedQuery))&limit=20")["items"].arrayValue ?? []
+      guard !Task.isCancelled, query == requestedQuery else { return }
+      hits = results
       error = nil
     } catch { self.error = error.localizedDescription }
   }

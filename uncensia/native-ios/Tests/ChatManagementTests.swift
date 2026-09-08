@@ -134,8 +134,8 @@ final class ChatManagementTests: XCTestCase {
   }
 
   func testChineseStatusAndURLHelpers() {
-    XCTAssertEqual(taskStatus("pending"), "等待中")
-    XCTAssertEqual(roleLabel("user"), "你")
+    XCTAssertEqual(taskStatus("pending"), uncensiaText("等待中"))
+    XCTAssertEqual(roleLabel("user"), uncensiaText("你"))
     XCTAssertEqual(urlPart("a&b"), "a%26b")
   }
 }
