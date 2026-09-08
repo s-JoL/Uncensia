@@ -9,6 +9,33 @@ import XCTest
         let api = APIClient(server: URL(string: "https://history.test")!, session: URLSession(configuration: configuration))
         return (ChatStore(), AppModel(api: api))
     }
+    func testSendingInExistingConversationPreservesNewConversationDraft() async {
+        let (store, app) = setup()
+        let api = app.api!
+        await app.drafts.save(Draft(text: "Unsent new conversation"), server: api.server, conversationID: nil)
+        app.selectedConversationID = "a"
+        await store.open(id: "a", app: app)
+        store.draft = "Send to existing conversation"
+        await store.send(app: app)
+        let saved = await app.drafts.load(server: api.server, conversationID: nil)
+        XCTAssertEqual(saved.text, "Unsent new conversation")
+        await app.drafts.clear(server: api.server, conversationID: nil)
+    }
+    func testLateCommandCannotAttachOldRunToNewConversation() async throws {
+        let (store, app) = setup()
+        app.selectedConversationID = "slow"
+        await store.open(id: "slow", app: app)
+        let command = Task { await store.command("continue", id: "slow", api: app.api!) }
+        try await Task.sleep(for: .milliseconds(30))
+        store.clearForConversationSwitch()
+        app.selectedConversationID = "b"
+        await store.open(id: "b", app: app)
+        let accepted = await command.value
+        XCTAssertFalse(accepted)
+        XCTAssertFalse(store.isRunning)
+        XCTAssertEqual(store.selectedModelID, "model-b")
+        XCTAssertEqual(store.messages.first?.id, "message-b")
+    }
     func testRecentListIsReusedAndForcedRefreshStillWorks() async {
         let (store, app) = setup()
         await store.loadConversations(api: app.api!)
@@ -62,7 +89,9 @@ private final class HistoryProtocol: URLProtocol, @unchecked Sendable {
         let parts = url.pathComponents
         let id = parts.count > 3 ? parts[3] : "a"
         let json: String
-        if url.path.hasSuffix("/messages") {
+        if url.path.hasSuffix("/continue") {
+            json = "{\"runId\":\"old-run\",\"seq\":0}"
+        } else if url.path.hasSuffix("/messages") {
             json = "{\"items\":[{\"id\":\"message-\(id)\",\"seq\":1,\"role\":\"assistant\",\"content\":\"History\"}],\"nextCursor\":null}"
         } else if url.path.hasSuffix("/approvals") {
             json = "{\"items\":[]}"
