@@ -143,6 +143,7 @@ public final class ChatStore {
         isSending = true
         defer { isSending = false }
         var id = app.selectedConversationID
+        let startedNewConversation = id == nil
         let generation = followGeneration
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = app.pendingAttachments
@@ -177,7 +178,9 @@ public final class ChatStore {
             if draft.trimmingCharacters(in: .whitespacesAndNewlines) == text && app.pendingAttachments == attachments {
                 draft = ""; app.pendingAttachments = []; await app.drafts.clear(server: api.server, conversationID: id)
             }
-            if app.selectedConversationID == id { await app.drafts.clear(server: api.server, conversationID: nil) }
+            guard generation == followGeneration, app.selectedConversationID == id else { return }
+            if startedNewConversation { await app.drafts.clear(server: api.server, conversationID: nil) }
+            guard generation == followGeneration, app.selectedConversationID == id else { return }
             messages.append(ChatMessage(.object(["id": .string("pending-\(key)"), "seq": .number(Double(messages.last?.seq ?? 0) + 0.5), "role": .string("user"), "content": .string(text)]))!)
             follow(runID: result["runId"].stringValue ?? "", after: result["seq"].intValue ?? 0, id: id, api: api, generation: followGeneration)
         } catch { if generation == followGeneration { self.error = error.localizedDescription } }
@@ -222,12 +225,14 @@ public final class ChatStore {
     }
 
     @discardableResult public func command(_ path: String, body: JSONValue? = nil, id: String, api: APIClient) async -> Bool {
+        let generation = followGeneration
         do {
             let result = try await api.request("POST", "/conversations/\(id)/\(path)", body: body)
-            if let runID = result["runId"].stringValue { follow(runID: runID, after: result["seq"].intValue ?? 0, id: id, api: api, generation: followGeneration) }
+            guard generation == followGeneration else { return false }
+            if let runID = result["runId"].stringValue { follow(runID: runID, after: result["seq"].intValue ?? 0, id: id, api: api, generation: generation) }
             return true
         }
-        catch { self.error = error.localizedDescription; return false }
+        catch { if generation == followGeneration { self.error = error.localizedDescription }; return false }
     }
 
     public func decide(_ approval: ApprovalItem, approved: Bool, api: APIClient) async {
@@ -320,7 +325,8 @@ public final class ChatStore {
             messages = merge(messages.filter { !$0.id.hasPrefix("pending-") && !transientIDs.contains($0.id) }, tail)
             transientIDs = []; liveText = ""
         }
-        catch { self.error = error.localizedDescription }
+        catch { if generation == followGeneration, !Task.isCancelled { self.error = error.localizedDescription } }
+        guard generation == followGeneration, !Task.isCancelled else { return }
         activeFollowID = nil; isRunning = false
     }
 
