@@ -230,6 +230,25 @@ private struct ToolTranscriptCard: View {
   }
 }
 
+@MainActor private enum SettledMarkdownCache {
+  private final class Entry: NSObject {
+    let blocks: [MarkdownBlock]
+    init(_ blocks: [MarkdownBlock]) { self.blocks = blocks }
+  }
+  private static let cache: NSCache<NSString, Entry> = {
+    let cache = NSCache<NSString, Entry>()
+    cache.countLimit = 100; cache.totalCostLimit = 4 * 1024 * 1024
+    return cache
+  }()
+  static func parse(_ text: String) -> [MarkdownBlock] {
+    let key = text as NSString
+    if let entry = cache.object(forKey: key) { return entry.blocks }
+    let blocks = MarkdownBlock.parse(text)
+    cache.setObject(Entry(blocks), forKey: key, cost: text.utf8.count * 3)
+    return blocks
+  }
+}
+
 struct RichMarkdown: View {
   let text: String
   let api: APIClient?
@@ -238,7 +257,7 @@ struct RichMarkdown: View {
   init(text: String, api: APIClient? = nil, streaming: Bool = false) {
     self.text = text
     self.api = api
-    _blocks = State(initialValue: streaming ? [] : MarkdownBlock.parse(text))
+    _blocks = State(initialValue: streaming ? [] : SettledMarkdownCache.parse(text))
     _parsedText = State(initialValue: streaming ? "" : text)
   }
   var body: some View {
@@ -318,10 +337,12 @@ private struct MarkdownProse: View, Equatable {
 }
 
 @MainActor @Observable final class TranscriptCitationIndex {
-  func reset() { links = [:] }
+  @ObservationIgnored private var indexed: [String: JSONValue] = [:]
+  func reset() { links = [:]; indexed = [:] }
   private var links: [String: (String, String?)] = [:]
   func ingest(_ message: ChatMessage) {
-    guard message.role == "toolResult" else { return }
+    guard message.role == "toolResult", indexed[message.id] != message.content else { return }
+    indexed[message.id] = message.content
     for block in message.text.replacingOccurrences(of: "\nFile:", with: "\n#File:").components(separatedBy: "\n#") {
       let lines = block.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
       guard let anchor = lines.first(where: { $0.lowercased().hasPrefix("anchor:") }),

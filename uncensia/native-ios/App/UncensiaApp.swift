@@ -7,12 +7,14 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppModel.self) private var app
+    @State private var restoring = true
     var body: some View {
         @Bindable var app = app
-        Group { if app.isReady { TabView(selection: $app.selectedTab) { Tab(uncensiaText("对话"), image: "lucide-messages-square", value: "chat") { ChatScreen() }; Tab(uncensiaText("创作台"), image: "lucide-images", value: "studio") { StudioScreen() }; Tab(uncensiaText("资料库"), image: "lucide-folder-closed", value: "library") { LibraryScreen() }; Tab(uncensiaText("设置"), image: "lucide-settings-2", value: "settings") { SettingsScreen() } } } else { SignInView() } }
+        Group { if restoring { ProgressView(uncensiaText("正在连接…")) } else if app.isReady { TabView(selection: $app.selectedTab) { Tab(uncensiaText("对话"), image: "lucide-messages-square", value: "chat") { ChatScreen() }; Tab(uncensiaText("创作台"), image: "lucide-images", value: "studio") { StudioScreen() }; Tab(uncensiaText("资料库"), image: "lucide-folder-closed", value: "library") { LibraryScreen() }; Tab(uncensiaText("设置"), image: "lucide-settings-2", value: "settings") { SettingsScreen() } } } else { SignInView() } }
         .task { await automaticConnection() }
     }
     private func automaticConnection() async {
+        defer { restoring = false }
         let environment = ProcessInfo.processInfo.environment
         guard let raw = environment["UNCENSIA_SERVER_URL"], let server = URL(string: raw) else { await app.restoreConnection(); return }
         try? app.connect(server: server)

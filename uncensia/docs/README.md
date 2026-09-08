@@ -44,3 +44,5 @@ Web 1.0 的使用者说明在仓库根 [README](../../README.zh-CN.md)；本目�
 现有 `luma.sqlite`、`LUMA_*` 环境变量、浏览器偏好、登录 cookie 和工作流声明继续可读。新配置使用 `UNCENSIA_*`，同时存在时以新配置为准。未修改的内置技能随包更新，用户修改和删除的内容保留；历史对话不为改名而重写。
 
 原 Windows 开发机的数据、依赖、构建、日志与隧道运行时已归位到 `uncensia/`，数据库为 `data/uncensia.sqlite`。仅 `runtime/node` 链接到必须原位保留的 `luma/runtime/node`；`luma/data` 反向链接到新数据目录，让旧记录中的附件路径继续可读。旧启动文件与源码目录链接已移除。全新克隆不需要这些本机兼容链接。
+
+- [iOS 历史加载优化](17-ios-loading-acceptance.md)：请求合并、按需分页、缓存回看与模型恢复实测。

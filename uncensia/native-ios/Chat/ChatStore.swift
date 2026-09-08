@@ -4,6 +4,29 @@ import Observation
 @MainActor @Observable
 public final class ChatStore {
     public var conversations: [Conversation] = []
+    public var conversationCursor: String?
+    private var listLoadedAt: Date?
+    private var loadingList = false
+    public private(set) var createdConversationID: String?
+    private var openingID: String?
+    private struct TranscriptSnapshot {
+        let details: JSONValue
+        let messages: [ChatMessage]
+        let cursor: Int?
+        let revision: Double
+    }
+    private var snapshots: [String: TranscriptSnapshot] = [:]
+    private var snapshotOrder: [String] = []
+    private func rememberTranscript() {
+        guard let id = openingID, !isLoading, !isRunning, !messages.isEmpty,
+              !messages.contains(where: { $0.id.hasPrefix("pending-") }) else { return }
+        // Keep only the recent page of four conversations, never an unbounded transcript.
+        let recent = Array(messages.suffix(40))
+        snapshots[id] = TranscriptSnapshot(details: conversationDetails, messages: recent,
+            cursor: messages.count > recent.count ? recent.first?.seq : olderCursor, revision: revision)
+        snapshotOrder.removeAll { $0 == id }; snapshotOrder.append(id)
+        while snapshotOrder.count > 4 { snapshots.removeValue(forKey: snapshotOrder.removeFirst()) }
+    }
     public var messages: [ChatMessage] = [] { didSet { for message in messages where message.role == "toolResult" { citations.ingest(message) } } }
     let citations = TranscriptCitationIndex()
     public var draft = ""
@@ -24,6 +47,7 @@ public final class ChatStore {
     private var activeFollowID: String?
     private var followTask: Task<Void, Never>?
     private var pendingDelta = ""
+    private var pendingThinking = ""
     private var flushTask: Task<Void, Never>?
     private var pendingSend: (fingerprint: String, key: String)?
     private var followGeneration = UUID()
@@ -32,37 +56,71 @@ public final class ChatStore {
     public init() {}
 
     public func clearForConversationSwitch(loading: Bool = false) {
+        rememberTranscript()
+        openingID = nil; createdConversationID = nil
         followGeneration = UUID(); followTask?.cancel(); followTask = nil; activeFollowID = nil
-        flushTask?.cancel(); flushTask = nil; pendingDelta = ""; transientIDs = []
+        flushTask?.cancel(); flushTask = nil; pendingDelta = ""; pendingThinking = ""; transientIDs = []
         liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""
         isRunning = false; isLoading = loading; messages = []; approvals = []; citations.reset()
         conversationDetails = .null; olderCursor = nil; revision = -1; error = nil; selectedModelID = ""; draft = ""
     }
 
-    public func loadConversations(api: APIClient) async {
-        do { conversations = (try await api.request("GET", "/conversations?limit=100"))["items"].arrayValue?.compactMap(Conversation.init) ?? [] }
-        catch { self.error = error.localizedDescription }
+    public func loadConversations(api: APIClient, force: Bool = false) async {
+        guard !loadingList, force || listLoadedAt == nil || Date().timeIntervalSince(listLoadedAt!) > 30 else { return }
+        loadingList = true
+        defer { loadingList = false }
+        do {
+            let page = try await api.request("GET", "/conversations?limit=30")
+            conversations = page["items"].arrayValue?.compactMap(Conversation.init) ?? []
+            conversationCursor = page["nextCursor"].stringValue
+            listLoadedAt = Date()
+        } catch { self.error = error.localizedDescription }
     }
 
     public func open(id: String, app: AppModel) async {
         guard let api = app.api else { return }
-        followTask?.cancel(); activeFollowID = nil; flushTask?.cancel(); flushTask = nil; pendingDelta = ""; citations.reset(); followGeneration = UUID(); isRunning = false; liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""; messages = []; approvals = []; conversationDetails = .null; olderCursor = nil; isLoading = true; error = nil
+        rememberTranscript()
+        let cached = snapshots[id]
+        followTask?.cancel(); activeFollowID = nil; flushTask?.cancel(); flushTask = nil; pendingDelta = ""; pendingThinking = ""; citations.reset(); followGeneration = UUID(); isRunning = false; liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""; messages = []; approvals = []; conversationDetails = .null; olderCursor = nil; isLoading = true; error = nil
+        openingID = id
+        selectedModelID = conversations.first { $0.id == id }?.modelID ?? ""
+        if let cached {
+            messages = cached.messages; olderCursor = cached.cursor; conversationDetails = cached.details
+            selectedModelID = cached.details["modelId"].stringValue ?? selectedModelID
+            revision = cached.revision
+        }
         let generation = followGeneration
         defer { if generation == followGeneration { isLoading = false } }
         do {
             let saved = await app.drafts.load(server: api.server, conversationID: id)
             guard generation == followGeneration, app.selectedConversationID == id else { return }
             draft = saved.text; app.pendingAttachments = saved.attachments
-            async let detail = api.request("GET", "/conversations/\(id)")
-            async let log = api.request("GET", "/conversations/\(id)/messages?limit=60")
-            async let approvalList = api.request("GET", "/conversations/\(id)/approvals")
-            let (summary, page, waiting) = try await (detail, log, approvalList)
+            let summary: JSONValue
+            let page: JSONValue?
+            if let cached {
+                summary = try await api.request("GET", "/conversations/\(id)")
+                if summary["updatedAt"].doubleValue == cached.revision && summary["activeRun"] == .null {
+                    page = nil
+                } else {
+                    page = try await api.request("GET", "/conversations/\(id)/messages?limit=20")
+                }
+            } else {
+                async let detail = api.request("GET", "/conversations/\(id)")
+                async let log = api.request("GET", "/conversations/\(id)/messages?limit=20")
+                (summary, page) = try await (detail, log)
+            }
             guard generation == followGeneration, app.selectedConversationID == id else { return }
             conversationDetails = summary; revision = summary["updatedAt"].doubleValue ?? -1; selectedModelID = summary["modelId"].stringValue ?? ""
-            messages = page["items"].arrayValue?.compactMap(ChatMessage.init) ?? []
-            olderCursor = page["nextCursor"].intValue
-            approvals = waiting["items"].arrayValue?.compactMap(ApprovalItem.init) ?? []
+            if let page {
+                messages = page["items"].arrayValue?.compactMap(ChatMessage.init) ?? []
+                olderCursor = page["nextCursor"].intValue
+            }
+            isLoading = false
             if let runID = summary["activeRun"]["id"].stringValue { follow(runID: runID, after: summary["activeRun"]["resumeSeq"].intValue ?? 0, id: id, api: api, generation: generation) }
+            // Pending approvals must not hold the transcript's first paint hostage.
+            let waiting = try await api.request("GET", "/conversations/\(id)/approvals")
+            guard generation == followGeneration else { return }
+            approvals = waiting["items"].arrayValue?.compactMap(ApprovalItem.init) ?? []
         } catch { if generation == followGeneration { self.error = error.localizedDescription } }
     }
 
@@ -70,7 +128,7 @@ public final class ChatStore {
         guard let cursor = olderCursor else { return false }
         let generation = followGeneration
         do {
-            let page = try await api.request("GET", "/conversations/\(id)/messages?limit=60&before=\(cursor)")
+            let page = try await api.request("GET", "/conversations/\(id)/messages?limit=20&before=\(cursor)")
             let older = page["items"].arrayValue?.compactMap(ChatMessage.init) ?? []
             guard generation == followGeneration else { return false }
             messages = older + messages
@@ -85,18 +143,23 @@ public final class ChatStore {
         isSending = true
         defer { isSending = false }
         var id = app.selectedConversationID
+        let generation = followGeneration
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let attachments = app.pendingAttachments
+        guard !text.isEmpty else { return }
         do {
             if id == nil {
                 let created = try await api.request("POST", "/conversations", body: .object(["modelId": modelID.map(JSONValue.string) ?? .null]))
-                id = created["id"].stringValue; app.selectedConversationID = id
-                await loadConversations(api: api)
+                guard generation == followGeneration, app.selectedConversationID == nil else { return }
+                id = created["id"].stringValue; createdConversationID = id; openingID = id
+                selectedModelID = created["modelId"].stringValue ?? selectedModelID
+                if let item = Conversation(created) { conversations.insert(item, at: 0) }
+                app.selectedConversationID = id
             }
             guard let id else { return }
-            let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { return }
-            let fileIDs = app.pendingAttachments.compactMap { $0["file"]["id"].stringValue ?? $0["id"].stringValue }
+            let fileIDs = attachments.compactMap { $0["file"]["id"].stringValue ?? $0["id"].stringValue }
             var payload: [String: JSONValue] = ["text": .string(text), "attachments": .array(fileIDs.map(JSONValue.string))]
-            let references = app.pendingAttachments.compactMap { item -> JSONValue? in
+            let references = attachments.compactMap { item -> JSONValue? in
                 let file = item["file"].objectValue == nil ? item : item["file"]
                 guard let imageID = file["id"].stringValue, (file["mime"].stringValue ?? "").hasPrefix("image/") else { return nil }
                 return .object(["imageId": .string(imageID), "role": .string(item["role"].stringValue ?? "context")])
@@ -109,13 +172,15 @@ public final class ChatStore {
             let key = pendingSend?.fingerprint == fingerprint ? pendingSend!.key : UUID().uuidString
             pendingSend = (fingerprint, key)
             let result = try await api.request("POST", "/conversations/\(id)/runs", body: .object(payload), headers: ["Idempotency-Key": key])
-            guard app.selectedConversationID == id else { return }
+            guard generation == followGeneration, app.selectedConversationID == id else { return }
             pendingSend = nil
-            draft = ""; app.pendingAttachments = []; await app.drafts.clear(server: api.server, conversationID: id)
+            if draft.trimmingCharacters(in: .whitespacesAndNewlines) == text && app.pendingAttachments == attachments {
+                draft = ""; app.pendingAttachments = []; await app.drafts.clear(server: api.server, conversationID: id)
+            }
             if app.selectedConversationID == id { await app.drafts.clear(server: api.server, conversationID: nil) }
             messages.append(ChatMessage(.object(["id": .string("pending-\(key)"), "seq": .number(Double(messages.last?.seq ?? 0) + 0.5), "role": .string("user"), "content": .string(text)]))!)
             follow(runID: result["runId"].stringValue ?? "", after: result["seq"].intValue ?? 0, id: id, api: api, generation: followGeneration)
-        } catch { self.error = error.localizedDescription }
+        } catch { if generation == followGeneration { self.error = error.localizedDescription } }
     }
 
     public func resync(id: String, api: APIClient) async {
@@ -125,10 +190,11 @@ public final class ChatStore {
             guard generation == followGeneration else { return }
             let changed = summary["updatedAt"].doubleValue != revision
             revision = summary["updatedAt"].doubleValue ?? revision
+            selectedModelID = summary["modelId"].stringValue ?? selectedModelID
             let remoteTail = summary["lastMessageSeq"].intValue ?? summary["messageSeq"].intValue
             let localTail = messages.filter { !$0.id.hasPrefix("pending-") }.map(\.seq).max() ?? -1
             if activeFollowID == nil && (changed || (remoteTail != nil && remoteTail! < localTail)) {
-                let page = try await api.request("GET", "/conversations/\(id)/messages?limit=60")
+                let page = try await api.request("GET", "/conversations/\(id)/messages?limit=20")
                 guard generation == followGeneration else { return }
                 messages = page["items"].arrayValue?.compactMap(ChatMessage.init) ?? messages
                 olderCursor = page["nextCursor"].intValue
@@ -172,7 +238,7 @@ public final class ChatStore {
     private func follow(runID: String, after: Int, id: String, api: APIClient, generation: UUID) {
         guard !runID.isEmpty, generation == followGeneration else { return }
         if activeFollowID == runID { return }
-        followTask?.cancel(); flushTask?.cancel(); flushTask = nil; pendingDelta = ""
+        followTask?.cancel(); flushTask?.cancel(); flushTask = nil; pendingDelta = ""; pendingThinking = ""
         followBaseSeq = messages.filter { !$0.id.hasPrefix("pending-") && !transientIDs.contains($0.id) }.map(\.seq).max() ?? -1
         transientIDs = []
         activeFollowID = runID; liveText = ""; liveThinking = ""; liveTools = []; isRunning = true
@@ -187,9 +253,11 @@ public final class ChatStore {
     }
 
     public func setModel(_ modelID: String, id: String, api: APIClient) async {
+        let generation = followGeneration
         do {
             let value = try await api.request("PATCH", "/conversations/\(id)", body: .object(["modelId": .string(modelID)]))
-            guard id == value["id"].stringValue || value["id"] == .null else { return }
+            guard generation == followGeneration, openingID == id,
+                  id == value["id"].stringValue || value["id"] == .null else { return }
             selectedModelID = modelID; conversationDetails = value
             if let index = conversations.firstIndex(where: { $0.id == id }) { conversations[index].modelID = modelID }
         } catch { self.error = error.localizedDescription }
@@ -208,7 +276,7 @@ public final class ChatStore {
                     transientIDs.insert(id)
                     messages.append(message)
                     if message.role == "assistant" {
-                        flushTask?.cancel(); flushTask = nil; pendingDelta = ""; liveText = ""; liveThinking = ""
+                        flushTask?.cancel(); flushTask = nil; pendingDelta = ""; pendingThinking = ""; liveText = ""; liveThinking = ""
                     }
                 }
             }
@@ -216,19 +284,21 @@ public final class ChatStore {
             if event.data["message"]["role"].stringValue == "assistant" { liveTools = [] }
         case "message.delta":
             let update = event.data["assistantMessageEvent"]
-            if update["type"].stringValue == "text_delta" {
-                pendingDelta += update["delta"].stringValue ?? ""
+            if ["text_delta", "thinking_delta"].contains(update["type"].stringValue ?? "") {
+                if update["type"].stringValue == "thinking_delta" { pendingThinking += update["delta"].stringValue ?? "" }
+                else { pendingDelta += update["delta"].stringValue ?? "" }
                 if flushTask == nil {
                     let generation = followGeneration
                     flushTask = Task {
                         do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
                         await MainActor.run {
                             guard generation == self.followGeneration else { return }
-                            self.liveText += self.pendingDelta; self.pendingDelta = ""; self.flushTask = nil
+                            self.liveText += self.pendingDelta; self.liveThinking += self.pendingThinking
+                            self.pendingDelta = ""; self.pendingThinking = ""; self.flushTask = nil
                         }
                     }
                 }
-            } else if update["type"].stringValue == "thinking_delta" { liveThinking += update["delta"].stringValue ?? "" }
+            }
         case "tool.execution.start": liveTools.append(event.data)
         case "tool.execution.update", "tool.execution.end":
             if let callID = event.data["toolCallId"].stringValue, let index = liveTools.firstIndex(where: { $0["toolCallId"].stringValue == callID }) { liveTools[index] = event.data }
@@ -243,7 +313,7 @@ public final class ChatStore {
 
     private func finish(id: String, api: APIClient, generation: UUID) async {
         guard generation == followGeneration, !Task.isCancelled else { return }
-        flushTask?.cancel(); liveText += pendingDelta; pendingDelta = ""; flushTask = nil
+        flushTask?.cancel(); liveText += pendingDelta; pendingDelta = ""; pendingThinking = ""; flushTask = nil
         do {
             let tail = (try await api.request("GET", "/conversations/\(id)/messages?after=\(followBaseSeq)"))["items"].arrayValue?.compactMap(ChatMessage.init) ?? []
             guard generation == followGeneration, !Task.isCancelled else { return }
