@@ -492,15 +492,20 @@ private struct AuthenticatedTranscriptImage: View {
   @State private var failed = false
   @State private var attempt = 0
   var body: some View {
-    Group {
-      if let image {
-        image.resizable().scaledToFit()
-      } else if failed {
-        Button { failed = false; attempt += 1 } label: { Label(uncensiaText("重试"), image: "lucide-refresh-cw") }.frame(height: 180)
-      } else {
-        Rectangle().fill(.quaternary).frame(height: 180).overlay { ProgressView() }
+    // The media canvas owns layout; decoding never changes the row's height.
+    // Fit the complete image inside it, including portrait and panoramic images.
+    Rectangle().fill(.quaternary).aspectRatio(4.0 / 3.0, contentMode: .fit)
+      .overlay {
+        if let image {
+          GeometryReader { geometry in
+            image.resizable().scaledToFit()
+              .frame(width: geometry.size.width, height: geometry.size.height)
+          }
+        } else if failed {
+          Button { failed = false; attempt += 1 } label: { Label(uncensiaText("重试"), image: "lucide-refresh-cw") }
+        } else { ProgressView() }
       }
-    }
+      .clipped()
     .task(id: "\(path)-\(attempt)") {
       guard let api, let ui = try? await TranscriptImageCache.shared.image(path: path, api: api) else { if !Task.isCancelled { failed = true }; return }
       guard !Task.isCancelled else { return }
