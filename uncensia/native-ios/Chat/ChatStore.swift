@@ -4,7 +4,8 @@ import Observation
 @MainActor @Observable
 public final class ChatStore {
     public var conversations: [Conversation] = []
-    public var messages: [ChatMessage] = []
+    public var messages: [ChatMessage] = [] { didSet { for message in messages where message.role == "toolResult" { citations.ingest(message) } } }
+    let citations = TranscriptCitationIndex()
     public var draft = ""
     public var liveText = ""
     public var liveStatus = ""
@@ -18,6 +19,9 @@ public final class ChatStore {
     public var conversationDetails: JSONValue = .null
     public var selectedModelID = ""
     public var olderCursor: Int?
+    private var transientIDs: Set<String> = []
+    private var followBaseSeq = -1
+    private var activeFollowID: String?
     private var followTask: Task<Void, Never>?
     private var pendingDelta = ""
     private var flushTask: Task<Void, Never>?
@@ -27,6 +31,14 @@ public final class ChatStore {
 
     public init() {}
 
+    public func clearForConversationSwitch(loading: Bool = false) {
+        followGeneration = UUID(); followTask?.cancel(); followTask = nil; activeFollowID = nil
+        flushTask?.cancel(); flushTask = nil; pendingDelta = ""; transientIDs = []
+        liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""
+        isRunning = false; isLoading = loading; messages = []; approvals = []; citations.reset()
+        conversationDetails = .null; olderCursor = nil; revision = -1; error = nil; selectedModelID = ""; draft = ""
+    }
+
     public func loadConversations(api: APIClient) async {
         do { conversations = (try await api.request("GET", "/conversations?limit=100"))["items"].arrayValue?.compactMap(Conversation.init) ?? [] }
         catch { self.error = error.localizedDescription }
@@ -34,7 +46,7 @@ public final class ChatStore {
 
     public func open(id: String, app: AppModel) async {
         guard let api = app.api else { return }
-        followTask?.cancel(); flushTask?.cancel(); pendingDelta = ""; followGeneration = UUID(); isRunning = false; liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""; messages = []; approvals = []; conversationDetails = .null; olderCursor = nil; isLoading = true; error = nil
+        followTask?.cancel(); activeFollowID = nil; flushTask?.cancel(); flushTask = nil; pendingDelta = ""; citations.reset(); followGeneration = UUID(); isRunning = false; liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""; messages = []; approvals = []; conversationDetails = .null; olderCursor = nil; isLoading = true; error = nil
         let generation = followGeneration
         defer { if generation == followGeneration { isLoading = false } }
         do {
@@ -115,7 +127,7 @@ public final class ChatStore {
             revision = summary["updatedAt"].doubleValue ?? revision
             let remoteTail = summary["lastMessageSeq"].intValue ?? summary["messageSeq"].intValue
             let localTail = messages.filter { !$0.id.hasPrefix("pending-") }.map(\.seq).max() ?? -1
-            if changed || (remoteTail != nil && remoteTail! < localTail) {
+            if activeFollowID == nil && (changed || (remoteTail != nil && remoteTail! < localTail)) {
                 let page = try await api.request("GET", "/conversations/\(id)/messages?limit=60")
                 guard generation == followGeneration else { return }
                 messages = page["items"].arrayValue?.compactMap(ChatMessage.init) ?? messages
@@ -124,12 +136,15 @@ public final class ChatStore {
             }
             let waiting = (try await api.request("GET", "/conversations/\(id)/approvals"))["items"].arrayValue?.compactMap(ApprovalItem.init) ?? []
             guard generation == followGeneration else { return }
-            approvals = waiting
+            approvals = waiting; error = nil
             if let runID = summary["activeRun"]["id"].stringValue {
                 follow(runID: runID, after: summary["activeRun"]["resumeSeq"].intValue ?? 0, id: id, api: api, generation: generation)
-            } else if !changed {
+            } else if activeFollowID == nil {
+                liveText = ""; liveThinking = ""; liveTools = []; isRunning = false
+                guard !changed else { return }
                 let after = messages.filter { !$0.id.hasPrefix("pending-") }.map(\.seq).max() ?? -1
                 let tail = try await api.request("GET", "/conversations/\(id)/messages?after=\(after)")["items"].arrayValue?.compactMap(ChatMessage.init) ?? []
+                guard generation == followGeneration else { return }
                 messages = merge(messages.filter { !$0.id.hasPrefix("pending-") }, tail)
             }
         } catch { self.error = error.localizedDescription }
@@ -140,12 +155,13 @@ public final class ChatStore {
         await app.drafts.save(Draft(text: draft, attachments: app.pendingAttachments), server: api.server, conversationID: app.selectedConversationID)
     }
 
-    public func command(_ path: String, body: JSONValue? = nil, id: String, api: APIClient) async {
+    @discardableResult public func command(_ path: String, body: JSONValue? = nil, id: String, api: APIClient) async -> Bool {
         do {
             let result = try await api.request("POST", "/conversations/\(id)/\(path)", body: body)
             if let runID = result["runId"].stringValue { follow(runID: runID, after: result["seq"].intValue ?? 0, id: id, api: api, generation: followGeneration) }
+            return true
         }
-        catch { self.error = error.localizedDescription }
+        catch { self.error = error.localizedDescription; return false }
     }
 
     public func decide(_ approval: ApprovalItem, approved: Bool, api: APIClient) async {
@@ -154,14 +170,19 @@ public final class ChatStore {
     }
 
     private func follow(runID: String, after: Int, id: String, api: APIClient, generation: UUID) {
-        guard !runID.isEmpty, generation == followGeneration else { return }; followTask?.cancel(); liveText = ""; liveThinking = ""; liveTools = []; isRunning = true
+        guard !runID.isEmpty, generation == followGeneration else { return }
+        if activeFollowID == runID { return }
+        followTask?.cancel(); flushTask?.cancel(); flushTask = nil; pendingDelta = ""
+        followBaseSeq = messages.filter { !$0.id.hasPrefix("pending-") && !transientIDs.contains($0.id) }.map(\.seq).max() ?? -1
+        transientIDs = []
+        activeFollowID = runID; liveText = ""; liveThinking = ""; liveTools = []; isRunning = true
         followTask = Task { [weak self] in
             guard let self else { return }
             do {
                 for try await event in await RunFollower(api: api).follow(runID: runID, after: after) { guard !Task.isCancelled, generation == self.followGeneration else { return }; self.apply(event) }
                 guard !Task.isCancelled, generation == self.followGeneration else { return }
                 await self.finish(id: id, api: api, generation: generation)
-            } catch { if generation == self.followGeneration { self.error = error.localizedDescription; self.isRunning = false } }
+            } catch { if !Task.isCancelled, generation == self.followGeneration { self.activeFollowID = nil; self.error = error.localizedDescription; self.isRunning = false } }
         }
     }
 
@@ -174,8 +195,25 @@ public final class ChatStore {
         } catch { self.error = error.localizedDescription }
     }
 
-    private func apply(_ event: ServerEvent) {
+    func apply(_ event: ServerEvent) {
         switch event.type {
+        case "message.end":
+            var raw = event.data["message"].objectValue ?? [:]
+            if let id = event.data["messageId"].stringValue {
+                raw["id"] = .string(id)
+                // The canonical sequence is fetched when the run settles.
+                raw["seq"] = .integer((messages.map(\.seq).max() ?? -1) + 1)
+                if let message = ChatMessage(.object(raw)), !messages.contains(where: { $0.id == id }) {
+                    if message.role == "user" { messages.removeAll { $0.id.hasPrefix("pending-") } }
+                    transientIDs.insert(id)
+                    messages.append(message)
+                    if message.role == "assistant" {
+                        flushTask?.cancel(); flushTask = nil; pendingDelta = ""; liveText = ""; liveThinking = ""
+                    }
+                }
+            }
+        case "message.start":
+            if event.data["message"]["role"].stringValue == "assistant" { liveTools = [] }
         case "message.delta":
             let update = event.data["assistantMessageEvent"]
             if update["type"].stringValue == "text_delta" {
@@ -183,7 +221,7 @@ public final class ChatStore {
                 if flushTask == nil {
                     let generation = followGeneration
                     flushTask = Task {
-                        do { try await Task.sleep(for: .milliseconds(32)) } catch { return }
+                        do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
                         await MainActor.run {
                             guard generation == self.followGeneration else { return }
                             self.liveText += self.pendingDelta; self.pendingDelta = ""; self.flushTask = nil
@@ -207,14 +245,13 @@ public final class ChatStore {
         guard generation == followGeneration, !Task.isCancelled else { return }
         flushTask?.cancel(); liveText += pendingDelta; pendingDelta = ""; flushTask = nil
         do {
-            let settled = messages.filter { !$0.id.hasPrefix("pending-") }
-            let after = settled.map(\.seq).max() ?? -1
-            let tail = (try await api.request("GET", "/conversations/\(id)/messages?after=\(after)"))["items"].arrayValue?.compactMap(ChatMessage.init) ?? []
+            let tail = (try await api.request("GET", "/conversations/\(id)/messages?after=\(followBaseSeq)"))["items"].arrayValue?.compactMap(ChatMessage.init) ?? []
             guard generation == followGeneration, !Task.isCancelled else { return }
-            messages = merge(settled, tail); liveText = ""
+            messages = merge(messages.filter { !$0.id.hasPrefix("pending-") && !transientIDs.contains($0.id) }, tail)
+            transientIDs = []; liveText = ""
         }
         catch { self.error = error.localizedDescription }
-        isRunning = false
+        activeFollowID = nil; isRunning = false
     }
 
     private func merge(_ old: [ChatMessage], _ new: [ChatMessage]) -> [ChatMessage] {

@@ -21,7 +21,7 @@ struct LibraryScreen: View {
           ProgressView(uncensiaText("正在加载资料库…"))
         } else if let failure = store.failure, store.files.isEmpty {
           ContentUnavailableView(
-            uncensiaText("资料库不可用"), systemImage: "exclamationmark.icloud", description: Text(failure)
+            uncensiaText("资料库不可用"), image: "lucide-cloud-alert", description: Text(failure)
           )
           .overlay(alignment: .bottom) {
             Button(uncensiaText("重试")) { Task { await store.load(api: app.api, reset: true) } }.buttonStyle(
@@ -37,20 +37,20 @@ struct LibraryScreen: View {
           Button {
             note = .new
           } label: {
-            Label(uncensiaText("新建笔记"), systemImage: "square.and.pencil")
+            Label(uncensiaText("新建笔记"), image: "lucide-square-pen")
           }
           Button {
             importing = true
           } label: {
-            Label(uncensiaText("上传"), systemImage: "square.and.arrow.up")
+            Label(uncensiaText("上传"), image: "lucide-share")
           }
           Menu {
             Picker(uncensiaText("布局"), selection: $layout) {
-              Label(uncensiaText("卡片"), systemImage: "square.grid.2x2").tag(LibraryLayout.cards)
-              Label(uncensiaText("列表"), systemImage: "list.bullet").tag(LibraryLayout.list)
+              Label(uncensiaText("卡片"), image: "lucide-grid-2x2").tag(LibraryLayout.cards)
+              Label(uncensiaText("列表"), image: "lucide-list").tag(LibraryLayout.list)
             }
           } label: {
-            Image(systemName: layout == .cards ? "square.grid.2x2" : "list.bullet")
+            Image(layout == .cards ? "lucide-grid-2x2" : "lucide-list")
           }
         }
       }
@@ -197,7 +197,7 @@ struct LibraryScreen: View {
       Button(uncensiaText("作为上下文添加")) { attach(file, role: "context") }
       if file.isImage { Button(uncensiaText("编辑这张图片")) { attach(file, role: "base") } }
     } label: {
-      Image(systemName: "plus.message")
+      Image("lucide-message-square-plus")
     }
   }
 
@@ -210,7 +210,7 @@ struct LibraryScreen: View {
       if !file.visual { Button(uncensiaText("重新索引")) { Task { await store.reindex(file, api: app.api) } } }
       Button(uncensiaText("删除"), role: .destructive) { confirmDelete = file }
     } label: {
-      Image(systemName: "ellipsis.circle")
+      Image("lucide-ellipsis")
     }
   }
 
@@ -432,7 +432,7 @@ private struct LibraryThumbnail: View {
       if let image {
         image.resizable().scaledToFill()
       } else {
-        Image(systemName: file.isVideo ? "play.rectangle" : file.isImage ? "photo" : "doc.text")
+        Image(file.isVideo ? "lucide-clapperboard" : file.isImage ? "lucide-image" : "lucide-file-text")
           .font(.title).foregroundStyle(.secondary)
       }
     }.task(id: file.id) {
@@ -457,7 +457,7 @@ private struct LibraryPreview: View {
           QuickLookView(url: localURL)
         } else if let failure {
           ContentUnavailableView(
-            uncensiaText("无法打开"), systemImage: "exclamationmark.triangle", description: Text(failure))
+            uncensiaText("无法打开"), image: "lucide-triangle-alert", description: Text(failure))
         } else {
           ProgressView(uncensiaText("正在下载…"))
         }
@@ -465,7 +465,7 @@ private struct LibraryPreview: View {
         ToolbarItem(placement: .cancellationAction) { Button(uncensiaText("完成")) { dismiss() } }
         if let localURL {
           ToolbarItem(placement: .primaryAction) {
-            ShareLink(item: localURL) { Image(systemName: "square.and.arrow.up") }
+            ShareLink(item: localURL) { Image("lucide-share") }
           }
         }
       }.task {

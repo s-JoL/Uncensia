@@ -9,7 +9,7 @@ struct RootView: View {
     @Environment(AppModel.self) private var app
     var body: some View {
         @Bindable var app = app
-        Group { if app.isReady { TabView(selection: $app.selectedTab) { Tab(uncensiaText("对话"), systemImage: "bubble.left.and.bubble.right", value: "chat") { ChatScreen() }; Tab(uncensiaText("创作台"), systemImage: "wand.and.stars", value: "studio") { StudioScreen() }; Tab(uncensiaText("资料库"), systemImage: "books.vertical", value: "library") { LibraryScreen() }; Tab(uncensiaText("设置"), systemImage: "gearshape", value: "settings") { SettingsScreen() } } } else { SignInView() } }
+        Group { if app.isReady { TabView(selection: $app.selectedTab) { Tab(uncensiaText("对话"), image: "lucide-messages-square", value: "chat") { ChatScreen() }; Tab(uncensiaText("创作台"), image: "lucide-images", value: "studio") { StudioScreen() }; Tab(uncensiaText("资料库"), image: "lucide-folder-closed", value: "library") { LibraryScreen() }; Tab(uncensiaText("设置"), image: "lucide-settings-2", value: "settings") { SettingsScreen() } } } else { SignInView() } }
         .task { await automaticConnection() }
     }
     private func automaticConnection() async {
@@ -19,6 +19,12 @@ struct RootView: View {
         if app.credentials.token(for: server) == nil, let code = environment["UNCENSIA_ACCESS_CODE"] {
             if let response = try? await app.api?.request("POST", "/auth/token", body: .object(["accessCode": .string(code), "deviceName": .string("iOS") ])), let token = response["token"].stringValue { try? app.connect(server: server, token: token) }
         }
+        #if DEBUG
+        if let id = environment["UNCENSIA_TEST_CONVERSATION_ID"] {
+            if environment["UNCENSIA_TEST_CLEAR_DRAFT"] == "1" { await app.drafts.clear(server: server, conversationID: id) }
+            app.selectedConversationID = id
+        }
+        #endif
         await app.refreshBootstrap()
     }
 }
