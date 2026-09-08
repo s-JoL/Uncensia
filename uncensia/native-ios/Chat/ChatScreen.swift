@@ -145,15 +145,28 @@ private struct TranscriptView: View {
     @State private var viewport = ViewportTracker()
     @State private var userScrolling = false
     @State private var scrollFollow = TranscriptScrollScheduler()
-    @State private var pendingPrepend: PendingPrepend?
+    @State private var loadingOlder = false
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 20) {
                 if store.olderCursor != nil { Button(uncensiaText("载入更早消息")) {
                     guard let conversationID, let api else { return }
-                    pendingPrepend = PendingPrepend(offset: viewport.offset, height: viewport.height, messageCount: store.messages.count)
-                    Task { if !(await store.loadOlder(id: conversationID, api: api)) { pendingPrepend = nil } }
-                } }
+                    guard !loadingOlder else { return }
+                    let anchor = store.messages.first?.id
+                    let interaction = viewport.interaction
+                    loadingOlder = true
+                    closeToBottom = false
+                    scrollFollow.cancel()
+                    Task {
+                        let loaded = await store.loadOlder(id: conversationID, api: api)
+                        loadingOlder = false
+                        guard loaded, let anchor, viewport.interaction == interaction else { return }
+                        scrollFollow.schedule {
+                            guard viewport.interaction == interaction, !userScrolling else { return }
+                            position.scrollTo(id: anchor, anchor: .top)
+                        }
+                    }
+                }.disabled(loadingOlder) }
                 ForEach(store.messages) { message in
                     MessageRow(message: message, api: api).id(message.id).accessibilityIdentifier("chat.message.\(message.id)").contextMenu {
                         if message.role == "user" { Button(uncensiaText("编辑并重试"), image: "lucide-pencil") { edit(message) } }
@@ -172,12 +185,10 @@ private struct TranscriptView: View {
         .onScrollGeometryChange(for: TranscriptGeometry.self) { value in
             TranscriptGeometry(offset: value.contentOffset.y, height: value.contentSize.height, viewport: value.containerSize.height, visibleBottom: value.visibleRect.maxY, bottomInset: value.contentInsets.bottom)
         } action: { old, new in
-            viewport.offset = new.offset; viewport.height = new.height
-            if let pendingPrepend, store.messages.count > pendingPrepend.messageCount, new.height > pendingPrepend.height {
-                self.pendingPrepend = nil
-                position.scrollTo(y: max(0, pendingPrepend.offset + new.height - pendingPrepend.height))
-            } else if closeToBottom, !userScrolling, new.height > old.height {
-                scrollFollow.schedule { if closeToBottom && !userScrolling { position.scrollTo(edge: .bottom) } }
+            // Image decoding and lazy layout estimates are not new assistant output.
+            // Only a live tail may request bottom following.
+            if store.isRunning, closeToBottom, !userScrolling, new.height > old.height {
+                scrollFollow.schedule { if store.isRunning && closeToBottom && !userScrolling { position.scrollTo(edge: .bottom) } }
             }
             let nowClose = new.distanceFromBottom < 96
             viewport.nearBottom = nowClose
@@ -190,7 +201,11 @@ private struct TranscriptView: View {
             let wasUserScrolling = userScrolling
             userScrolling = phase == .interacting || phase == .decelerating || phase == .tracking
             if userScrolling { scrollFollow.cancel() }
-            if phase == .interacting { pendingPrepend = nil; closeToBottom = false; viewport.lastMovementDown = false }
+            if phase == .tracking || phase == .interacting {
+                viewport.interaction += 1
+                closeToBottom = false
+                viewport.lastMovementDown = false
+            }
             if phase == .idle && wasUserScrolling { closeToBottom = viewport.nearBottom && viewport.lastMovementDown }
         }
         .overlay { if store.isLoading && store.messages.isEmpty { ProgressView() } else if store.messages.isEmpty && !store.isRunning { ContentUnavailableView(uncensiaText("开始对话"), image: "lucide-sparkles", description: Text(uncensiaText("可以聊天、处理资料，也可以直接创作图片和视频。"))) } }
@@ -216,15 +231,11 @@ private struct TranscriptGeometry: Equatable {
 }
 
 @MainActor private final class ViewportTracker {
-    var offset: CGFloat = 0
-    var height: CGFloat = 0
+    var interaction = 0
     var nearBottom = true
     var lastMovementDown = false
 }
 
-private struct PendingPrepend {
-    let offset: CGFloat; let height: CGFloat; let messageCount: Int
-}
 
 private struct LiveTranscriptRow: View {
     @Bindable var store: ChatStore
