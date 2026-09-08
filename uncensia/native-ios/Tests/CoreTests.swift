@@ -59,4 +59,63 @@ final class CoreTests: XCTestCase {
         let newAfterClear = await store.load(server: server, conversationID: nil)
         XCTAssertEqual(newAfterClear.attachments, [newAttachment], "清理已发送会话不得覆盖新对话附件")
     }
+    func testConcurrentTokenRotationNeverDeletesTheCurrentCredential() async throws {
+        let vault = CredentialVault(), server = URL(string: "https://rotation-\(UUID().uuidString).test")!
+        try vault.setToken("initial", for: server)
+        defer { try? vault.removeToken(for: server) }
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for index in 0..<24 {
+                group.addTask {
+                    try vault.setToken("token-\(index)", for: server)
+                    XCTAssertNotNil(vault.token(for: server))
+                }
+            }
+            try await group.waitForAll()
+        }
+        XCTAssertTrue(vault.token(for: server)?.hasPrefix("token-") == true)
+    }
+    func testOnlySafeRequestsRetryTransientFailures() {
+        let outage = APIError(status: 502, code: "gateway", message: "Bad gateway")
+        XCTAssertTrue(APIClient.canRetry(method: "GET", headers: [:], error: outage))
+        XCTAssertTrue(APIClient.canRetry(method: "POST", headers: ["Idempotency-Key": "same-run"], error: outage))
+        XCTAssertFalse(APIClient.canRetry(method: "POST", headers: [:], error: outage))
+        XCTAssertFalse(APIClient.canRetry(method: "GET", headers: [:], error: APIError(status: 401, code: "auth", message: "Unauthorized")))
+        XCTAssertFalse(APIClient.canRetry(method: "GET", headers: [:], error: URLError(.cancelled)))
+    }
+
+    func testGatewayRetryReusesTheSameIdempotencyKey() async throws {
+        RetryURLProtocol.reset()
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RetryURLProtocol.self]
+        let api = APIClient(server: URL(string: "https://retry.test")!, session: URLSession(configuration: config))
+        let result = try await api.request("POST", "/conversations/test/runs", body: .object(["text": .string("once")]), headers: ["Idempotency-Key": "original-key"])
+        XCTAssertEqual(result["runId"].stringValue, "one-run")
+        let requests = RetryURLProtocol.recorded()
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests.map { $0.value(forHTTPHeaderField: "Idempotency-Key") }, ["original-key", "original-key"])
+        RetryURLProtocol.reset()
+        do {
+            _ = try await api.request("POST", "/conversations", body: .object([:]))
+            XCTFail("An ordinary mutation must not retry a 502")
+        } catch let error as APIError { XCTAssertEqual(error.status, 502) }
+        XCTAssertEqual(RetryURLProtocol.recorded().count, 1)
+    }
+
+}
+
+private final class RetryURLProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var requests: [URLRequest] = []
+    static func reset() { lock.withLock { requests = [] } }
+    static func recorded() -> [URLRequest] { lock.withLock { requests } }
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let count = Self.lock.withLock { Self.requests.append(request); return Self.requests.count }
+        let status = count == 1 ? 502 : 200
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data((status == 200 ? "{\"runId\":\"one-run\"}" : "{}").utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }

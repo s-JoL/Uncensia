@@ -1,3 +1,4 @@
+import ImageIO
 import QuickLook
 import SwiftUI
 
@@ -15,9 +16,13 @@ struct MessageRow: View {
     HStack(alignment: .top) {
       if message.role == "user" { Spacer(minLength: 44) }
       VStack(alignment: .leading, spacing: 10) {
-        Text(message.role == "user" ? uncensiaText("你") : message.role == "toolResult" ? uncensiaText("工具结果") : "Uncensia")
-          .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-        ForEach(parts) { part in
+        if message.role == "toolResult" {
+          ToolTranscriptCard(name: message.content["toolName"].stringValue ?? message.raw["toolName"].stringValue ?? uncensiaText("工具结果"), arguments: .null, result: message.text)
+        }
+        ForEach(parts.filter { part in
+          if message.role != "toolResult" { return true }
+          switch part.kind { case .image, .video, .file: return true; default: return false }
+        }) { part in
           TranscriptPartView(part: part, api: api, user: message.role == "user")
         }
       }
@@ -28,7 +33,7 @@ struct MessageRow: View {
       if message.role != "user" { Spacer(minLength: 16) }
     }
     .frame(maxWidth: .infinity, alignment: message.role == "user" ? .trailing : .leading)
-    .task { TranscriptCitationIndex.shared.ingest(message) }
+
   }
 }
 
@@ -49,7 +54,6 @@ struct StreamingRow: View {
   }
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text("Uncensia").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
       if !thinking.isEmpty {
         DisclosureGroup(uncensiaText("思考过程")) {
           Text(thinking).foregroundStyle(.secondary).textSelection(.enabled).padding(.top, 6)
@@ -63,9 +67,9 @@ struct StreamingRow: View {
           result: tool["result"].pretty.isEmpty
             ? tool["partialResult"].pretty : tool["result"].pretty)
       }
-      if !text.isEmpty { RichMarkdown(text: text, api: api) }
+      if !text.isEmpty { RichMarkdown(text: text, api: api, streaming: true).accessibilityElement(children: .contain).accessibilityLabel(uncensiaText("正在回复")).accessibilityIdentifier("chat.live.text") }
       if !status.isEmpty {
-        Label(localizedStreamingStatus(status), systemImage: "sparkles").font(.caption)
+        Label(localizedStreamingStatus(status), image: "lucide-sparkles").font(.caption)
           .foregroundStyle(.secondary)
       }
       if text.isEmpty { ProgressView().controlSize(.small) }
@@ -155,7 +159,7 @@ private struct TranscriptPartView: View {
             maxWidth: user ? 220 : 620, maxHeight: 600
           ).clipShape(RoundedRectangle(cornerRadius: 12)).onTapGesture {
             preview = .init(id: id, name: "\(id).png", kind: .image)
-          }
+          }.accessibilityLabel(uncensiaText("打开图片")).accessibilityAddTraits(.isButton).accessibilityIdentifier("media.image.\(id)")
           if let role { Text(referenceLabel(role)).font(.caption).foregroundStyle(.secondary) }
         }
       case .video(let id, let poster):
@@ -168,16 +172,17 @@ private struct TranscriptPartView: View {
             } else {
               Rectangle().fill(.black)
             }
-            Image(systemName: "play.circle.fill").font(.system(size: 54)).foregroundStyle(.white)
+            Image("lucide-circle-play").font(.system(size: 54)).foregroundStyle(.white)
               .shadow(radius: 4)
           }.frame(maxWidth: 520).aspectRatio(16 / 9, contentMode: .fit).clipShape(
             RoundedRectangle(cornerRadius: 12))
         }
+        .accessibilityLabel(uncensiaText("播放视频")).accessibilityIdentifier("media.video.\(id)")
       case .file(let id, let name, let mime):
         Button {
           preview = .init(id: id, name: name, kind: mime == "application/pdf" ? .document : .file)
         } label: {
-          Label(name, systemImage: mime == "application/pdf" ? "doc.richtext" : "doc").lineLimit(1)
+          Label(name, image: mime == "application/pdf" ? "lucide-file-text" : "lucide-file").lineLimit(1)
         }.buttonStyle(.bordered)
       case .tool(let name, let arguments):
         ToolTranscriptCard(name: name, arguments: arguments, result: nil)
@@ -220,7 +225,7 @@ private struct ToolTranscriptCard: View {
         }
       }.padding(.top, 6)
     } label: {
-      Label(label, systemImage: "wrench.and.screwdriver").foregroundStyle(.secondary)
+      Label(label, image: "lucide-wrench").foregroundStyle(.secondary)
     }.padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 11))
   }
 }
@@ -229,19 +234,21 @@ struct RichMarkdown: View {
   let text: String
   let api: APIClient?
   @State private var blocks: [MarkdownBlock]
-  init(text: String, api: APIClient? = nil) {
+  @State private var parsedText: String
+  init(text: String, api: APIClient? = nil, streaming: Bool = false) {
     self.text = text
     self.api = api
-    _blocks = State(initialValue: MarkdownBlock.parse(text))
+    _blocks = State(initialValue: streaming ? [] : MarkdownBlock.parse(text))
+    _parsedText = State(initialValue: streaming ? "" : text)
   }
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       ForEach(blocks) { block in
         switch block.kind {
-        case .prose(let value): MarkdownProse(value)
+        case .prose(let value): MarkdownProse(value).equatable()
         case .code(let language, let code):
           VStack(alignment: .leading, spacing: 4) {
-            if !language.isEmpty { Text(language).font(.caption2).foregroundStyle(.secondary) }
+            HStack { Text(language.isEmpty ? "Code" : language).font(.caption2).foregroundStyle(.secondary); Spacer(); Button { UIPasteboard.general.string = code } label: { Image("lucide-copy") }.accessibilityLabel(uncensiaText("复制代码")) }.padding(.horizontal, 10).padding(.top, 8)
             ScrollView(.horizontal) {
               Text(code).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
                 .padding(10)
@@ -249,21 +256,23 @@ struct RichMarkdown: View {
           }.background(.black.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
         case .table(let rows): MarkdownTable(rows: rows)
         case .image(let id, let label):
-          VStack(alignment: .leading, spacing: 4) {
-            AuthenticatedTranscriptImage(path: "/images/\(id)?w=1280", api: api)
-              .frame(maxWidth: 620, maxHeight: 600)
-              .clipShape(RoundedRectangle(cornerRadius: 12))
-            if !label.isEmpty { Text(label).font(.caption).foregroundStyle(.secondary) }
-          }
+          TranscriptPartView(part: .init(id: id, kind: id.hasPrefix("vid_") ? .video(id, nil) : .image(id, nil)), api: api, user: false)
+          if !label.isEmpty { Text(label).font(.caption).foregroundStyle(.secondary) }
         }
       }
     }.frame(maxWidth: .infinity, alignment: .leading)
-      .onChange(of: text) { _, newValue in blocks = MarkdownBlock.parse(newValue) }
+      .task(id: text) {
+        guard parsedText != text else { return }
+        let source = text
+        let parsed = await Task.detached(priority: .userInitiated) { MarkdownBlock.parse(source) }.value
+        guard !Task.isCancelled else { return }; blocks = parsed; parsedText = source
+      }
   }
 }
-private struct MarkdownProse: View {
+private struct MarkdownProse: View, Equatable {
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.text == rhs.text }
   let text: String
-  @State private var index = TranscriptCitationIndex.shared
+  @Environment(TranscriptCitationIndex.self) private var index
   init(_ text: String) { self.text = text }
   var body: some View {
     let rendered = index.render(text)
@@ -308,34 +317,29 @@ private struct MarkdownProse: View {
   }
 }
 
-@MainActor @Observable private final class TranscriptCitationIndex {
-  static let shared = TranscriptCitationIndex()
+@MainActor @Observable final class TranscriptCitationIndex {
+  func reset() { links = [:] }
   private var links: [String: (String, String?)] = [:]
   func ingest(_ message: ChatMessage) {
     guard message.role == "toolResult" else { return }
-    for block in message.text.components(separatedBy: "\n#") {
-      guard
-        let match = block.range(
-          of: #"(?:\\ue202|\u{e202})turn\d+(?:file|search|news|image|video)\d+"#,
-          options: [.regularExpression, .caseInsensitive])
-      else { continue }
-      let anchor = String(block[match])
-      let key = anchor.replacingOccurrences(of: "\\ue202", with: "").replacingOccurrences(
-        of: "\u{e202}", with: ""
-      ).lowercased()
-      let url = block.components(separatedBy: .newlines).first(where: { $0.hasPrefix("URL: ") }).map
-      { String($0.dropFirst(5)) }
-      let label =
-        url.flatMap { URL(string: $0)?.host() } ?? block.components(separatedBy: "(").dropFirst()
-        .first?.components(separatedBy: ")").first ?? key
-      links[key] = (label, url)
+    for block in message.text.replacingOccurrences(of: "\nFile:", with: "\n#File:").components(separatedBy: "\n#") {
+      let lines = block.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
+      guard let anchor = lines.first(where: { $0.lowercased().hasPrefix("anchor:") }),
+        let match = anchor.range(of: #"(?:\\ue202|\uE202)turn\d+(?:file|search|news|image|video)\d+"#, options: [.regularExpression, .caseInsensitive]),
+        let keyRange = String(anchor[match]).range(of: #"turn\d+(?:file|search|news|image|video)\d+"#, options: [.regularExpression, .caseInsensitive]) else { continue }
+      let marked = String(anchor[match])
+      let key = String(marked[keyRange]).lowercased()
+      let url = lines.first(where: { $0.hasPrefix("URL: ") }).map { String($0.dropFirst(5)) }
+      let file = anchor.range(of: #"\([^)]+\)"#, options: .regularExpression).map { String(anchor[$0].dropFirst().dropLast()) }
+      let label = url.flatMap { URL(string: $0)?.host() } ?? file ?? uncensiaText("来源")
+      if links[key]?.0 != label || links[key]?.1 != url { links[key] = (label, url) }
     }
   }
   func render(_ text: String) -> String {
     var output = text
     guard
       let regex = try? NSRegularExpression(
-        pattern: #"(?:\\ue202|\u{e202})(turn\d+(?:file|search|news|image|video)\d+)"#,
+        pattern: #"(?:\\ue202|\uE202)(turn\d+(?:file|search|news|image|video)\d+)"#,
         options: [.caseInsensitive])
     else { return text }
     for match in regex.matches(in: output, range: NSRange(output.startIndex..., in: output))
@@ -346,12 +350,13 @@ private struct MarkdownProse: View {
       else { continue }
       let key = String(output[body]).lowercased()
       let source = links[key]
-      let label = source?.0 ?? key
+      guard let source else { output.replaceSubrange(range, with: ""); continue }
+      let label = source.0.replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "")
       output.replaceSubrange(
-        range, with: source?.1.map { uncensiaText("[来源·%@](%@)", String(describing: label), String(describing: $0)) } ?? uncensiaText("[来源·%@]", String(describing: label)))
+        range, with: source.1.map { uncensiaText("[来源·%@](%@)", String(describing: label), String(describing: $0)) } ?? uncensiaText("[来源·%@]", String(describing: label)))
     }
     return output.replacingOccurrences(
-      of: #"\\ue20[0134]|[\u{e200}\u{e201}\u{e203}\u{e204}]"#, with: "", options: .regularExpression
+      of: #"\\ue20[0134]|[\uE200\uE201\uE203\uE204]"#, with: "", options: .regularExpression
     )
   }
 }
@@ -373,8 +378,8 @@ private struct MarkdownTable: View {
     }
   }
 }
-private struct MarkdownBlock: Identifiable {
-  enum Kind {
+struct MarkdownBlock: Identifiable, Sendable {
+  enum Kind: Sendable {
     case prose(String)
     case code(String, String)
     case table([[String]])
@@ -385,64 +390,77 @@ private struct MarkdownBlock: Identifiable {
   static func parse(_ text: String) -> [Self] {
     var result: [Self] = []
     var prose: [String] = []
-    var code: [String] = []
-    var language = ""
-    var inCode = false
+    let media = try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\((?:(?:image|video)://|/(?:v1/)?(?:images|videos)/)((?:img|vid)_[A-Za-z0-9_-]+)(?:\?[^)]*)?\)|\[image image_id=(img_[A-Za-z0-9_-]+)\]"#)
     func flush() {
       guard !prose.isEmpty else { return }
-      let joined = prose.joined(separator: "\n")
-      if let match = joined.wholeMatch(
-        of: /^!\[([^\]]*)\]\((?:image:\/\/|\/images\/)(img_[A-Za-z0-9_-]+)(?:\?[^)]*)?\)$/)
-      {
-        result.append(.init(id: result.count, kind: .image(String(match.2), String(match.1))))
-        prose = []
-        return
+      let value = prose.joined(separator: "\n")
+      var cursor = value.startIndex
+      // Inline code is literal, including image examples.
+      let code = try! NSRegularExpression(pattern: #"`[^`\n]+`"#)
+      let protected = code.matches(in: value, range: NSRange(value.startIndex..., in: value)).map(\.range)
+      for match in media.matches(in: value, range: NSRange(value.startIndex..., in: value)) {
+        guard !protected.contains(where: { NSIntersectionRange($0, match.range).length > 0 }),
+          let range = Range(match.range, in: value) else { continue }
+        if cursor < range.lowerBound { result.append(.init(id: result.count, kind: .prose(String(value[cursor..<range.lowerBound])))) }
+        let idRange = Range(match.range(at: match.range(at: 3).location == NSNotFound ? 2 : 3), in: value)!
+        let label = Range(match.range(at: 1), in: value).map { String(value[$0]) } ?? ""
+        result.append(.init(id: result.count, kind: .image(String(value[idRange]), label)))
+        cursor = range.upperBound
       }
-      let lines = joined.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-      if lines.count >= 2, lines[0].contains("|"),
-        lines[1].replacingOccurrences(of: "|", with: "").trimmingCharacters(
-          in: CharacterSet(charactersIn: "-: ")
-        ).isEmpty
-      {
-        result.append(
-          .init(
-            id: result.count,
-            kind: .table(
-              lines.filter { $0.contains("|") }.enumerated().compactMap { index, line in
-                index == 1
-                  ? nil
-                  : line.split(separator: "|", omittingEmptySubsequences: true).map {
-                    $0.trimmingCharacters(in: .whitespaces)
-                  }
-              })))
-      } else {
-        result.append(.init(id: result.count, kind: .prose(joined)))
-      }
+      if cursor < value.endIndex { result.append(.init(id: result.count, kind: .prose(String(value[cursor...])))) }
       prose = []
     }
-    for line in text.components(separatedBy: .newlines) {
-      if line.hasPrefix("```") {
-        if inCode {
-          result.append(
-            .init(id: result.count, kind: .code(language, code.joined(separator: "\n"))))
-          code = []
-          language = ""
-        } else {
-          flush()
-          language = String(line.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-        }
-        inCode.toggle()
-      } else if inCode {
-        code.append(line)
-      } else {
-        prose.append(line)
-      }
+    let lines = text.components(separatedBy: .newlines)
+    var i = 0
+    func cells(_ line: String) -> [String] {
+      var value = line.trimmingCharacters(in: .whitespaces)
+      if value.hasPrefix("|") { value.removeFirst() }
+      if value.hasSuffix("|") { value.removeLast() }
+      return value.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
     }
-    if inCode {
-      result.append(.init(id: result.count, kind: .code(language, code.joined(separator: "\n"))))
+    while i < lines.count {
+      let line = lines[i]
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+        flush()
+        let fence = String(trimmed.prefix(3))
+        let language = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+        var code: [String] = []; i += 1
+        while i < lines.count && !lines[i].trimmingCharacters(in: .whitespaces).hasPrefix(fence) { code.append(lines[i]); i += 1 }
+        result.append(.init(id: result.count, kind: .code(language, code.joined(separator: "\n"))))
+      } else if i + 1 < lines.count, line.contains("|"), cells(lines[i + 1]).allSatisfy({ $0.range(of: #"^:?-{3,}:?$"#, options: .regularExpression) != nil }) {
+        flush(); var rows = [cells(line)]; i += 2
+        while i < lines.count && lines[i].contains("|") { rows.append(cells(lines[i])); i += 1 }
+        result.append(.init(id: result.count, kind: .table(rows))); continue
+      } else { prose.append(line) }
+      i += 1
     }
-    flush()
-    return result
+    flush(); return result
+  }
+}
+
+private actor TranscriptImageCache {
+  static let shared = TranscriptImageCache()
+  private let cache: NSCache<NSString, UIImage> = {
+    let cache = NSCache<NSString, UIImage>(); cache.totalCostLimit = 48 * 1024 * 1024; return cache
+  }()
+  func image(path: String, api: APIClient) async throws -> UIImage {
+    let key = "\(ObjectIdentifier(api))-\(path)" as NSString
+    if let image = cache.object(forKey: key) { return image }
+    let data = try await api.download(path)
+    let image = try await Task.detached(priority: .userInitiated) {
+      guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+        let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+          kCGImageSourceCreateThumbnailFromImageAlways: true,
+          kCGImageSourceCreateThumbnailWithTransform: true,
+          kCGImageSourceShouldCacheImmediately: true,
+          kCGImageSourceThumbnailMaxPixelSize: 1280
+        ] as CFDictionary) else { throw URLError(.cannotDecodeContentData) }
+      return UIImage(cgImage: cg)
+    }.value
+    try Task.checkCancellation()
+    cache.setObject(image, forKey: key, cost: (image.cgImage?.bytesPerRow ?? 0) * (image.cgImage?.height ?? 0))
+    return image
   }
 }
 
@@ -450,16 +468,21 @@ private struct AuthenticatedTranscriptImage: View {
   let path: String
   let api: APIClient?
   @State private var image: Image?
+  @State private var failed = false
+  @State private var attempt = 0
   var body: some View {
     Group {
       if let image {
         image.resizable().scaledToFit()
+      } else if failed {
+        Button { failed = false; attempt += 1 } label: { Label(uncensiaText("重试"), image: "lucide-refresh-cw") }.frame(height: 180)
       } else {
-        Rectangle().fill(.quaternary).overlay { ProgressView() }
+        Rectangle().fill(.quaternary).frame(height: 180).overlay { ProgressView() }
       }
     }
-    .task(id: path) {
-      guard let data = try? await api?.download(path), let ui = UIImage(data: data) else { return }
+    .task(id: "\(path)-\(attempt)") {
+      guard let api, let ui = try? await TranscriptImageCache.shared.image(path: path, api: api) else { if !Task.isCancelled { failed = true }; return }
+      guard !Task.isCancelled else { return }
       image = Image(uiImage: ui)
     }
   }
@@ -480,25 +503,25 @@ private struct TranscriptMediaViewer: View {
     NavigationStack {
       Group {
         if let url {
-          TranscriptQuickLook(url: url)
+          TranscriptQuickLook(url: url).accessibilityIdentifier("media.preview")
         } else if let error {
           ContentUnavailableView(
-            uncensiaText("无法打开"), systemImage: "exclamationmark.triangle", description: Text(error))
+            uncensiaText("无法打开"), image: "lucide-triangle-alert", description: Text(error))
         } else {
           ProgressView(uncensiaText("正在读取…"))
         }
-      }.navigationTitle(item.name).toolbar {
-        ToolbarItem(placement: .cancellationAction) { Button(uncensiaText("完成")) { dismiss() } }
+      }.navigationTitle(item.kind == .image ? uncensiaText("图片") : item.kind == .video ? uncensiaText("视频") : item.name).navigationBarTitleDisplayMode(.inline).toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button(uncensiaText("完成")) { dismiss() }.accessibilityIdentifier("media.close") }
         if let url {
           ToolbarItemGroup(placement: .primaryAction) {
             if item.kind == .image || item.kind == .video {
               NavigationLink {
                 TranscriptProvenance(assetID: item.id, kind: item.kind, api: api)
               } label: {
-                Image(systemName: "info.circle")
+                Image("lucide-info")
               }
             }
-            ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
+            ShareLink(item: url) { Image("lucide-share") }
           }
         }
       }.task {
@@ -512,7 +535,7 @@ private struct TranscriptMediaViewer: View {
           let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
             "uncensia-transcript-\(UUID().uuidString)", isDirectory: true)
           try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-          let target = directory.appendingPathComponent(item.name)
+          let target = directory.appendingPathComponent((item.name as NSString).lastPathComponent)
           try data.write(to: target, options: .atomic)
           url = target
         } catch let caught { error = caught.localizedDescription }

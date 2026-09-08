@@ -9,9 +9,9 @@ struct MCPSettingsView: View {
     List {
       Section {
         HStack {
-          Button(uncensiaText("添加 MCP 服务器"), systemImage: "plus") { adding = true }
+          Button(uncensiaText("添加 MCP 服务器"), image: "lucide-plus") { adding = true }
           Spacer()
-          Button(uncensiaText("重连"), systemImage: "arrow.clockwise") {
+          Button(uncensiaText("重连"), image: "lucide-refresh-cw") {
             withAPI(appModel, store: store) { api in
               _ = try await api.request("POST", "/mcp/reconnect")
               try await store.refreshMCP(api)
@@ -160,7 +160,7 @@ struct SkillsSettingsView: View {
   var body: some View {
     List {
       Section {
-        Button(uncensiaText("添加技能"), systemImage: "plus") { adding = true }
+        Button(uncensiaText("添加技能"), image: "lucide-plus") { adding = true }
         TextField(uncensiaText("查找技能"), text: $search)
       }
       if !store.skillDiagnostics.isEmpty {
@@ -245,7 +245,7 @@ struct TasksSettingsView: View {
   var body: some View {
     List {
       if store.tasks.isEmpty {
-        ContentUnavailableView(uncensiaText("目前没有定时任务"), systemImage: "clock")
+        ContentUnavailableView(uncensiaText("目前没有定时任务"), image: "lucide-clock")
       } else {
         ForEach(store.tasks, id: \.stableID) { task in
           VStack(alignment: .leading, spacing: 8) {

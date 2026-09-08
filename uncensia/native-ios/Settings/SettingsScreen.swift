@@ -10,7 +10,7 @@ public struct SettingsScreen: View {
   public var body: some View {
     NavigationSplitView {
       List(SettingsDestination.allCases, selection: $selection) { item in
-        Label(item.title, systemImage: item.icon).tag(item)
+        Label(item.title, image: item.icon).tag(item)
       }
       .navigationTitle(uncensiaText("设置"))
     } detail: {
@@ -18,7 +18,7 @@ public struct SettingsScreen: View {
         if let selection {
           SettingsDetail(destination: selection, store: store, appModel: appModel)
         } else {
-          ContentUnavailableView(uncensiaText("选择一项设置"), systemImage: "gearshape")
+          ContentUnavailableView(uncensiaText("选择一项设置"), image: "lucide-settings-2")
         }
       }
     }
@@ -68,16 +68,16 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
   }
   var icon: String {
     switch self {
-    case .overview: "slider.horizontal.3"
-    case .providers: "network"
-    case .models: "cpu"
-    case .extensions: "shippingbox"
-    case .skills: "sparkles"
-    case .capabilities: "wrench.and.screwdriver"
-    case .tasks: "clock"
-    case .prompts: "text.quote"
-    case .memory: "brain"
-    case .security: "lock.shield"
+    case .overview: "lucide-sliders-horizontal"
+    case .providers: "lucide-network"
+    case .models: "lucide-cpu"
+    case .extensions: "lucide-box"
+    case .skills: "lucide-sparkles"
+    case .capabilities: "lucide-wrench"
+    case .tasks: "lucide-clock"
+    case .prompts: "lucide-quote"
+    case .memory: "lucide-brain"
+    case .security: "lucide-shield"
     }
   }
 }

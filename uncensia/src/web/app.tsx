@@ -1,3 +1,4 @@
+import brandMark from "./assets/uncensia.svg";
 import { uiText, LanguageSelect } from "./i18n.tsx";
 import {
   FolderClosed,
@@ -10,7 +11,6 @@ import {
   Plus,
   Search,
   Settings2,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -248,9 +248,7 @@ function Login({ onDone }: { onDone: () => Promise<void> }) {
 }
 
 const Mark = () => (
-  <span className="grid size-6 place-items-center rounded-md bg-primary text-primary-foreground">
-    <Sparkles className="size-3.5" />
-  </span>
+  <img src={brandMark} alt="" className="size-6 rounded-md" />
 );
 
 /** Buckets by recency, the way a reader thinks about their own threads. */

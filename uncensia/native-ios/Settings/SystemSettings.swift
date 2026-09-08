@@ -51,7 +51,7 @@ struct CapabilitiesSettingsView: View {
         if store.capabilities["embedding"]["hasKey"].boolValue == true {
           Button(uncensiaText("清除嵌入密钥"), role: .destructive) { clearSecret("embedding") }
         }
-        Button(uncensiaText("重建全部文档"), systemImage: "arrow.clockwise") { reindexAll() }
+        Button(uncensiaText("重建全部文档"), image: "lucide-refresh-cw") { reindexAll() }
         if !reindexProgress.isEmpty { Text(reindexProgress).font(.caption) }
       }
       Section(uncensiaText("记忆预算")) {

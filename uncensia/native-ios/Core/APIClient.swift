@@ -25,16 +25,32 @@ public final class APIClient: Sendable {
     }
 
     public func request(_ method: String, _ path: String, body: JSONValue? = nil, headers: [String: String]) async throws -> JSONValue {
-        var request = try urlRequest(method, path)
-        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
-        if let body {
-            request.httpBody = try JSONEncoder().encode(body)
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var attempt = 0
+        while true {
+            do {
+                var request = try urlRequest(method, path)
+                for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+                if let body {
+                    request.httpBody = try JSONEncoder().encode(body)
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                }
+                let (data, response) = try await session.data(for: request)
+                try adoptAndValidate(response, data: data)
+                guard !data.isEmpty else { return .null }
+                return try JSONDecoder().decode(JSONValue.self, from: data)
+            } catch {
+                guard attempt < 2, Self.canRetry(method: method, headers: headers, error: error) else { throw error }
+                attempt += 1
+                try await Task.sleep(for: .milliseconds(400 * attempt))
+            }
         }
-        let (data, response) = try await session.data(for: request)
-        try adoptAndValidate(response, data: data)
-        guard !data.isEmpty else { return .null }
-        return try JSONDecoder().decode(JSONValue.self, from: data)
+    }
+
+    static func canRetry(method: String, headers: [String: String], error: Error) -> Bool {
+        guard method == "GET" || headers.contains(where: { $0.key.lowercased() == "idempotency-key" && !$0.value.isEmpty }) else { return false }
+        if let error = error as? APIError { return [502, 503, 504].contains(error.status) }
+        if let error = error as? URLError { return [.timedOut, .networkConnectionLost, .cannotConnectToHost].contains(error.code) }
+        return false
     }
 
     public func upload(data: Data, filename: String, mimeType: String) async throws -> JSONValue {
@@ -59,14 +75,18 @@ public final class APIClient: Sendable {
     }
 
     public func eventRequest(runID: String, after: Int, poll: Bool = false) throws -> URLRequest {
-        try urlRequest("GET", "/runs/\(runID)/events?after=\(after)\(poll ? "&mode=poll" : "")")
+        var request = try urlRequest("GET", "/runs/\(runID)/events?after=\(after)\(poll ? "&mode=poll" : "")")
+        request.timeoutInterval = 120
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        return request
     }
 
     public func data(for request: URLRequest) async throws -> (Data, URLResponse) { try await session.data(for: request) }
 
     public func bytes(for request: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
         let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        guard (200..<300).contains(http.statusCode) else { throw APIError(status: http.statusCode, code: "stream_http", message: "Stream request failed (\(http.statusCode))") }
         if let rotated = http.value(forHTTPHeaderField: "x-uncensia-token"), !rotated.isEmpty { try tokenUpdated?(rotated) }
         return (bytes, response)
     }

@@ -59,7 +59,7 @@ struct StudioScreen: View {
               queuePresented = true
             }
           } label: {
-            Label(store.submitting ? uncensiaText("正在提交…") : uncensiaText("开始生成"), systemImage: "sparkles")
+            Label(store.submitting ? uncensiaText("正在提交…") : uncensiaText("开始生成"), image: "lucide-sparkles")
           }.buttonStyle(.borderedProminent).disabled(!store.canSubmit || store.submitting)
         }
         if let error = store.failure { Text(error).foregroundStyle(.red).font(.caption) }
@@ -70,13 +70,13 @@ struct StudioScreen: View {
           Button {
             galleryPresented = true
           } label: {
-            Label(uncensiaText("作品"), systemImage: "photo.stack")
+            Label(uncensiaText("作品"), image: "lucide-images")
           }
           Button {
             queuePresented = true
           } label: {
             Label(
-              uncensiaText("队列"), systemImage: store.activeJobs.isEmpty ? "list.bullet.rectangle" : "clock.badge")
+              uncensiaText("队列"), image: store.activeJobs.isEmpty ? "lucide-list-todo" : "lucide-clock")
           }
         }
       }
@@ -85,10 +85,10 @@ struct StudioScreen: View {
         if store.loading && store.gallery.isEmpty {
           ProgressView(uncensiaText("正在读取创作台…")).padding(40)
         } else if !store.enabled {
-          ContentUnavailableView(uncensiaText("创作台已关闭"), systemImage: "paintbrush")
+          ContentUnavailableView(uncensiaText("创作台已关闭"), image: "lucide-paintbrush")
         } else if store.gallery.isEmpty {
           ContentUnavailableView(
-            uncensiaText("还没有作品"), systemImage: "photo.on.rectangle.angled", description: Text(uncensiaText("选择模型，开始第一次创作。")))
+            uncensiaText("还没有作品"), image: "lucide-images", description: Text(uncensiaText("选择模型，开始第一次创作。")))
         } else {
           LazyVGrid(columns: [GridItem(.adaptive(minimum: 155), spacing: 10)], spacing: 10) {
             ForEach(store.gallery) { asset in
@@ -172,7 +172,7 @@ private struct CompactStudioGallery: View {
     NavigationStack {
       ScrollView {
         if store.gallery.isEmpty {
-          ContentUnavailableView(uncensiaText("还没有作品"), systemImage: "photo.on.rectangle.angled")
+          ContentUnavailableView(uncensiaText("还没有作品"), image: "lucide-images")
         } else {
           LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 10)], spacing: 10) {
             ForEach(store.gallery) { asset in
@@ -580,11 +580,11 @@ private struct ArrayControl: View {
               copy.remove(at: index)
               value = .array(copy)
             } label: {
-              Image(systemName: "minus.circle")
+              Image("lucide-circle-minus")
             }
           }
         }
-        Button(uncensiaText("添加项目"), systemImage: "plus") { value = .array(items + [.null]) }.disabled(
+        Button(uncensiaText("添加项目"), image: "lucide-plus") { value = .array(items + [.null]) }.disabled(
           schema["maxItems"].doubleValue.map { Int($0) <= items.count } ?? false)
       }
     }
@@ -716,12 +716,12 @@ private struct StudioTile: View {
       if asset.kind == "video" {
         if let poster = asset.posterID {
           StudioRemoteImage(path: "/images/\(poster)?w=320", api: api).overlay {
-            Image(systemName: "play.fill").font(.largeTitle).foregroundStyle(.white).shadow(
+            Image("lucide-play").font(.largeTitle).foregroundStyle(.white).shadow(
               radius: 5)
           }
         } else {
           Color.black.overlay {
-            Image(systemName: "play.fill").font(.largeTitle).foregroundStyle(.white)
+            Image("lucide-play").font(.largeTitle).foregroundStyle(.white)
           }
         }
       } else {
@@ -826,7 +826,7 @@ private struct AssetDetail: View {
         ToolbarItem(placement: .cancellationAction) { Button(uncensiaText("完成")) { dismiss() } }
         if let localURL {
           ToolbarItem(placement: .primaryAction) {
-            ShareLink(item: localURL) { Image(systemName: "square.and.arrow.up") }
+            ShareLink(item: localURL) { Image("lucide-share") }
           }
         }
       }.task {

@@ -13,11 +13,15 @@ public final class CredentialVault: @unchecked Sendable {
     }
     public func setToken(_ token: String, for server: URL) throws {
         let key: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "app.uncensia.session", kSecAttrAccount as String: account(server: server)]
-        SecItemDelete(key as CFDictionary)
-        var item = key
-        item[kSecValueData as String] = Data(token.utf8)
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(item as CFDictionary, nil)
+        let values = [kSecValueData as String: Data(token.utf8)]
+        var status = SecItemUpdate(key as CFDictionary, values as CFDictionary)
+        if status == errSecItemNotFound {
+            var item = key
+            item[kSecValueData as String] = Data(token.utf8)
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            status = SecItemAdd(item as CFDictionary, nil)
+            if status == errSecDuplicateItem { status = SecItemUpdate(key as CFDictionary, values as CFDictionary) }
+        }
         guard status == errSecSuccess else { throw VaultError.keychain(status) }
     }
     public func removeToken(for server: URL) throws {

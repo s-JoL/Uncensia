@@ -18,7 +18,7 @@ struct ConversationList: View {
           app.selectedConversationID = nil
           dismiss()
         } label: {
-          Label(uncensiaText("新对话"), systemImage: "square.and.pencil")
+          Label(uncensiaText("新对话"), image: "lucide-square-pen")
         }.accessibilityIdentifier("conversation.new")
         if let error { Text(error).foregroundStyle(.red) }
         if query.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -242,7 +242,7 @@ struct ConversationContextSheet: View {
         previewRow(uncensiaText("示例对白"), preview.examples)
         if !preview.notes.isEmpty { DisclosureGroup(uncensiaText("作者说明（不用于生成）")) { Text(preview.notes) } }
         ForEach(preview.notices, id: \.self) {
-          Label($0, systemImage: "info.circle").font(.caption)
+          Label($0, image: "lucide-info").font(.caption)
         }
         Button(uncensiaText("替换角色、场景与示例草稿")) {
           role.character = preview.character
