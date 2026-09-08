@@ -1,0 +1,63 @@
+{
+  "name": "uncensia",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:api": "tsx watch src/server/main.ts",
+    "build": "vite build",
+    "start": "tsx src/server/main.ts",
+    "typecheck": "tsc --noEmit",
+    "audit": "tsx scripts/audit-i18n.ts && tsx scripts/audit-rename.ts && tsx scripts/audit-release.ts && tsx scripts/audit-dead.ts && tsx scripts/audit-doc-schema.ts && tsx scripts/audit-schema.ts && tsx scripts/audit-prompt.ts && tsx scripts/audit-payload.ts && tsx scripts/audit-markdown.tsx && tsx scripts/audit-tool-view.tsx && tsx scripts/audit-sessions.ts && tsx scripts/audit-history-replay.ts && tsx scripts/audit-settings-management.ts && tsx scripts/audit-tasks.ts && tsx scripts/audit-learning.ts && tsx scripts/audit-context-freshness.ts && tsx scripts/audit-retrieval.ts && tsx scripts/audit-product.ts && tsx scripts/audit-auth.ts && tsx scripts/audit-skills.ts && tsx scripts/audit-ios-fixture.ts && tsx scripts/audit-generation.ts && tsx scripts/audit-siray.ts && tsx scripts/audit-search.ts && tsx scripts/audit-coding.ts && tsx scripts/audit-mcp-transport.ts && tsx scripts/audit-approvals.ts && tsx scripts/audit-harness-host.ts && tsx scripts/audit-library-lifecycle.ts && tsx scripts/audit-web-agent-events.ts && tsx scripts/audit-concurrent-state.ts && tsx scripts/audit-web-transport.ts",
+    "e2e": "tsx scripts/e2e.ts",
+    "access-code": "tsx scripts/access-code.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.85.1",
+    "@earendil-works/pi-ai": "0.85.1",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@hono/node-server": "2.1.1",
+    "@lancedb/lancedb": "0.38.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "hono": "4.13.2",
+    "js-tiktoken": "1.0.21",
+    "katex": "0.16.22",
+    "lucide-react": "^1.32.0",
+    "mammoth": "1.11.0",
+    "parse5": "7.3.0",
+    "pdfjs-dist": "4.10.38",
+    "radix-ui": "^1.6.7",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-markdown": "10.1.0",
+    "rehype-katex": "7.0.1",
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0",
+    "sharp": "0.35.4",
+    "tailwind-merge": "^3.6.0",
+    "yaml": "2.9.0",
+    "zod": "4.1.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "tailwindcss": "^4.3.3",
+    "tsx": "4.23.12",
+    "typescript": "5.9.3",
+    "vite": "^8.2.1"
+  },
+  "overrides": {
+    "@huggingface/transformers": {
+      "sharp": "$sharp"
+    }
+  }
+}

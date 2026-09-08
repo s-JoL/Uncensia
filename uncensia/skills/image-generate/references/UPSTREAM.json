@@ -1,0 +1,7 @@
+{
+  "repo": "https://github.com/openai/skills",
+  "commit": "49f948faa9258a0c61caceaf225e179651397431",
+  "path": "skills/.system/imagegen/SKILL.md",
+  "license": "Apache-2.0",
+  "adaptation": "Prompt specification and craft guidance; Uncensia owns execution, sources, providers and persistent jobs."
+}

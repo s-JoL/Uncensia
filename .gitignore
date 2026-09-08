@@ -1,0 +1,18 @@
+# ComfyUI is installed and updated on its own; the model directory alone is ~60 GB.
+/ComfyUI/
+
+# Shallow clones for harness comparison. Not part of the product.
+/compare/
+
+# ComfyUI process logs.
+/run/
+
+*.log
+*.pyc
+__pycache__/
+
+# Finder leaves these in every directory it has been asked to display.
+.DS_Store
+
+# Previous installation path: protected Node runtime and historical data-path link only.
+/luma/

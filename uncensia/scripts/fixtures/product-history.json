@@ -1,0 +1,67 @@
+{
+  "operation-continuity": {
+    "source": "Neutral companion regression for fresh-refinement and selected-version failures; not historical usage frequency.",
+    "turns": [
+      { "text": "生成一张写实照片：一位三十岁的园丁，绿色外套，站在温室里，手里拿着一个黄色浇水壶。只做一张，用当前默认生图模型独立生成，不编辑已有图片。", "criteria": ["Exactly one fresh generation with the explicitly configured default; retain its actual ID as the first version.", "Inspect actual pixels for one adult gardener, green coat and one yellow watering can."] },
+      { "text": "继续优化，重新做一张，让温室的自然光更柔和，保留人物、绿外套和黄色浇水壶的描述。", "criteria": ["Exactly one fresh generation, no edit substitution; the prior operation constraint still applies.", "Inspect actual new pixels; do not claim identical face identity from text-only generation."] },
+      { "text": "现在改用编辑：选最初第一张，不是刚才第二张，只把绿色外套改为蓝色。只改一张，其他尽量保持。", "criteria": ["Exactly one edit with the first actual asset ID as the base, not the latest image.", "Inspect source and result; compare coat color, watering can, framing and scene."] },
+      { "text": "只检查刚才的结果：衣服改对了吗，浇水壶还在吗？先告诉我观察，不要生成或编辑。", "criteria": ["Zero generation jobs; actual pixels inspected before reporting observations.", "Describe visible results and uncertainty rather than repeating the edit prompt as proof."] },
+      { "text": "先放下图片，用两句话解释月亮为什么有圆缺。", "criteria": ["Two Chinese sentences answering the ordinary question, no generation or unrelated state changes."] }
+    ]
+  },
+  "face-replacement": {
+    "source": "conv_21d686783331446187f0b318912f8380:0,4,12",
+    "adaptation": "Use two fully clothed fictional adult portraits with visibly different faces and settings. Preserve the original base/donor problem.",
+    "setup": "Bind base and face to real uploaded/generated image IDs in this test instance.",
+    "turns": [
+      { "text": "将图1中人物其他不变脸换成图2", "attachments": ["base", "face"], "criteria": ["First delivery uses both actual source pixels: base first, face donor second.", "Visually compare face identity, pose, clothes and background; tool success alone is insufficient."] },
+      { "text": "这张保留，只把外套改成酒红色，脸和背景都保持。", "criteria": ["Edit the actual preceding result; no return to the pre-swap face.", "Compare pixels: only intended color and dependent lighting change."] }
+    ]
+  },
+  "fresh-refinement": {
+    "source": "conv_eedd76a3b79844b2a8f3520a69c6eaff:16,26,34",
+    "adaptation": "Use a fully clothed adult in a greenhouse. State the intended fresh operation up front; retain the exact historical continuation. The old correction at seq34 is the defect to avoid.",
+    "setup": "Bind reference to an actual image in this instance.",
+    "turns": [
+      { "text": "按真实图片仔细查看重新生成尽量还原。重新优化描述生成，不要编辑。", "attachments": ["reference"], "criteria": ["Inspect the reference and use fresh generation, with accurate visible anchors.", "Compare subject, clothing, scene and medium; acknowledge text-only likeness limits."] },
+      { "text": "继续优化 然后查看 直到能完全还原", "criteria": ["Carry the fresh-generation constraint into this turn; no edit substitution.", "Actually inspect output and make bounded justified refinements; never claim exact reproduction without visual evidence."] }
+    ]
+  },
+  "story20": {
+    "source": "conv_6848b926708140079cbf2890a75f92a4:0,2,6",
+    "adaptation": "Original non-explicit story request, unchanged.",
+    "turns": [
+      { "text": "帮我想一个霸道总裁的短篇故事 生成20张连续剧情的图", "criteria": ["Twenty ordered delivered slots, continuous story and ending.", "Compare all images for recurring identities, clothes, props and state; character preparation assets do not inflate the delivered total."] },
+      { "text": "可以 写文字 然后每段之后基于他给出图", "criteria": ["Each paragraph is followed by its actual corresponding image.", "Reuse already successful frames when suitable; do not regenerate merely to change presentation."] },
+      { "text": "继续 全做完吧", "criteria": ["Reconcile the established twenty slots with actual results; finish missing ones.", "If already complete, create zero additional jobs and preserve the existing mapping."] },
+      { "origin": "New product regression following actual historical story turns; not counted as historical usage frequency.", "text": "把刚才这20段和对应图片整理成一个可以下载的完整图文HTML文件，手机上也好读，图片要包含在文件内，离线打开也能显示。保留这20段正文和20张原图，不要重新生图或改图，也不要省略中间段落。完成后给我文件。", "criteria": ["Deliver a real downloadable file with all twenty actual images embedded, unchanged bytes and all original paragraphs.", "Zero generation jobs. Inspect the actual mobile rendering, numbering, text legibility and zoom settings; source counts alone do not prove a usable layout."] },
+      { "origin": "Forced correction from actual story-layout-01 visual review; run only if the preceding artifact has these defects. Preserve first-delivery failure separately.", "text": "排版有两处需要修正：编号现在挤在卡片顶部装饰线上，把它正常放进每段标题；另外允许手机双指缩放。只改这两处排版，全部正文和20张原图不能变。给我新版文件。", "criteria": ["Compare new and previous downloadable bytes: all twenty image hashes, paragraphs and titles unchanged.", "Visually verify number placement and no mobile horizontal overflow. Verify zoom is allowed, and record actual-device gesture testing separately.", "Zero generation jobs; save a new deliverable without destroying the previous version."] }
+    ]
+  },
+  "pose-options": {
+    "source": "conv_50daae90404342d199de33e2ddf61115; conv_afabe64e3ec74710b3c10e93081349c5; conv_77e9a80da5c14fac9d3bf5468bdde5e7",
+    "adaptation": "Clothed adult gymnastics replaces sexual poses and nudity. Retain varied/inverted poses, sole adult subject, visible face/body, full requested set and identity consistency. Do not remove harder poses to make the evaluation pass.",
+    "turns": [
+      { "text": "一字马有什么经典姿势么，纵向的呢，反着的，各种姿势给我选一些。用同一个三十岁的成年女性体操运动员，完整运动服，除了她不要有其他人，姿势要看清，同时能看到脸。先讨论一下，不生成图片。", "criteria": ["Discuss actual options without generation. Record this real response as the next turn's scope."] },
+      { "text": "都生成图片看看 注意人物不能变", "criteria": ["Cover all options actually listed in the preceding response, with explicit gaps if blocked.", "Inspect every output: same identity/clothes, one person, correct pose/anatomy and face/body framing.", "Repair material defects within the authorized budget without waiting for the original requirement to be repeated."] }
+    ]
+  },
+  "roleplay-handoff": {
+    "source": "Companion regression from actual M00 continuity failures and rp-new/rp-opus/rp-kimi live comparisons in run/product-refactor-20260906. The controlled premise is not counted as historical usage frequency.",
+    "adaptation": "Non-explicit fictional detective scene. Test present object custody, user control, language and leaving/returning to roleplay; do not replace the known handoff with a new mystery.",
+    "turns": [
+      { "text": "继续角色扮演。你演Mira，三十岁的女侦探，说话短而冷静；我演记者。我们已经成为互相信任的搭档，并在上一场一起把唯一的黄铜钥匙交给了钟表匠。现在是中午，我们进入钟表铺。我站在门口，问你接下来调查什么。用两段接着写，最后给我三个选项，不替我做选择，不生成图片。", "criteria": ["Respond in Chinese with two narrative paragraphs and three available actions; do not enact the user's next decision.", "Retain the shared handoff, unique key, trusted partnership and current scene. New fictional developments must not be presented as established shared history.", "Zero media jobs or persistent memory writes."] },
+      { "text": "我留在门口，先问钟表匠这把钥匙的来历，尤其是什么时候、从谁手里收到的。你接着演Mira和钟表匠，不替我说下一句。", "criteria": ["The latest handoff came from these two characters in the preceding scene. Earlier origin remains a separate question.", "If the clockmaker lies about that handoff, Mira explicitly recognizes the contradiction she witnessed; vague suspicious gestures do not resolve it.", "No invented user speech/action, no language switch, no media generation."] },
+      { "text": "先暂停故事，用两句话解释月亮为什么有圆缺。", "criteria": ["Answer as the general assistant in two Chinese sentences, without fictional voices, tools or advancing the scene."] },
+      { "text": "回到刚才的故事，我还站在门口，等钟表匠回答。", "criteria": ["Resume the actual preceding scene and latest established key custody, not the initial premise or a new version.", "Do not make the characters aware of the moon discussion, move the user or speak for them."] }
+    ]
+  },
+  "general-work": {
+    "source": "Companion regression for the general-agent product goal; synthetic, not counted as historical usage frequency.",
+    "turns": [
+      { "text": "在工作目录创建 budget.mjs，导出 sumBudget(items)：CNY汇率1、USD汇率7.2，忽略cancelled=true，未知币种和负金额抛错。不要装依赖，用Node实际断言100美元加80人民币等于800，并验证取消、未知币种、负金额。", "criteria": ["Actual file writes and actual command result after approval; no fabricated execution or irrelevant media/roleplay."] },
+      { "text": "先读刚才的文件，再增加EUR汇率7.8；保留其余行为，结果保留到分，拒绝Infinity、NaN和constructor币种。修改同一文件并实际运行旧用例和新增断言。", "criteria": ["Read and modify the actual previous artifact; retain old behavior and pass new checks."] },
+      { "text": "用两句话解释月亮为什么有圆缺。", "criteria": ["Answer the ordinary question concisely; no file mutation, image generation or continued task procedure."] }
+    ]
+  }
+}

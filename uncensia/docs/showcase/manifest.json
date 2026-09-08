@@ -1,0 +1,63 @@
+[
+  {
+    "name": "01-midnight-platform",
+    "file": "01-midnight-platform.png",
+    "model": "Lustify V10 Krea Turbo · 本地",
+    "modelId": "comfy:lustify-v10",
+    "op": "text_to_image",
+    "params": {
+      "prompt": "Cinematic film still, medium shot of a fictional adult woman, 30 years old, short dark bob haircut, wearing a mustard yellow raincoat and a charcoal scarf, standing alone on a misty train station platform at blue hour. A teal vintage train behind her, amber platform lights reflecting on wet pavement. She looks over her shoulder toward the camera, a quiet moment before departure. Shot on 35mm film, natural skin texture, subtle film grain, soft side lighting, shallow depth of field, carefully composed wide frame, realistic photography.",
+      "width": "1536",
+      "height": "1024",
+      "seed": 9082026
+    },
+    "sources": [],
+    "assetId": "img_3b6bf98b2cbf4ebd7fe7741e9addbfcd",
+    "width": 1536,
+    "height": 1024,
+    "durationMs": null
+  },
+  {
+    "name": "02-coastal-morning",
+    "file": "02-coastal-morning.png",
+    "model": "Seedream 5.0 Pro Spicy · 编辑 · Siray",
+    "modelId": "siray:seedream-5.0-pro-i2i-spicy",
+    "op": "image_to_image",
+    "params": {
+      "prompt": "Keep exactly the same adult woman, face, short dark bob haircut, mustard yellow raincoat and charcoal scarf. Move her to a windswept coastal overlook at sunrise. Medium shot, she turns toward the sea; a small white lighthouse in the distance, golden light catching her hair, soft sea mist, understated cinematic 35mm film photography. Preserve the character identity and clothing, change only the location, pose and lighting. Wide landscape composition.",
+      "size": "1248x832",
+      "output_format": "png"
+    },
+    "sources": [
+      "img_3b6bf98b2cbf4ebd7fe7741e9addbfcd"
+    ],
+    "assetId": "img_cf7ebf8252ab0104637690d83eba629e",
+    "width": 1248,
+    "height": 832,
+    "durationMs": null
+  },
+  {
+    "name": "03-departure",
+    "file": "03-departure.mp4",
+    "model": "Wan 3.0 Spicy · 首尾帧 · Siray",
+    "modelId": "siray:wan-3.0-i2v-spicy",
+    "op": "image_to_video",
+    "params": {
+      "prompt": "A quiet cinematic shot. The woman in the yellow raincoat remains the same person. A gentle breeze moves her hair and scarf; she slowly turns her gaze toward the train. Fine mist drifts across the station, amber lights shimmer on wet pavement. Very slow camera push in, natural restrained motion, preserve her face and clothing, continuous single shot.",
+      "duration": 4,
+      "size": "720p",
+      "aspect_ratio": "16:9",
+      "audio_enable": false,
+      "prompt_expansion_enable": false,
+      "seed": 9082026
+    },
+    "sources": [
+      "img_3b6bf98b2cbf4ebd7fe7741e9addbfcd"
+    ],
+    "assetId": "vid_47bd7ba2700decfa0fbed8b0c6f43036",
+    "width": 1280,
+    "height": 720,
+    "durationMs": 4000,
+    "verification": "Dimensions and duration measured from the returned MP4 with ffprobe."
+  }
+]

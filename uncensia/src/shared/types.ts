@@ -1,0 +1,830 @@
+/**
+ * Wire contract shared by the Uncensia server and every client (web today,
+ * native iOS). Anything the browser is allowed to see lives here; secrets
+ * never appear in these shapes.
+ */
+
+/**
+ * The wire protocol a model is called with. Aggregators expose several of
+ * these behind one base URL, so it belongs to the model rather than the
+ * provider. Names follow how API gateways label their endpoints.
+ */
+export type ApiMode =
+  | "openai-chat"
+  | "openai-responses"
+  | "anthropic-messages"
+  | "google-generative"
+  | "openai-images"
+  | "comfy-workflow"
+  | "openai-videos"
+  | "venice-videos"
+  | "venice-images"
+  | "siray-media";
+
+/**
+ * What a model is for. `chat` models go through pi-ai; the generation kinds go
+ * through a generation adapter named by `apiMode` (`03-generation.md`).
+ */
+export type ModelKind = "chat" | "image" | "video" | "embedding" | "rerank";
+
+/** What goes in and what comes out. `image_to_image` is what "edit" means. */
+export type GenerationOp = "text_to_image" | "image_to_image" | "text_to_video" | "image_to_video";
+
+export const API_MODES: Array<{ id: ApiMode; label: string; path: string; kinds: ModelKind[] }> = [
+  { id: "openai-chat", label: "对话（Chat Completions）", path: "/chat/completions", kinds: ["chat"] },
+  { id: "openai-responses", label: "对话（Responses）", path: "/responses", kinds: ["chat"] },
+  { id: "anthropic-messages", label: "对话（Anthropic）", path: "/messages", kinds: ["chat"] },
+  { id: "google-generative", label: "对话（Gemini 原生）", path: "/v1beta/models", kinds: ["chat"] },
+  { id: "openai-images", label: "图像", path: "/images/generations", kinds: ["image"] },
+  { id: "comfy-workflow", label: "ComfyUI", path: "/prompt", kinds: ["image", "video"] },
+  { id: "openai-videos", label: "视频", path: "/videos", kinds: ["video"] },
+  { id: "venice-videos", label: "视频（Venice Queue）", path: "/video/queue", kinds: ["video"] },
+  { id: "venice-images", label: "图像（Venice）", path: "/image/generate", kinds: ["image"] },
+  { id: "siray-media", label: "Siray 异步媒体", path: "/images/generations/async · /video/generations", kinds: ["image", "video"] },
+];
+
+/**
+ * Whether a model of this api mode can only run once its provider has a key. A
+ * ComfyUI on this machine is reached over plain HTTP with no credential, so
+ * demanding one would mark a working local model as broken.
+ */
+export const needsApiKey = (apiMode: ApiMode) => apiMode !== "comfy-workflow";
+
+/** Only chat models enter the pi-ai provider graph and the chat model switcher. */
+export const isChatKind = (kind: ModelKind | undefined) => (kind ?? "chat") === "chat";
+
+export const IMAGE_REFERENCE_ROLES = { context: "查看图片", base: "待编辑原图", subject: "人物／主体参考", scene: "场景参考", style: "风格参考", source: "合成素材" } as const;
+export type ImageReferenceRole = keyof typeof IMAGE_REFERENCE_ROLES;
+export interface ImageAttachmentReference { imageId: string; role: ImageReferenceRole }
+
+export const isGenerationKind = (kind: ModelKind | undefined) => kind === "image" || kind === "video";
+
+/**
+ * An operation in the words someone waiting on it would use. For the surfaces
+ * where a person is making something — a queue card, a picture's provenance.
+ * Settings deliberately shows the raw op instead, beside the raw model id and
+ * api mode, because that is the vocabulary its reader is matching against a
+ * schema and the docs.
+ */
+export const OP_LABELS: Record<GenerationOp, string> = {
+  text_to_image: "文生图",
+  image_to_image: "改图",
+  text_to_video: "文生视频",
+  image_to_video: "图生视频",
+};
+
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+
+export type FileSearchMode = "keyword" | "semantic" | "hybrid";
+
+/** `indexed` means chunks exist and keyword search works, without vectors. */
+export type EmbeddingStatus = "none" | "pending" | "indexed" | "ready" | "failed";
+
+export interface ApiError {
+  error: { code: string; message: string; details?: unknown };
+}
+
+/**
+ * How a provider presents its credential. `bearer` is what almost every
+ * OpenAI-compatible endpoint wants; `header` covers the relay stations and
+ * Azure-shaped gateways that read `x-api-key` or `api-key`, and `none` a
+ * self-hosted Ollama, llama.cpp or vLLM that authenticates nobody.
+ */
+export type ProviderAuthStyle = "bearer" | "header" | "none";
+
+export interface ProviderAuthConfig {
+  style: ProviderAuthStyle;
+  /** Header the key is written into when the style is `header`. */
+  header?: string;
+  /** Written in front of the key, e.g. `Bearer `. Empty by default. */
+  prefix?: string;
+}
+
+export interface Provider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  /** True when an API key is stored for this provider. The key itself never leaves the server. */
+  hasKey: boolean;
+  /** Absent resolves to `bearer`, so a row that never declared one is unchanged. */
+  auth?: ProviderAuthConfig | null;
+  enabled: boolean;
+  sortOrder: number;
+}
+
+export interface ProviderInput {
+  id?: string;
+  name: string;
+  baseUrl: string;
+  apiKey?: string;
+  /** Omitted leaves the stored style as it is; null clears it back to `bearer`. */
+  auth?: ProviderAuthConfig | null;
+  enabled?: boolean;
+}
+
+export interface ModelSpec {
+  id: string;
+  name: string;
+  providerId: string;
+  model: string;
+  enabled: boolean;
+  /** Chat by default, so a row written before generation existed still loads. */
+  kind: ModelKind;
+  /** Operations a generation model offers; empty for chat. */
+  ops: GenerationOp[];
+  /** Adapter-specific declaration: sizes, workflow bindings, durations. */
+  params?: Record<string, unknown> | null;
+  /**
+   * Shown in the chat model switcher. Every enabled model stays usable and
+   * listed in settings; pinning is only about which few are one tap away.
+   */
+  pinned: boolean;
+  /**
+   * Generation only: offer this model to the agent as a tool of its own, beside
+   * the default generation tools. Off by default because every tool's schema rides
+   * along in each request, so a catalogue of near-identical drawing tools costs
+   * tokens on every turn and leaves the model choosing between equivalents.
+   */
+  agentTool: boolean;
+  reasoning: boolean;
+  input: Array<"text" | "image">;
+  contextWindow: number;
+  maxTokens: number;
+  thinkingLevel: ThinkingLevel;
+  thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>> | null;
+  apiMode: ApiMode;
+  systemPrompt?: string | null;
+  temperature?: number | null;
+  topP?: number | null;
+  pricing?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } | null;
+  compat?: Record<string, unknown> | null;
+  sortOrder: number;
+  /** Derived: provider has a usable API key. */
+  configured?: boolean;
+}
+
+export type ModelInput = Omit<
+  ModelSpec,
+  "configured" | "sortOrder" | "pinned" | "agentTool" | "kind" | "ops" | "params"
+> & {
+  sortOrder?: number;
+  pinned?: boolean;
+  agentTool?: boolean;
+  kind?: ModelKind;
+  ops?: GenerationOp[];
+  params?: Record<string, unknown> | null;
+};
+
+/**
+ * One entry of a provider's live catalogue, as offered for bulk adding. The
+ * suggestion is a starting point read off the model id, never a verdict: no
+ * regex over aggregator ids is right for every aggregator.
+ */
+export interface ModelReference {
+  contextWindow: number;
+  maxTokens: number;
+  input: Array<"text" | "image">;
+  reasoning: boolean;
+  source: string;
+  sourceUrl: string;
+  updatedAt: number | null;
+  note: string;
+}
+
+export interface ManagedSkill {
+  id: string;
+  name: string;
+  description: string;
+  filePath: string;
+  editable: boolean;
+  enabled: boolean;
+  manualOnly: boolean;
+  content: string;
+  revision: string;
+}
+
+export interface DiscoveredModel {
+  model: string;
+  /** True when a configured model already points at this remote id. */
+  added: boolean;
+  /**
+   * Remote id of a generate model that already carries this one as `editModel`.
+   * The list hides these so Seedream is one tick, not generate plus a `-edit` twin.
+   */
+  coveredBy?: string;
+  suggestion: {
+    id: string;
+    name: string;
+    kind: ModelKind;
+    ops: GenerationOp[];
+    apiMode: ApiMode;
+    reasoning: boolean;
+    input: Array<"text" | "image">;
+    /** From the listing when the provider sends one; otherwise a family guess. */
+    contextWindow: number;
+    maxTokens: number;
+    /** Family / listing defaults for a generation row (sizes, edit mode, …). */
+    params?: Record<string, unknown>;
+    /** Provider listing, verified model profile, or a guess from the ID. */
+    kindSource: "listed" | "catalogue" | "guessed";
+    /** Provider listing, exact-model reference, or an unverified default. */
+    windowSource: "listed" | "catalogue" | "guessed";
+  };
+}
+
+/** What `POST /models/bulk` stored, and which empty default slots it bound. */
+export interface BulkAddResult {
+  added: string[];
+  skipped: string[];
+  filled: {
+    chat?: string;
+    image?: string;
+    edit?: string;
+    video?: string;
+  };
+  defaults: {
+    defaultModelId: string;
+    defaultImageModelId: string;
+    defaultEditModelId: string;
+    defaultVideoModelId: string;
+  };
+}
+
+/**
+ * A memory key is an identifier, not a category. What a fact is *about* is a
+ * judgement the model makes from the fact, so the server only checks that the
+ * name is a name; a fixed vocabulary just meant filing everything under
+ * `general_preferences` once the seven slots stopped fitting.
+ */
+export const isMemoryKey = (key: string) => /^[A-Za-z0-9_-]{1,64}$/.test(key);
+
+export interface MemoryCapability {
+  enabled: boolean;
+  writeEnabled: boolean;
+  /** Offered to the model and the client as reuse candidates, never enforced. */
+  suggestedKeys: string[];
+  tokenLimit: number;
+  charLimit: number;
+}
+
+export interface FilesCapability {
+  enabled: boolean;
+  searchEnabled: boolean;
+  mode: FileSearchMode;
+}
+
+export interface WebCapability {
+  enabled: boolean;
+  /**
+   * Names the adapter in the search registry (`tools/web-search.ts`). A plain
+   * string, not a union: a second backend is one registered object, and pinning
+   * the union here would make adding it a change to the shared contract.
+   */
+  provider: string;
+  /** Instance root for self-hosted backends such as SearXNG. Empty for Tavily. */
+  baseUrl: string;
+  hasTavilyKey: boolean;
+}
+
+export const SEARCH_PROVIDERS = [
+  { id: "tavily", label: "Tavily", requiresKey: true },
+  { id: "searxng", label: "SearXNG（自托管）", requiresKey: false },
+] as const;
+
+export interface CodingCapability {
+  read: boolean;
+  write: boolean;
+  shell: boolean;
+  workspace: string;
+}
+
+export interface EmbeddingCapability {
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  dimensions: number | null;
+  chunkSize: number;
+  chunkOverlap: number;
+  hasKey: boolean;
+}
+
+export interface StudioCapability {
+  enabled: boolean;
+}
+
+export interface Capabilities {
+  memory: MemoryCapability;
+  files: FilesCapability;
+  web: WebCapability;
+  coding: CodingCapability;
+  embedding: EmbeddingCapability;
+  studio: StudioCapability;
+}
+
+/**
+ * One operation a generation model offers in the studio. The form is the
+ * adapter's schema; `modelId` and `op` are what `POST /jobs` wants.
+ */
+export interface StudioTool {
+  serverId: string;
+  serverTitle: string;
+  name: string;
+  description: string;
+  kind: "generate" | "edit" | "video";
+  schema: JsonSchema;
+  modelId: string;
+  op: GenerationOp;
+  /**
+   * Whether this runs on our own GPU. Worth knowing before committing to a wait:
+   * a local render is slow and free, a hosted one is quick and billed.
+   */
+  local?: boolean;
+  /**
+   * Whether the provider key (or local workflow) is in place. The studio still
+   * lists a row that isn't, so it can be configured; it just should not be the
+   * default pick when a keyed hosted backend is sitting next to it.
+   */
+  configured?: boolean;
+}
+
+export interface JsonSchema {
+  type?: string;
+  title?: string;
+  description?: string;
+  enum?: Array<string | number>;
+  default?: unknown;
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  /** A list's cap, stated machine-readably so a model need not read the title. */
+  maxItems?: number;
+  /**
+   * Who the control is for. Absent, or `both`, means the model may set it and the
+   * studio renders it. `studio` keeps it out of the tool the model is offered,
+   * for a knob a model has no grounds to choose: a sampler its author already
+   * tuned, or a seed only a person has a reason to pin. Omitting a parameter is
+   * not the same as losing it — the adapter or the graph still carries a value.
+   */
+  audience?: "both" | "studio";
+  items?: JsonSchema;
+  properties?: Record<string, JsonSchema>;
+  additionalProperties?: boolean;
+  required?: string[];
+  anyOf?: JsonSchema[];
+}
+
+export interface McpServer {
+  id: string;
+  title: string;
+  enabled: boolean;
+  /** Spawned over stdio. Empty for a remote server, which has a `url` instead. */
+  command: string;
+  /** A remote server reached over Streamable HTTP, or HTTP+SSE if it is older. */
+  url?: string;
+  args: string[];
+  env: Record<string, string>;
+  /** Sent on every remote request; the HTTP counterpart of `env`. */
+  headers?: Record<string, string>;
+  sortOrder: number;
+}
+
+export interface McpStatus {
+  id: string;
+  title: string;
+  /** Whether the chat agent gets this server's tools. */
+  enabled: boolean;
+  connected: boolean;
+  tools: string[];
+  error?: string;
+}
+
+export interface PromptSettings {
+  /** Always-on instructions prepended to every request. */
+  globalPrompt: string;
+  /** Domain instructions appended after the global prompt. */
+  toolPrompt: string;
+  /** Model used to name conversations; empty means reuse the conversation model. */
+  titleModelId: string;
+  titleEnabled: boolean;
+}
+
+/** The shipped prompt pair, so an edited prompt can be put back. */
+export interface PromptDefaults {
+  globalPrompt: string;
+  toolPrompt: string;
+}
+
+/** Per-conversation creative context. It is deliberately data, not a second
+ * agent persona, so every normal tool and model capability remains available. */
+export interface RoleplayContext {
+  enabled: boolean;
+  /** Who the assistant portrays: identity, temperament, voice and relationships. */
+  character: string;
+  /** Who the reader is inside this conversation. */
+  persona: string;
+  /** Stable setting and lore shared by the whole conversation. */
+  world: string;
+  /** Mutable location, time, appearance and unresolved scene facts. */
+  scene: string;
+  /** Prose, dialogue, point-of-view and formatting preferences. */
+  style: string;
+  /** Voice demonstrations, never events in the current story. */
+  examples?: string;
+}
+
+export const EMPTY_ROLEPLAY_CONTEXT: RoleplayContext = {
+  enabled: false,
+  character: "",
+  persona: "",
+  world: "",
+  scene: "",
+  style: "",
+  examples: "",
+};
+
+export type VisualReferenceRole = "subject" | "scene" | "style";
+
+/** One user-pinned visual anchor. Roles stay separate so a face reference is
+ * never silently treated as a location or a colour-grade reference. */
+export interface VisualReference {
+  imageId: string;
+  role: VisualReferenceRole;
+  label: string;
+}
+
+/** Per-conversation visual state. The reader owns the stable bible and pinned
+ * references; the server only advances the most recent successful frame. */
+export interface VisualContinuityContext {
+  enabled: boolean;
+  /** Stable appearance, wardrobe, environment and camera facts to preserve. */
+  description: string;
+  /** Explicit anchors, capped at three and never changed automatically. */
+  references: VisualReference[];
+  /** Automatically maintained after a successful image job in this chat. */
+  lastImageId: string | null;
+  lastPrompt: string;
+}
+
+export const EMPTY_VISUAL_CONTINUITY_CONTEXT: VisualContinuityContext = {
+  enabled: false,
+  description: "",
+  references: [],
+  lastImageId: null,
+  lastPrompt: "",
+};
+
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  modelId: string;
+  roleplay: RoleplayContext;
+  visualContinuity: VisualContinuityContext;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+}
+
+export interface StoredMessage {
+  id: string;
+  conversationId: string;
+  seq: number;
+  role: string;
+  content: unknown;
+  createdAt: number;
+}
+
+/** One matching message, with the conversation and place a client can open. */
+export interface ConversationSearchHit {
+  conversationId: string;
+  title: string;
+  seq: number;
+  role: string;
+  snippet: string;
+  createdAt: number;
+}
+
+export interface RunSummary {
+  id: string;
+  conversationId: string;
+  status: RunStatus;
+  modelId: string;
+  error?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type BackgroundTaskStatus = "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
+
+export type TaskMode = "once" | "continuous" | "interval";
+export interface LearningChange {
+  id: string;
+  at: string;
+  conversationId: string;
+  kind: "skill" | "prompt";
+  target: string;
+  before: string | null;
+  after: string;
+  reason: string;
+}
+
+export interface TaskSchedule {
+  mode: TaskMode;
+  intervalMs: number | null;
+  /** Null explicitly means no run-count limit. This is not a token or cost budget. */
+  maxRuns: number | null;
+}
+export interface TaskProgress {
+  runId: string;
+  summary: string;
+  outcome: "continue" | "complete" | "blocked";
+  completed?: number;
+  total?: number;
+}
+export interface TaskState extends TaskSchedule {
+  completedRuns: number;
+  settledRunId: string | null;
+  progress: TaskProgress | null;
+}
+
+/** A durable future agent turn. It uses the same Runtime and tools as chat; only
+ * its start time is detached from the client connection. */
+export interface BackgroundTask {
+  id: string;
+  conversationId: string;
+  prompt: string;
+  modelId: string;
+  runAt: number;
+  status: BackgroundTaskStatus;
+  runId: string | null;
+  error: string | null;
+  state: TaskState;
+  currentRun: RunSummary | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired";
+
+/**
+ * A destructive tool call held until a person decides. The model cannot create,
+ * approve or skip one: it is written by the server's preflight and only the
+ * decide endpoint moves it out of `pending`.
+ */
+export interface Approval {
+  /** The tool call id, so a retried preflight finds the existing decision. */
+  id: string;
+  runId: string;
+  conversationId: string;
+  toolName: string;
+  /** Why it is risky: `delete`, `delete_recursive`, `overwrite`, `move_overwrite`, `shell`. */
+  action: string;
+  /** One sentence naming exactly what will happen, shown on the approval card. */
+  summary: string;
+  /** Action-specific facts the card lists: paths, file counts, byte totals. */
+  detail: Record<string, unknown>;
+  status: ApprovalStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface StoredEvent {
+  seq: number;
+  runId: string;
+  conversationId: string;
+  type: string;
+  data: unknown;
+  createdAt: number;
+}
+
+/**
+ * How the library is filtered. `videos` is its own facet rather than part of
+ * `docs`: a clip has nothing in common with a PDF, and it was reachable only by
+ * recognising an `.mp4` in a list of filenames. `docs` therefore means what is
+ * neither, which is also what makes it the set that gets indexed.
+ */
+export type FileKind = "all" | "docs" | "images" | "videos";
+
+/**
+ * Where a file came from. Open-ended, because a future tool can invent its own;
+ * clients label the ones they know and fall back to the raw value.
+ */
+export const FILE_SOURCE_LABELS: Record<string, string> = {
+  workspace: "工作成果",
+  upload: "上传",
+  generated: "生成",
+  note: "自建",
+  librechat: "迁移",
+};
+
+export interface FileFacets {
+  kinds: Record<FileKind, number>;
+  sources: Array<{ id: string; count: number }>;
+}
+
+export interface FileLibrary {
+  items: FileRecord[];
+  total: number;
+  facets: FileFacets;
+}
+
+export interface FileRecord {
+  id: string;
+  name: string;
+  mime: string;
+  bytes: number;
+  conversationId: string | null;
+  source: string;
+  embeddingStatus: EmbeddingStatus;
+  embeddingError: string | null;
+  chunkCount: number;
+  pageCount: number | null;
+  width: number | null;
+  height: number | null;
+  createdAt: number;
+}
+
+export interface MemoryRecord {
+  sourceConversationId?: string | null;
+  key: string;
+  value: string;
+  tokens: number;
+  updatedAt: number;
+}
+
+export interface ImageAsset {
+  imageId: string;
+  mime: string;
+  width: number | null;
+  height: number | null;
+  provider: string | null;
+  model: string | null;
+  parentImageIds: string[];
+  createdAt: number;
+}
+
+export interface VideoAsset {
+  videoId: string;
+  mime: string;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+  /** A still a client can show before the bytes arrive, and what a follow-up question is about. */
+  posterImageId: string | null;
+  provider: string | null;
+  model: string | null;
+  parentImageIds: string[];
+  createdAt: number;
+}
+
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+/**
+ * One asset a job produced, and one row of the studio's gallery: the same shape
+ * answers both, so a tile that was just rendered and one read back from the
+ * library are the same thing to a client. There used to be a second, image-only
+ * shape for the gallery, and what it cost was that a video had nowhere to live —
+ * the queue could show one while it was fresh, and it vanished on reload.
+ *
+ * `assetId` stays alongside `id` because the tools and the transcript refer to
+ * assets by it.
+ */
+export interface GeneratedAsset {
+  id: string;
+  assetId: string;
+  kind: "image" | "video";
+  mime: string;
+  width: number | null;
+  height: number | null;
+  name: string | null;
+  provider: string | null;
+  model: string | null;
+  /** What this was derived from: read-only provenance for an edit or a frame. */
+  parents: string[];
+  createdAt: number;
+  durationMs: number | null;
+  /** A still to show before the bytes arrive; null for an image. */
+  posterAssetId: string | null;
+}
+
+/**
+ * One generation request. A job's whole state is this row, which is why there is
+ * no job event log: a reconnecting client reads it and knows everything
+ * (`03-generation.md §Jobs`).
+ */
+export interface JobRecord {
+  id: string;
+  kind: "image" | "video";
+  op: GenerationOp;
+  modelId: string;
+  modelName: string;
+  /** Null for studio work, which belongs to nobody's transcript. */
+  conversationId: string | null;
+  status: JobStatus;
+  /** 0..1, or null when the backend reports no progress. */
+  progress: number | null;
+  note: string | null;
+  params: Record<string, unknown>;
+  /** Source asset ids for an edit or an image-to-video. */
+  sources: string[];
+  assets: GeneratedAsset[];
+  error: string | null;
+  createdAt: number;
+  startedAt: number | null;
+  finishedAt: number | null;
+  updatedAt: number;
+}
+
+export interface JobInput {
+  modelId: string;
+  op?: GenerationOp;
+  conversationId?: string | null;
+  params?: Record<string, unknown>;
+  sources?: string[];
+}
+
+/**
+ * Where one asset came from, assembled rather than stored: the asset row knows the
+ * backend and the parents, and the job row knows the prompt and the parameters.
+ * Neither is a new table, and asking the question this way means an image made
+ * before the queue existed still answers with what is on record about it.
+ */
+export interface Provenance {
+  assetId: string;
+  kind: "image" | "video";
+  mime: string;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+  provider: string | null;
+  model: string | null;
+  /** What it was made from: the source images of an edit, or a video's stills. */
+  parents: string[];
+  createdAt: number;
+  /**
+   * The request behind it, when there is one. Absent for an upload and for
+   * anything generated before jobs were recorded, which is why every field above
+   * stands on its own.
+   */
+  job?: {
+    id: string;
+    op: GenerationOp;
+    modelId: string;
+    modelName: string;
+    /**
+     * Whether the same request could be sent again — the model row still exists,
+     * is enabled and still runs this operation. A button that would 404 is worse
+     * than no button, and a deleted model is the ordinary way this goes false.
+     */
+    repeatable: boolean;
+    params: Record<string, unknown>;
+    sources: string[];
+    /** Wall time the render took, when both ends were recorded. */
+    elapsedMs: number | null;
+  };
+}
+
+export interface Bootstrap {
+  version: string;
+  apiModes: typeof API_MODES;
+  models: ModelSpec[];
+  providers: Provider[];
+  defaultModelId: string;
+  defaultImageModelId: string;
+  defaultEditModelId: string;
+  defaultVideoModelId: string;
+  capabilities: Capabilities;
+  mcp: McpStatus[];
+  prompts: PromptSettings;
+  memoryKeys: string[];
+  limits: { maxUploadBytes: number; maxAttachmentsPerMessage: number };
+}
+
+export interface LoginResponse {
+  token: string;
+  expiresAt: number;
+}
+
+export interface SessionRecord {
+  id: string;
+  device: string;
+  createdAt: number;
+  lastSeen: number;
+  expiresAt: number;
+}
+
+export interface SecuritySettings {
+  totpEnabled: boolean;
+  /** Whether this deployment is reached over TLS, as the server sees it. */
+  overTls: boolean;
+  trustProxy: boolean;
+  sessions: SessionRecord[];
+  currentSessionId: string;
+}
+
+export interface Paginated<T> {
+  items: T[];
+  nextCursor: string | null;
+}
