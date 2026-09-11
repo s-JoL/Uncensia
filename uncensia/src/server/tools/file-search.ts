@@ -1,5 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
+import { nextCitationId } from "./citation-id.ts";
 import type { FileSearchMode } from "@shared/types.ts";
 import type { Retrieval, SearchHit } from "../rag/retrieval.ts";
 import {
@@ -25,7 +26,6 @@ import {
 const relevanceAgainst = (best: number) => (hit: SearchHit) => (best > 0 ? hit.retrievalScore / best : 0);
 
 export function fileSearchTool(retrieval: Retrieval, mode: FileSearchMode): AgentTool {
-  let turnCounter = 0;
   return {
     name: "file_search",
     label: "file_search",
@@ -46,7 +46,7 @@ export function fileSearchTool(retrieval: Retrieval, mode: FileSearchMode): Agen
     execute: async (_callId, params) => {
       const { query, file_ids: fileIds } = params as { query: string; file_ids?: unknown };
       const scope = Array.isArray(fileIds) ? fileIds.filter((id): id is string => typeof id === "string" && !!id) : [];
-      const turn = turnCounter++;
+      const turn = nextCitationId();
       const result = await retrieval.searchFiles(query, mode, 10, scope);
       const matches = result.results.filter((hit) => hit.excerpt.trim());
       const relevanceOf = relevanceAgainst(matches[0]?.retrievalScore ?? 0);

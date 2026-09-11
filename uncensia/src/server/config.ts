@@ -116,6 +116,12 @@ export class Config {
         ...stored.coding,
         workspace: stored.coding?.workspace || path.resolve(paths.root, ".."),
       },
+      // Preserve the old write-linked permission on upgrade, then save it
+      // independently so subsequent workspace changes cannot toggle learning.
+      learning: {
+        skills: stored.learning?.skills ?? stored.coding?.write ?? DEFAULT_CAPABILITIES.coding.write,
+        prompts: stored.learning?.prompts ?? stored.coding?.write ?? DEFAULT_CAPABILITIES.coding.write,
+      },
       embedding: {
         ...DEFAULT_CAPABILITIES.embedding,
         ...stored.embedding,
@@ -131,6 +137,7 @@ export class Config {
     const files = { ...current.files, ...input.files };
     const web = { ...current.web, ...input.web };
     const coding = { ...current.coding, ...input.coding };
+    const learning = { ...current.learning, ...input.learning };
     const embedding = { ...current.embedding, ...input.embedding };
     const studio = { ...current.studio, ...input.studio };
     const chunkSize = clamp(embedding.chunkSize, 200, 8000, DEFAULT_CAPABILITIES.embedding.chunkSize);
@@ -151,6 +158,7 @@ export class Config {
       },
       web: {
         enabled: Boolean(web.enabled),
+        downloadDnsUrl: typeof web.downloadDnsUrl === "string" ? web.downloadDnsUrl.trim() : "",
         // Not validated against the adapter registry: the registry lives on the
         // server side of the tool layer, and an id it does not know falls back to
         // the default at call time rather than being refused here.
@@ -164,6 +172,7 @@ export class Config {
         shell: Boolean(coding.shell),
         workspace: String(coding.workspace || path.resolve(paths.root, "..")),
       },
+      learning: { skills: Boolean(learning.skills), prompts: Boolean(learning.prompts) },
       embedding: {
         enabled: Boolean(embedding.enabled),
         baseUrl: String(embedding.baseUrl || DEFAULT_CAPABILITIES.embedding.baseUrl).replace(/\/$/, ""),

@@ -142,7 +142,6 @@ export function Settings({
               </SectionBody></Section>
               <Section title={uiText("个性化与资料")} hint={uiText("写作方式、记忆和文件各自管理。")}><SectionBody>
                 <Button variant="outline" onClick={() => open("skills")}>{uiText("技能与改进记录")}</Button>
-                <Button variant="outline" onClick={() => open("capabilities")}>{uiText("允许助手改进自身")}</Button>
                 <Button variant="outline" onClick={() => open("tasks")}>{uiText("管理长任务与定时任务")}</Button>
                 <Button variant="outline" onClick={() => open("prompts")}>{uiText("助手身份与通用指令")}</Button>
                 <a href="/library/memory" className="rounded-md border px-3 py-2 text-sm hover:bg-accent">{uiText("查看和更正记忆")}</a>

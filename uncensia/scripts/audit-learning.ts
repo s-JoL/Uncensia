@@ -27,8 +27,27 @@ try {
     const value = await tool.execute("fixture", args);
     return JSON.parse((value.content[0] as { text: string }).text);
   };
-  services.config.saveCapabilities({ coding: { ...services.config.capabilities().coding, write: false } });
+  // Legacy installations inherit their old write permission once; saving any
+  // capability materializes the independent values for subsequent updates.
+  services.store.setSetting("capabilities", { coding: { read: true, write: false, shell: false, workspace: dir } });
+  assert.deepEqual(services.config.capabilities().learning, { skills: false, prompts: false });
+  services.config.saveCapabilities({ coding: { ...services.config.capabilities().coding, write: true } });
   assert.ok(!tools().some(t => t.name === "manage_prompt"));
+  assert.ok(!tools().some(t => t.name === "manage_skill"));
+  services.store.setSetting("capabilities", { coding: { read: true, write: true, shell: false, workspace: dir } });
+  assert.deepEqual(services.config.capabilities().learning, { skills: true, prompts: true });
+  services.config.saveCapabilities({ coding: { ...services.config.capabilities().coding, write: false } });
+  assert.ok(tools().some(t => t.name === "manage_skill"), "workspace writes do not control skills");
+  services.config.saveCapabilities({ learning: { skills: true, prompts: false } });
+  assert.ok(tools().some(t => t.name === "manage_skill"));
+  assert.ok(!tools().some(t => t.name === "manage_prompt"));
+  const staleSkill = tools().find(t => t.name === "manage_skill")!;
+  services.config.saveCapabilities({ learning: { skills: false, prompts: true } });
+  assert.ok(!tools().some(t => t.name === "manage_skill"));
+  assert.ok(tools().some(t => t.name === "manage_prompt"));
+  await assert.rejects(() => staleSkill.execute("revoked-skill", { action: "list" }), /disabled/);
+  assert.equal(services.config.capabilities().coding.write, false);
+  services.config.saveCapabilities({ learning: { skills: true, prompts: true } });
   services.config.saveCapabilities({ coding: { ...services.config.capabilities().coding, read: true, write: true, workspace: dir } });
   const original = await call("manage_prompt", { action: "read", target: "toolPrompt" });
   await call("manage_prompt", { action: "update", target: "toolPrompt", content: original.content + "\nFixture procedure.", revision: original.revision, reason: "Fixture observed a missing step" });
@@ -59,12 +78,16 @@ try {
   assert.equal(JSON.parse((unindexed.content[0] as { text: string }).text).indexing, "disabled");
   services.config.saveCapabilities({ files: { ...services.config.capabilities().files, searchEnabled: true } });
   const oldTool = tools().find(t => t.name === "manage_prompt")!;
-  services.config.saveCapabilities({ coding: { ...services.config.capabilities().coding, write: false } });
+  services.config.saveCapabilities({ learning: { skills: true, prompts: false } });
   await assert.rejects(() => oldTool.execute("late", { action: "read", target: "globalPrompt" }), /disabled/);
   services.reload();
   const run = services.store.createRun(conv.id, "fixture");
   await services.runtime.start(run.id, conv.id, { message: "Save the research using save_knowledge.", modelId: "fixture" });
   assert.equal(services.store.getRun(run.id)!.status, "completed");
+  const offered = JSON.parse(services.db.get<{ data: string }>("SELECT data FROM events WHERE run_id=? AND type='context.captured'", run.id)!.data).tools as string[];
+  assert.ok(!offered.includes("manage_prompt"), "Runtime must omit disabled prompt management");
+  assert.ok(offered.includes("manage_skill"), "Runtime retains independently enabled skill management");
+  assert.ok(offered.includes("write"), "Runtime retains independently enabled workspace writing");
   assert.ok(services.db.get("SELECT id FROM files WHERE name = ?", "Runtime research.md"));
   const app = createApp(services);
   assert.equal((await app.request("/v1/learning/history")).status, 401);

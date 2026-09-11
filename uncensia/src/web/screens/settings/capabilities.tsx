@@ -158,6 +158,9 @@ export function CapabilitiesSection({ reload }: { reload: () => Promise<void> })
             </div>
           </Field>
           )}
+          <Field label={uiText("下载 DNS（可选）")} hint={uiText("系统使用代理虚拟地址时，填写 DNS-over-HTTPS JSON 地址；留空使用系统 DNS。") }>
+            <Input defaultValue={capabilities.web.downloadDnsUrl ?? ""} placeholder="https://cloudflare-dns.com/dns-query" onBlur={event => void patch({ web: { downloadDnsUrl: event.target.value } })} />
+          </Field>
         </SectionBody>
       </Section>
 
@@ -329,44 +332,49 @@ export function CapabilitiesSection({ reload }: { reload: () => Promise<void> })
       </Section>
 
       <Section
-        title={uiText("助手改进与代码工具")}
-        hint={uiText("模型可以在这个目录里读文件、改文件、跑命令。只在你清楚风险时打开。覆盖和删除仍要你批准。")}
-        actions={<Badge tone="warning">{uiText("高权限")}</Badge>}
+        title={uiText("工作目录访问")}
+        hint={uiText("控制助手使用本机文件和命令工具。资料库与长期记忆在各自分组中管理。")}
       >
         <SectionBody>
-          <Button
-            variant={capabilities.coding.read && capabilities.coding.write ? "outline" : "primary"}
-            size="sm"
-            onClick={() => void patch({ coding: { read: true, write: true } })}
-          >
-            {capabilities.coding.read && capabilities.coding.write ? uiText("已允许助手改自己") : uiText("允许助手改自己")}
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            {uiText("允许新增和修改技能、按版本修改提示词，并读写工作目录。技能页可以查看改进记录。 提示词和技能下一轮生效；修改程序需验证并重启。执行命令由下方开关单独控制。")}</p>
-          <div className="flex flex-wrap gap-5">
+          <Field label={uiText("工作目录")} hint={uiText("文件工具使用此目录。选择 Uncensia 源码目录并允许修改文件时，助手也能修改程序源码。") }>
+            <Input className="font-mono text-xs" defaultValue={capabilities.coding.workspace}
+              onBlur={(event) => void patch({ coding: { workspace: event.target.value } })} />
+          </Field>
+          <Field label={uiText("查看本机文件")} hint={uiText("读取文件、搜索内容、查找文件和列目录；也可将工作成果保存到资料库。") }>
             <Switch
-              label={uiText("读取")}
+              label={uiText("允许查看文件")}
               checked={capabilities.coding.read}
               onChange={(value) => void patch({ coding: { read: value } })}
             />
+          </Field>
+          <Field label={uiText("修改本机文件")} hint={uiText("新建、编辑、移动、删除和恢复文件；也可把资料库原件复制到工作目录。覆盖和删除仍遵循审批与备份流程。") }>
             <Switch
-              label={uiText("写入")}
+              label={uiText("允许修改文件")}
               checked={capabilities.coding.write}
               onChange={(value) => void patch({ coding: { write: value } })}
             />
+          </Field>
+          <Field label={uiText("运行命令")} hint={uiText("用于运行脚本、测试和命令行程序。命令以服务进程的系统权限执行，不受上面的文件读写开关或工作目录边界隔离。") }>
             <Switch
-              label={uiText("执行命令")}
+              label={uiText("允许运行命令")}
               checked={capabilities.coding.shell}
               onChange={(value) => void patch({ coding: { shell: value } })}
             />
-          </div>
-          <Field label={uiText("工作目录")}>
-            <Input
-              className="font-mono text-xs"
-              defaultValue={capabilities.coding.workspace}
-              onBlur={(event) => void patch({ coding: { workspace: event.target.value } })}
-            />
           </Field>
+        </SectionBody>
+      </Section>
+      <Section title={uiText("技能与长期指令")} hint={uiText("决定助手能否修改以后对话会使用的行为资料。这不会训练或更换模型，也不会自动修改和部署程序。") }>
+        <SectionBody>
+          <Field label={uiText("管理技能")} hint={uiText("允许助手新增、修改和启停技能，保存修改原因与旧版本。已有技能的读取和使用不受此开关影响。") }>
+            <Switch label={uiText("允许修改技能")} checked={capabilities.learning?.skills ?? false}
+              onChange={value => void patch({ learning: { skills: value } })} />
+          </Field>
+          <Field label={uiText("管理长期指令")} hint={uiText("允许助手按明确要求修改全局指令和工具指令，保留版本记录。修改从下一轮对话生效。") }>
+            <Switch label={uiText("允许修改长期指令")} checked={capabilities.learning?.prompts ?? false}
+              onChange={value => void patch({ learning: { prompts: value } })} />
+          </Field>
+          <p className="text-xs text-muted-foreground">{uiText("这些开关控制专用管理工具。若同时允许命令执行，或允许写入存放技能和指令的目录，仍可通过本机工具修改相应文件。")}</p>
+          <a href="/settings/skills" className="text-sm underline">{uiText("查看技能与修改记录")}</a>
         </SectionBody>
       </Section>
     </>

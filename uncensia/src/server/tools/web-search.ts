@@ -1,5 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
+import { nextCitationId } from "./citation-id.ts";
 import {
   COUNTRY_DESCRIPTION,
   INTENT_DESCRIPTION,
@@ -231,7 +232,6 @@ export function webSearchTool(options: {
   provider?: string;
   baseUrl?: string;
 }): AgentTool {
-  let turnCounter = 0;
   const provider = options.provider || DEFAULT_PROVIDER;
   return {
     name: "web_search",
@@ -266,7 +266,7 @@ export function webSearchTool(options: {
         max_results?: number;
         read_pages?: number;
       };
-      const turn = turnCounter++;
+      const turn = nextCitationId();
       const adapter = ADAPTERS.get(provider);
       if (!adapter) throw new Error(`Unknown web search provider: ${provider}`);
       const apiKey = options.getApiKey();
@@ -311,7 +311,7 @@ export function webSearchTool(options: {
             )
           : new Map<string, string>();
 
-      const output = `${formatWebResults(turn, rows, "search", pages)}${formatWebResults(turn, newsRows, "news")}`;
+      const output = `${formatWebResults(turn, rows, "search", pages)}${formatWebResults(turn, newsRows, "news")}${imageData?.images?.length ? `\nImage candidates (URLs, not inspected pixels; acquire_resource before viewing/reusing):\n${JSON.stringify(imageData.images.slice(0, 6))}` : ""}`;
       const references = [
         ...rows.map((row) => ({ type: "search", link: row.url, title: row.title })),
         ...newsRows.map((row) => ({ type: "news", link: row.url, title: row.title })),
