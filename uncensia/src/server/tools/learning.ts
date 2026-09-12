@@ -59,16 +59,19 @@ export function learningTools(config: Config, store: Store, conversationId: stri
       return result({ file_id: file.id, link: `[${file.name}](file://${file.id})`, indexing });
     },
   });
-  if (!caps.coding.write) return tools;
-  const allowed = () => { if (!config.capabilities().coding.write) throw new Error("Self-editing is disabled"); };
-  tools.push({ name: "learning_history", label: "Review changes", description: "Read the latest 50 persistent behavior change attempts, with reasons and old/new content. Use old content to restore through manage_prompt or manage_skill with the current revision. Records are backups before a write, not proof of successful application.", parameters: Type.Object({}), execute: async () => { allowed(); return result(learningHistory()); } });
-  tools.push({
+  const allowed = (kind: "skills" | "prompts") => { if (!config.capabilities().learning?.[kind]) throw new Error(`${kind} management is disabled`); };
+  if (caps.learning?.skills || caps.learning?.prompts) tools.push({ name: "learning_history", label: "Review changes", description: "Read the latest 50 persistent behavior change attempts, with reasons and old/new content. Use old content to restore through manage_prompt or manage_skill with the current revision. Records are backups before a write, not proof of successful application.", parameters: Type.Object({}), execute: async () => {
+    const permissions = config.capabilities().learning;
+    if (!permissions?.skills && !permissions?.prompts) throw new Error("Learning history is disabled");
+    return result(learningHistory().filter(row => row.kind === "skill" ? permissions.skills : permissions.prompts));
+  } });
+  if (caps.learning?.skills) tools.push({
     name: "manage_skill", label: "Manage skills",
     description: "List, create, revise or enable a reusable skill when authorized to improve persistent behavior. List first; update requires the exact current revision. Keep task-specific procedure in skills and preserve unrelated instructions. Record concrete evidence in reason. Saved changes are discovered on the next run. Old content is saved to learning history before a change; a history record is an attempted change, not proof it succeeded.",
     executionMode: "sequential",
     parameters: Type.Object({ action: Type.Union([Type.Literal("list"), Type.Literal("create"), Type.Literal("update")]), id: Type.Optional(Type.String()), content: Type.Optional(Type.String({ maxLength: 256000 })), revision: Type.Optional(Type.String()), enabled: Type.Optional(Type.Boolean()), reason: Type.Optional(Type.String({ maxLength: 4000 })) }),
     execute: async (_id, args) => {
-      allowed();
+      allowed("skills");
       const a = args as { action: string; id?: string; content?: string; revision?: string; enabled?: boolean; reason?: string };
       const list = managedSkills(config.capabilities().coding.workspace);
       if (a.action === "list") return result(list);
@@ -87,13 +90,14 @@ export function learningTools(config: Config, store: Store, conversationId: stri
       updateSkill(skill, a);
       return result({ saved: true, history, effective: "next run" });
     },
-  }, {
+  });
+  if (caps.learning?.prompts) tools.push({
     name: "manage_prompt", label: "Manage persistent instructions",
     description: "Read or update the global/tool prompt under an explicit persistent-behavior request. Prefer a focused skill for task procedure. Read first, preserve the existing persona and unrelated user instructions, then supply revision and evidence in reason. Old prompt is backed up. To restore, read its learning-history record and update using the current revision. Changes apply next run, not to the current system prompt.",
     executionMode: "sequential",
     parameters: Type.Object({ action: Type.Union([Type.Literal("read"), Type.Literal("update")]), target: Type.Union([Type.Literal("globalPrompt"), Type.Literal("toolPrompt")]), content: Type.Optional(Type.String({ maxLength: 200000 })), revision: Type.Optional(Type.String()), reason: Type.Optional(Type.String({ maxLength: 4000 })) }),
     execute: async (_id, args) => {
-      allowed();
+      allowed("prompts");
       const a = args as { action: string; target: "globalPrompt" | "toolPrompt"; content?: string; revision?: string; reason?: string };
       if (!["globalPrompt", "toolPrompt"].includes(a.target)) throw new Error("Invalid prompt target");
       const before = config.prompts()[a.target];

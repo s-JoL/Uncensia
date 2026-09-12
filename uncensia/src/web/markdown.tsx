@@ -3,6 +3,7 @@ import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import ReactMarkdown, { type Components, type Options } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { ResourceQuote } from "./resource-view.tsx";
 import { CITATION_MARKUP_PATTERN, CITATION_PATTERN, IMAGE_PLACEHOLDER_PATTERN, outsideCode, citationKey, type Citation } from "./messages.ts";
 
 const CITE_SCHEME = "uncensia-cite:";
@@ -212,6 +213,7 @@ function useKatex(source: string) {
  * in `urlTransform`, before the default sanitiser sees the value.
  */
 function transformUrl(url: string) {
+  if (/^excerpt:\/\/quote_[0-9a-f]{32}$/.test(url)) return url;
   const image = url.match(/^image:\/\/(img_[0-9a-f]{32})$/i);
   if (image) return `/v1/images/${image[1]!.toLowerCase()}`;
   const video = url.match(/^video:\/\/(vid_[0-9a-f]{32})$/i);
@@ -267,6 +269,7 @@ export const Markdown = memo(function Markdown({
   const components = useMemo<Components>(
     () => ({
       a: ({ href, children }) => {
+        if (href?.startsWith("excerpt://quote_")) return <ResourceQuote id={href.slice("excerpt://".length)} />;
         if (href?.startsWith(CITE_SCHEME)) {
           const anchor = decodeURIComponent(href.slice(CITE_SCHEME.length));
           const citation = citations.get(anchor);
@@ -305,7 +308,7 @@ export const Markdown = memo(function Markdown({
             aria-label={alt ? uiText("打开图片：{0}", [alt]) : uiText("打开图片")}
             onClick={() => onImageClick?.(resolved)}
           ><img
-            className="max-h-150 w-fit max-w-full cursor-zoom-in rounded-lg border"
+            className="max-h-150 h-auto w-auto max-w-full object-contain cursor-zoom-in rounded-lg border"
             src={preview}
             alt={alt ?? ""}
             loading="lazy"
