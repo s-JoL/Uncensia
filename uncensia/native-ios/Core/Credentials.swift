@@ -46,5 +46,10 @@ public actor DraftStore {
     public func save(_ draft: Draft, server: URL, conversationID: String?) {
         defaults.set(try? JSONEncoder().encode(draft), forKey: key(server: server, conversationID: conversationID))
     }
+    public func appendAttachment(_ attachment: JSONValue, server: URL, conversationID: String?) {
+        var draft = load(server: server, conversationID: conversationID)
+        if !draft.attachments.contains(attachment) { draft.attachments.append(attachment) }
+        save(draft, server: server, conversationID: conversationID)
+    }
     public func clear(server: URL, conversationID: String?) { defaults.removeObject(forKey: key(server: server, conversationID: conversationID)) }
 }

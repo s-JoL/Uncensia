@@ -7,7 +7,8 @@ final class ChatManagementTests: XCTestCase {
     guard ProcessInfo.processInfo.environment["UNCENSIA_IOS_FIXTURE"] == "1" else {
       throw XCTSkip("Set UNCENSIA_IOS_FIXTURE=1 while the isolated fixture is running")
     }
-    let server = URL(string: "http://127.0.0.1:18093")!
+    let environment = ProcessInfo.processInfo.environment
+    let server = URL(string: environment["UNCENSIA_SERVER_URL"] ?? "http://127.0.0.1:18093")!
     let anonymous = APIClient(server: server)
     do { _ = try await anonymous.request("GET", "/health") } catch {
       throw XCTSkip("The isolated iOS fixture is not available")
@@ -15,7 +16,7 @@ final class ChatManagementTests: XCTestCase {
     let auth = try await anonymous.request(
       "POST", "/auth/token",
       body: .object([
-        "accessCode": .string("IOS-CI-ACCEPTANCE"), "deviceName": .string("ChatManagementTests"),
+        "accessCode": .string(environment["UNCENSIA_ACCESS_CODE"] ?? "IOS-CI-ACCEPTANCE"), "deviceName": .string("ChatManagementTests"),
       ]))
     let token = try XCTUnwrap(auth["token"].stringValue)
     let api = APIClient(server: server, token: { token })
@@ -26,6 +27,7 @@ final class ChatManagementTests: XCTestCase {
     XCTAssertFalse(modelID.isEmpty)
     var cleanup: [String] = []
     var caught: Error?
+    var operation = "create conversation"
     do {
       let marker = "native-management-\(UUID().uuidString)"
       let created = try await api.request(
@@ -44,21 +46,25 @@ final class ChatManagementTests: XCTestCase {
           "enabled": .bool(true), "description": .string("视觉圣经"), "references": .array([]),
           "lastImageId": .null, "lastPrompt": .string(""),
         ]))
+      operation = "save roleplay and visual context"
       _ = try await api.request(
         "PATCH", "/conversations/\(id)",
         body: .object(["roleplay": role.json, "visualContinuity": visual.json]))
       let detail = try await api.request("GET", "/conversations/\(id)")
       XCTAssertEqual(detail["roleplay"], role.json)
       XCTAssertEqual(detail["visualContinuity"], visual.json)
+      operation = "create future task"
       let task = try await api.request(
         "POST", "/conversations/\(id)/background-tasks",
         body: .object([
           "prompt": .string("fixture future task"), "modelId": .string(modelID),
-          "runAt": .number(Date().addingTimeInterval(120).timeIntervalSince1970 * 1000),
+          "runAt": .integer(Int(Date().addingTimeInterval(120).timeIntervalSince1970 * 1000)),
         ]))
       let taskID = try XCTUnwrap(task["id"].stringValue)
+      operation = "cancel future task"
       let cancelled = try await api.request("DELETE", "/background-tasks/\(taskID)")
       XCTAssertEqual(cancelled["status"].stringValue, "cancelled")
+      operation = "create and settle run"
       let run = try await api.request(
         "POST", "/conversations/\(id)/runs",
         body: .object(["text": .string(marker), "attachments": .array([])]),
@@ -73,6 +79,7 @@ final class ChatManagementTests: XCTestCase {
         "GET", "/conversations/search?q=\(urlPart(marker))&limit=20")
       XCTAssertTrue(
         (search["items"].arrayValue ?? []).contains { $0["conversationId"].stringValue == id })
+      operation = "fork conversation tree"
       let tree = try await api.request("GET", "/conversations/\(id)/tree")
       let entryID = try XCTUnwrap((tree["entries"].arrayValue ?? []).first?["id"].stringValue)
       let fork = try await api.request(
@@ -81,7 +88,7 @@ final class ChatManagementTests: XCTestCase {
       cleanup.append(forkID)
       let forkDetail = try await api.request("GET", "/conversations/\(forkID)")
       XCTAssertEqual(forkDetail["id"].stringValue, forkID)
-    } catch { caught = error }
+    } catch { caught = NSError(domain: "ChatManagementContract", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(operation): \(error)", NSUnderlyingErrorKey: error]) }
     for id in cleanup.reversed() { _ = try? await api.request("DELETE", "/conversations/\(id)") }
     if let caught { throw caught }
   }

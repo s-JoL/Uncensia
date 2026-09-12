@@ -39,7 +39,7 @@ try {
   if (savedWindow) Object.defineProperty(globalThis, 'window', savedWindow); else Reflect.deleteProperty(globalThis, 'window');
   if (savedStorage) Object.defineProperty(globalThis, 'localStorage', savedStorage); else Reflect.deleteProperty(globalThis, 'localStorage');
 }
-const readStrings = (lang: string) => new Map(fs.readFileSync(`native-ios/Resources/${lang}.lproj/Localizable.strings`, 'utf8').trim().split('\n').map(line => {
+const readStrings = (lang: string) => new Map(fs.readFileSync(`native-ios/Resources/${lang}.lproj/Localizable.strings`, 'utf8').trim().split('\n').filter(line => line.trim()).map(line => {
   const match = line.match(/^("(?:\\.|[^"\\])*") = ("(?:\\.|[^"\\])*");$/); assert.ok(match, line);
   return [JSON.parse(match[1]!), JSON.parse(match[2]!)] as [string, string];
 }));

@@ -486,7 +486,7 @@ struct BackgroundTasksSheet: View {
     defer { busy = false }
     var payload: [String: JSONValue] = [
       "prompt": .string(prompt.trimmingCharacters(in: .whitespacesAndNewlines)),
-      "runAt": .number((scheduled ? runAt : Date()).timeIntervalSince1970 * 1000),
+      "runAt": .integer(Int((scheduled ? runAt : Date()).timeIntervalSince1970 * 1000)),
     ]
     if !model.isEmpty { payload["modelId"] = .string(model) }
     do {

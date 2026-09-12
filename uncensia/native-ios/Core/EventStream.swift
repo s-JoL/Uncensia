@@ -10,6 +10,7 @@ public struct ServerEvent: Sendable, Equatable {
 /// emits on a blank line, which is required when a radio transition splits a frame.
 public struct SSEParser: Sendable {
     private var bytes = Data()
+    private var scannedCount = 0
     public init() {}
     public mutating func append(_ data: Data) throws -> [ServerEvent] {
         bytes.append(data)
@@ -17,6 +18,7 @@ public struct SSEParser: Sendable {
         while let boundary = nextBoundary() {
             let frame = bytes[..<boundary.lowerBound]
             bytes.removeSubrange(..<boundary.upperBound)
+            scannedCount = 0
             guard let text = String(data: frame, encoding: .utf8) else { throw URLError(.cannotDecodeContentData) }
             var kind = "message"
             var dataLines: [String] = []
@@ -31,9 +33,14 @@ public struct SSEParser: Sendable {
         return events
     }
 
-    private func nextBoundary() -> Range<Data.Index>? {
-        let lf = bytes.range(of: Data([0x0A, 0x0A]))
-        let crlf = bytes.range(of: Data([0x0D, 0x0A, 0x0D, 0x0A]))
+    private mutating func nextBoundary() -> Range<Data.Index>? {
+        // Only revisit the three bytes that could begin a split delimiter.
+        // Large tool-result frames must not rescan their full JSON per chunk.
+        let start = bytes.index(bytes.startIndex, offsetBy: max(0, scannedCount - 3))
+        let range = start..<bytes.endIndex
+        let lf = bytes.range(of: Data([0x0A, 0x0A]), in: range)
+        let crlf = bytes.range(of: Data([0x0D, 0x0A, 0x0D, 0x0A]), in: range)
+        scannedCount = bytes.count
         switch (lf, crlf) {
         case let (a?, b?): return a.lowerBound < b.lowerBound ? a : b
         case let (a?, nil): return a
@@ -46,6 +53,26 @@ public struct SSEParser: Sendable {
 public actor RunFollower {
     private let api: APIClient
     public init(api: APIClient) { self.api = api }
+
+    /// Buffer on the stream actor, before entering the UI actor. The first
+    /// delta and control events arrive immediately; token bursts share a turn.
+    public func followBatches(runID: String, after: Int) -> AsyncThrowingStream<[ServerEvent], Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                let batcher = RunEventBatcher(continuation: continuation)
+                do {
+                    for try await event in self.follow(runID: runID, after: after) {
+                        try Task.checkCancellation()
+                        await batcher.append(event)
+                    }
+                    await batcher.finish()
+                } catch {
+                    await batcher.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
 
     public func follow(runID: String, after initial: Int) -> AsyncThrowingStream<ServerEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -116,5 +143,53 @@ public actor RunFollower {
     private static func event(_ value: JSONValue) -> ServerEvent? {
         guard let type = value["type"].stringValue else { return nil }
         return ServerEvent(type: type, data: value["data"], sequence: value["seq"].intValue ?? 0)
+    }
+}
+
+actor RunEventBatcher {
+    private let continuation: AsyncThrowingStream<[ServerEvent], Error>.Continuation
+    private var pending: [ServerEvent] = []
+    private var flushTask: Task<Void, Never>?
+    private var lastDelivery: ContinuousClock.Instant?
+    private var hasDeliveredDelta = false
+    private var hasFinished = false
+    private let interval: Duration = .milliseconds(50)
+
+    init(continuation: AsyncThrowingStream<[ServerEvent], Error>.Continuation) {
+        self.continuation = continuation
+    }
+
+    func append(_ event: ServerEvent) {
+        guard !hasFinished else { return }
+        pending.append(event)
+        let delta = event.data["assistantMessageEvent"]["type"].stringValue ?? ""
+        let coalescible = event.type == "message.delta" && ["text_delta", "thinking_delta"].contains(delta)
+        let elapsed = lastDelivery.map { $0.duration(to: .now) } ?? interval
+        let firstDelta = coalescible && !hasDeliveredDelta
+        if coalescible { hasDeliveredDelta = true }
+        if event.type == "message.end" { hasDeliveredDelta = false }
+        if !coalescible || firstDelta || elapsed >= interval || pending.count >= 64 {
+            flush()
+        } else if flushTask == nil {
+            flushTask = Task {
+                do { try await Task.sleep(for: interval - elapsed) } catch { return }
+                flush()
+            }
+        }
+    }
+
+    func finish(throwing error: Error? = nil) {
+        guard !hasFinished else { return }
+        hasFinished = true
+        flush()
+        continuation.finish(throwing: error)
+    }
+
+    private func flush() {
+        flushTask?.cancel(); flushTask = nil
+        guard !pending.isEmpty else { return }
+        continuation.yield(pending)
+        pending.removeAll(keepingCapacity: true)
+        lastDelivery = .now
     }
 }

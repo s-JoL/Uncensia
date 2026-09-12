@@ -17,11 +17,12 @@ public struct ChatMessage: Identifiable, Sendable, Equatable {
     public let role: String
     public let content: JSONValue
     public let raw: JSONValue
+    public let text: String
     public init?(_ json: JSONValue) {
         guard let id = json["id"].stringValue else { return nil }
         self.id = id; seq = json["seq"].intValue ?? 0; role = json["role"].stringValue ?? "assistant"; content = json["content"]; raw = json
+        text = Self.text(from: json["content"])
     }
-    public var text: String { Self.text(from: content) }
     private static func text(from value: JSONValue) -> String {
         if let text = value.stringValue { return text }
         if let nested = value["content"].stringValue { return nested }
