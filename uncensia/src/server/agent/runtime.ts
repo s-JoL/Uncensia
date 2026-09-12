@@ -12,6 +12,8 @@ import type { McpPool } from "../mcp/pool.ts";
 import { ApprovalRegistry, describeRisk, rejectionMessage } from "./approvals.ts";
 import { describeModelError } from "./errors.ts";
 import { applyModelParameters } from "../models/params.ts";
+import { requestEvidence } from "./evidence.ts";
+import { conversationProject, projectFileIds, linkConversationFile } from "../projects.ts";
 import type { ModelRegistry } from "../models/registry.ts";
 import {
   buildModelContext,
@@ -26,6 +28,8 @@ import type { Store } from "../store/store.ts";
 import { codingTools } from "../tools/coding.ts";
 import { workspaceFileTools } from "../tools/workspace-files.ts";
 import { resourceTools } from "../tools/resources.ts";
+import { preserveToolOutput } from "../library.ts";
+import { listFeedback } from "../resources.ts";
 import { fileSearchTool } from "../tools/file-search.ts";
 import { generationTools, uploadedImageContext } from "../tools/generation.ts";
 import { generationStatusTool } from "../tools/generation-status.ts";
@@ -246,6 +250,7 @@ export class Runtime {
     for (const fileId of input.attachments ?? []) {
       const file = this.store.getFile(fileId);
       if (!file) continue;
+      linkConversationFile(this.store,conversationId,fileId);
       if (file.mime.startsWith("image/")) {
         const encoded = await encodeForModel(file.id, file.diskPath, file.mime);
         if (!encoded) continue;
@@ -290,9 +295,10 @@ export class Runtime {
     // which genuinely does have to be reached by searching.
     const inlined = new Set(attachedText.map((document) => document.id));
     const attachedIds = new Set(attachmentDocuments.map((file) => file.id));
+    let currentProject = conversationProject(this.store,conversationId);
     const searchableFiles = [
       ...attachmentDocuments.filter((file) => !inlined.has(file.id)).map((file) => ({ ...file, currentRequest: true })),
-      ...this.store.searchableFiles().filter((file) => !attachedIds.has(file.id)).map((file) => ({
+      ...this.store.searchableFiles(currentProject?.id ?? null).filter((file) => !attachedIds.has(file.id)).map((file) => ({
         ...file,
         currentRequest: false,
       })),
@@ -304,6 +310,8 @@ export class Runtime {
     const skillContext = { roleplay: conversation.roleplay, visualContinuity };
 
     const contextInput = {
+      project: currentProject,
+      feedback: listFeedback(this.store, conversationId, 10),
       staticPrompt,
       memories: this.store.listMemories(),
       searchableFiles,
@@ -324,11 +332,11 @@ export class Runtime {
 
     // Server order is stable, so tool order is too, which is what keeps the
     // provider's prompt cache warm across turns.
-    const mcpTools = this.mcp.currentTools();
+    const mcpTools = this.mcp.currentTools(conversationId);
 
     const tools: AgentTool[] = [];
     if (capabilities.files.enabled && capabilities.files.searchEnabled) {
-      tools.push(fileSearchTool(this.retrieval, capabilities.files.mode));
+      tools.push(fileSearchTool(this.retrieval, capabilities.files.mode, () => [...new Set([...projectFileIds(this.store,conversationProject(this.store,conversationId)?.id ?? null), ...attachedIds])]));
     }
     if (capabilities.web.enabled) {
       tools.push(
@@ -364,6 +372,7 @@ export class Runtime {
     tools.push(...taskTools(this.store, conversationId, spec.id, runId, input.taskId, target => { this.stop(conversationId, target); }));
 
     let modelCallIndex = 0;
+    let requestIndex = 0;
     let toolBatchSize = 0;
     let toolCallIndex = 0;
     const toolIndexes = new Map<string, number>();
@@ -433,7 +442,7 @@ export class Runtime {
           for (const ref of refs) freshImageIds.add(ref.image_id);
           const video = row.role === "toolResult" ? toolVideos.get(String(row.toolCallId)) : undefined;
           const documents = row.role === "user" ? uploadFileRefs.splice(0) : [];
-          const persisted = withAppendedRefs(persistMessage(message, refs), [...documents, ...(video ? [video] : [])]) as AgentMessage;
+          const persisted = withAppendedRefs(persistMessage(message, refs, text => preserveToolOutput(this.store, conversationId, text)), [...documents, ...(video ? [video] : [])]) as AgentMessage;
           // Host provenance survives SDK cloning and compaction. A fixed
           // history-length offset cannot distinguish old/current messages once
           // compaction replaces the prefix or splits a turn.
@@ -463,12 +472,15 @@ export class Runtime {
         // compaction to Pi. Refresh application data before each model call.
         transformContext: async (messages) => {
           const current = this.config.capabilities();
+          currentProject = conversationProject(this.store,conversationId);
           const runtimeContext = buildModelContext({ ...contextInput,
+            project: currentProject,
+            feedback: listFeedback(this.store, conversationId, 10),
             memories: this.store.listMemories(),
             memoryEnabled: current.memory.enabled,
             memoryTokenLimit: current.memory.tokenLimit,
             filesEnabled: current.files.enabled && current.files.searchEnabled,
-            searchableFiles: [...searchableFiles.filter(file => file.currentRequest), ...this.store.searchableFiles().filter(file => !attachedIds.has(file.id)).map(file => ({ ...file, currentRequest: false }))],
+            searchableFiles: [...searchableFiles.filter(file => file.currentRequest), ...this.store.searchableFiles(currentProject?.id ?? null).filter(file => !attachedIds.has(file.id)).map(file => ({ ...file, currentRequest: false }))],
           }).runtimeContext;
           return withRuntimeContext(await hydrateCurrentImages(
             boundToolResults(messages.flatMap(message => {
@@ -483,7 +495,15 @@ export class Runtime {
         transformCompaction: (messages) => omitSkillProceduresForCompaction(
           transformExpandedSkillMessages(messages, messages.length, skills, skillContext, true), messages.length,
         ),
-        onPayload: (payload) => applyModelParameters(payload, spec),
+        onPayload: (payload) => {
+          const prepared = applyModelParameters(payload, spec);
+          this.emit(runId, conversationId, "provider.request", {
+            requestIndex: ++requestIndex, modelId: spec.id, modelInput: spec.input,
+            project: currentProject ? {id:currentProject.id,revision:currentProject.revision} : null,
+            ...requestEvidence(prepared),
+          });
+          return prepared;
+        },
         beforeToolCall: async ({ toolCall, args }, signal) => {
           if (toolCall.name === "report_task_progress" && toolBatchSize !== 1) {
             return { block: true, reason: "Report task progress in a separate tool batch after the work tools have finished. This call ends the task turn." };

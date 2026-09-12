@@ -150,8 +150,8 @@ export function transportSafe(value: unknown, replacement?: ImageRef): unknown {
  * The two limits below start equal and are deliberately separate constants,
  * because they answer different questions. Bounding what the model re-reads is
  * recoverable — the next turn projects the same stored result again — while the
- * persisted bound throws bytes away for good, so it is the one that must not be
- * tightened casually.
+ * persisted bound must first save the original through the runtime's file
+ * writer, so a bounded transcript never becomes the only copy.
  */
 const PERSISTED_TOOL_RESULT: TruncationOptions = { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES };
 const PROJECTED_TOOL_RESULT: TruncationOptions = { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES };
@@ -164,13 +164,15 @@ const truncate = (text: string, limits: TruncationOptions) => {
   return `${bounded.content}\n…[truncated at ${reason}, ${formatSize(omitted)} omitted]`;
 };
 
-export function compactToolText(value: unknown, limits: TruncationOptions): unknown {
-  if (Array.isArray(value)) return value.map((item) => compactToolText(item, limits));
+export function compactToolText(value: unknown, limits: TruncationOptions, preserve?: (text: string) => string): unknown {
+  if (Array.isArray(value)) return value.map((item) => compactToolText(item, limits, preserve));
   if (!value || typeof value !== "object") {
-    return typeof value === "string" ? truncate(value, limits) : value;
+    if (typeof value !== "string") return value;
+    const preview = truncate(value, limits);
+    return preserve && preview !== value ? `${preserve(value)}\n${preview}` : preview;
   }
   return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, compactToolText(item, limits)]),
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, compactToolText(item, limits, preserve)]),
   );
 }
 
@@ -203,7 +205,7 @@ export function boundToolResults(messages: AgentMessage[]): AgentMessage[] {
 }
 
 /** Converts an in-flight message into its durable form: no base64, ever. */
-export function persistMessage(message: unknown, imageRefs: ImageRef[] = []) {
+export function persistMessage(message: unknown, imageRefs: ImageRef[] = [], preserve?: (text: string) => string) {
   let imageIndex = 0;
   const visit = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(visit);
@@ -226,7 +228,7 @@ export function persistMessage(message: unknown, imageRefs: ImageRef[] = []) {
   };
   const persisted = visit(message);
   return (message as { role?: string } | null)?.role === "toolResult"
-    ? compactToolText(persisted, PERSISTED_TOOL_RESULT)
+    ? compactToolText(persisted, PERSISTED_TOOL_RESULT, preserve)
     : persisted;
 }
 

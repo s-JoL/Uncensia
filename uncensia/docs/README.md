@@ -20,6 +20,11 @@ Web 1.0 的使用者说明在仓库根 [README](../../README.zh-CN.md)；本目�
 | Pi 的哪些功能已接入，哪些没有？ | [SDK 宿主边界](07-harness.md) |
 | 怎样从真实使用轨迹验收效果？ | [多轮验收](08-acceptance-patterns.md) |
 
+## 下一轮改进设计
+
+- [后端与 WebUI 对比研究](17-comparative-design.md)：基于当前代码和使用记录，对比 Hermes、ChatGPT、Claude、SillyTavern、Pi；记录待实现方案、优先级和验收用例。
+- [Agent 工作能力升级](18-agent-delivery.md)：分批目标、测试门槛、本次实现与真实验收记录。
+
 ## 当前原生开发
 
 - [SwiftUI 原生重建](15-ios-native.md)：当前 iOS 技术路线、功能覆盖范围、并行分工与验收状态。

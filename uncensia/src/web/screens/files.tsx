@@ -49,7 +49,7 @@ const EMPTY_FACETS: FileFacets = { kinds: { all: 0, docs: 0, images: 0, videos: 
 const sourceLabel = (id: string) => uiText(FILE_SOURCE_LABELS[id] ?? id);
 
 /** Text documents are the only ones that can be opened in the built-in editor. */
-const isEditable = (file: FileRecord) => file.source !== "excerpt" && (file.mime.startsWith("text/") || file.mime === "application/json");
+const isEditable = (file: FileRecord) => !["excerpt", "tool-output", "deliverable"].includes(file.source) && (file.mime.startsWith("text/") || file.mime === "application/json");
 
 function Chip({ on, count, children, onClick }: { on: boolean; count?: number; children: React.ReactNode; onClick: () => void }) {
   return (

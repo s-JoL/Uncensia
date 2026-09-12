@@ -39,12 +39,14 @@ const Studio = lazy(() => import("./screens/studio.tsx").then((m) => ({ default:
 const Library = lazy(() => import("./screens/library.tsx").then((m) => ({ default: m.Library })));
 const Settings = lazy(() => import("./screens/settings/index.tsx").then((m) => ({ default: m.Settings })));
 const Tasks = lazy(() => import("./screens/tasks.tsx").then((m) => ({ default: m.Tasks })));
+const Projects = lazy(() => import("./screens/projects.tsx").then((m) => ({ default: m.Projects })));
 
-export type Screen = "chat" | "studio" | "settings" | "files" | "memory" | "tasks";
+export type Screen = "chat" | "studio" | "settings" | "files" | "memory" | "tasks" | "projects";
 
 interface Route {
   screen: Screen;
   conversationId: string;
+  projectId?: string;
   /** Message the transcript should open on, when arriving from a search hit. */
   focusSeq?: number;
 }
@@ -55,12 +57,14 @@ const SCREEN_PATHS: Record<Exclude<Screen, "chat">, string> = {
   memory: "/library/memory",
   settings: "/settings",
   tasks: "/tasks",
+  projects: "/projects",
 };
 
 const NAV: Array<{ id: Screen; label: string; icon: LucideIcon }> = [
   { id: "chat", label: uiText("对话"), icon: MessagesSquare },
   { id: "studio", label: uiText("创作台"), icon: Images },
   { id: "files", label: uiText("资料库"), icon: FolderClosed },
+  { id: "projects", label: uiText("项目"), icon: FolderClosed },
   { id: "tasks", label: uiText("任务"), icon: ListTodo },
   { id: "settings", label: uiText("设置"), icon: Settings2 },
 ];
@@ -71,6 +75,7 @@ const NAV: Array<{ id: Screen; label: string; icon: LucideIcon }> = [
  */
 function readRoute(): Route {
   const pathname = window.location.pathname;
+  if (pathname.startsWith("/projects/")) return {screen:"projects",conversationId:"",projectId:pathname.slice(10)};
   if (pathname === "/library/memory") return { screen: "memory", conversationId: "" };
   if (pathname.startsWith("/c/")) return { screen: "chat", conversationId: pathname.slice(3) };
   // Prefix match so a deeper link such as /settings/models still lands on the
@@ -82,6 +87,7 @@ function readRoute(): Route {
 }
 
 function routePath(route: Route) {
+  if (route.screen === "projects" && route.projectId) return `/projects/${route.projectId}`;
   if (route.screen !== "chat") return SCREEN_PATHS[route.screen];
   return route.conversationId ? `/c/${route.conversationId}` : "/";
 }
@@ -598,6 +604,7 @@ function Workspace({ bootstrap, reload }: { bootstrap: Bootstrap; reload: () => 
           <Suspense fallback={<Empty>{uiText("正在加载…")}</Empty>}>
             {screen === "studio" ? <Studio onOpenRail={() => setRailOpen(true)} /> : null}
             {screen === "tasks" ? <Tasks onOpenRail={() => setRailOpen(true)} /> : null}
+            {screen === "projects" ? <Projects key={route.projectId ?? "list"} projectId={route.projectId} modelId={bootstrap.defaultModelId} onOpenRail={() => setRailOpen(true)} onSelect={projectId=>navigate({screen:"projects",conversationId:"",projectId})} onConversation={id=>{navigate({screen:"chat",conversationId:id}); void refreshConversations();}} /> : null}
             {screen === "settings" ? (
               <Settings bootstrap={bootstrap} reload={reload} onOpenRail={() => setRailOpen(true)} />
             ) : null}

@@ -10,6 +10,7 @@ import { readJson } from "../body.ts";
 import { fail, failFromError } from "../errors.ts";
 import { roleplayInputError } from "@shared/roleplay.ts";
 import { taskSchedule, taskStartTime } from "@shared/tasks.ts";
+import { getProject } from "../../projects.ts";
 import type { TaskSchedule } from "@shared/types.ts";
 
 const HEARTBEAT_MS = 15_000;
@@ -46,13 +47,14 @@ export function conversationRoutes(services: Services) {
   });
 
   app.post("/conversations", async (context) => {
-    const body = await readJson<{ modelId: string; title: string }>(context);
+    const body = await readJson<{ modelId: string; title: string; projectId: string | null }>(context);
+    if (body.projectId !== undefined && body.projectId !== null && (typeof body.projectId !== "string" || !getProject(store,body.projectId))) return fail(context,400,"invalid_project","Choose an existing project");
     const wanted = typeof body.modelId === "string" ? body.modelId : "";
     const spec = wanted ? store.getModel(wanted) : undefined;
     if (wanted && (!spec?.enabled || !spec.configured || spec.kind !== "chat")) return fail(context, 422, "invalid_model", "The requested chat model is unavailable");
     const modelId = wanted || config.defaultModelId();
     if (!modelId) return fail(context, 422, "no_model", "Configure a model before starting a conversation");
-    return context.json(store.createConversation(modelId, body.title || "New conversation"), 201);
+    return context.json(store.createConversation(modelId, body.title || "New conversation", body.projectId), 201);
   });
 
   /**
@@ -85,10 +87,15 @@ export function conversationRoutes(services: Services) {
     if (!store.getConversation(id)) return fail(context, 404, "not_found", "Conversation not found");
     const body = await readJson<{
       title: string;
+      projectId: string | null;
       modelId: string;
       roleplay: RoleplayContext;
       visualContinuity: VisualContinuityContext;
     }>(context);
+    if (body.projectId !== undefined) {
+      if (body.projectId !== store.getConversation(id)?.projectId && (runtime.isActive(id) || store.activeRun(id))) return fail(context,409,"run_active","Stop the active run before moving this conversation");
+      if (body.projectId !== null && (typeof body.projectId !== "string" || !getProject(store,body.projectId))) return fail(context,400,"invalid_project","Choose an existing project");
+    }
     if (body.roleplay !== undefined) {
       const error = roleplayInputError(body.roleplay);
       if (error) return fail(context, 400, "invalid_roleplay", error);
@@ -108,6 +115,7 @@ export function conversationRoutes(services: Services) {
       store.setConversationModel(id, body.modelId);
     }
     if (typeof body.title === "string" && body.title.trim()) store.setConversationTitle(id, body.title.trim());
+    if (body.projectId !== undefined && body.projectId !== store.getConversation(id)?.projectId) store.setConversationProject(id,body.projectId);
     if (body.roleplay !== undefined) store.setConversationRoleplay(id, body.roleplay);
     if (body.visualContinuity !== undefined) {
       store.setConversationVisualContinuity(id, body.visualContinuity);
@@ -312,7 +320,7 @@ export function conversationRoutes(services: Services) {
     const body = await readJson<{ entryId?: string }>(context);
     const session = await services.sessions.session(id);
     if (body.entryId && !session.getEntry(body.entryId)) return fail(context, 400, "invalid_entry", "Unknown session entry");
-    const target = store.createConversation(source.modelId, `${source.title} · 分支`);
+    const target = store.createConversation(source.modelId, `${source.title} · 分支`, source.projectId);
     try {
       await services.sessions.fork(id, target.id, body.entryId);
       store.setConversationRoleplay(target.id, source.roleplay);
