@@ -8,7 +8,7 @@ import XCTest
         app.launchEnvironment["UNCENSIA_ACCESS_CODE"] = ProcessInfo.processInfo.environment["UNCENSIA_ACCESS_CODE"] ?? "IOS-CI-ACCEPTANCE"
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Chat"].waitForExistence(timeout: 10))
-        for title in ["Studio", "Library", "Settings"] { XCTAssertTrue(app.tabBars.buttons[title].exists) }
+        for title in ["Studio", "Projects", "Library", "Settings"] { XCTAssertTrue(app.tabBars.buttons[title].exists) }
     }
 
     func testFixtureLoginShowsAllNativeWorkspaces() {
@@ -19,6 +19,7 @@ import XCTest
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["对话"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.tabBars.buttons["创作台"].exists)
+        XCTAssertTrue(app.tabBars.buttons["项目"].exists)
         XCTAssertTrue(app.tabBars.buttons["资料库"].exists)
         XCTAssertTrue(app.tabBars.buttons["设置"].exists)
     }

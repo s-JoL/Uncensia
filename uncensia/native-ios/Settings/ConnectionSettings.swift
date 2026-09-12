@@ -78,7 +78,7 @@ struct ProvidersSettingsView: View {
   @State private var adding = false
   var body: some View {
     List {
-      Section { Button(uncensiaText("添加连接服务"), systemImage: "plus") { adding = true } }
+      Section { Button(uncensiaText("添加连接服务"), image: "lucide-plus") { adding = true } }
       ForEach(store.providers, id: \.stableID) { provider in
         Button {
           editing = provider
@@ -87,7 +87,7 @@ struct ProvidersSettingsView: View {
             HStack {
               Text(provider["name"].displayString).font(.headline)
               Spacer()
-              Image(systemName: provider["hasKey"].boolValue == true ? "key.fill" : "key.slash")
+              Image(provider["hasKey"].boolValue == true ? "lucide-key" : "lucide-key-round")
             }
             Text(provider["baseUrl"].displayString).font(.caption).foregroundStyle(.secondary)
           }
@@ -202,7 +202,7 @@ struct ModelsSettingsView: View {
   var body: some View {
     List {
       Section {
-        Button(uncensiaText("手动添加模型"), systemImage: "plus") { adding = true }
+        Button(uncensiaText("手动添加模型"), image: "lucide-plus") { adding = true }
         Menu(uncensiaText("从服务发现模型")) {
           ForEach(store.providers, id: \.stableID) { p in
             Button(p["name"].displayString) { discoveryProvider = p }

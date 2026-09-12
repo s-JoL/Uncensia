@@ -17,7 +17,7 @@ struct SecuritySettingsView: View {
       }
       Section(uncensiaText("两步验证")) {
         if store.security["totpEnabled"].boolValue == true {
-          Label(uncensiaText("已开启"), systemImage: "checkmark.shield.fill").foregroundStyle(.green)
+          Label(uncensiaText("已开启"), image: "lucide-shield-check").foregroundStyle(.green)
           Button(uncensiaText("关闭两步验证"), role: .destructive) { pending = .disableTOTP }
         } else if let enrolment {
           Text(uncensiaText("在验证器中添加密钥，再输入当前动态码。"))

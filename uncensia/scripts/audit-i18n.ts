@@ -39,11 +39,23 @@ try {
   if (savedWindow) Object.defineProperty(globalThis, 'window', savedWindow); else Reflect.deleteProperty(globalThis, 'window');
   if (savedStorage) Object.defineProperty(globalThis, 'localStorage', savedStorage); else Reflect.deleteProperty(globalThis, 'localStorage');
 }
-const readStrings = (lang: string) => new Map(fs.readFileSync(`native-ios/Resources/${lang}.lproj/Localizable.strings`, 'utf8').trim().split('\n').map(line => {
+const readStrings = (lang: string) => new Map(fs.readFileSync(`native-ios/Resources/${lang}.lproj/Localizable.strings`, 'utf8').trim().split('\n').filter(line => line.trim()).map(line => {
   const match = line.match(/^("(?:\\.|[^"\\])*") = ("(?:\\.|[^"\\])*");$/); assert.ok(match, line);
   return [JSON.parse(match[1]!), JSON.parse(match[2]!)] as [string, string];
 }));
 const nativeEn = readStrings('en'), nativeZh = readStrings('zh-Hans');
 assert.deepEqual([...nativeEn.keys()], [...nativeZh.keys()]);
 for (const [key, value] of nativeEn) assert.equal((value.match(/%@/g) ?? []).length, (key.match(/%@/g) ?? []).length, key);
-console.log(`PASS localization: ${count} Web labels, interpolation and language switching; ${nativeEn.size} matching native resource entries (Xcode runtime validation separate)`);
+let nativeUses = 0;
+for (const file of fs.readdirSync('native-ios', {recursive:true}).filter(file => String(file).endsWith('.swift'))) {
+  const source = fs.readFileSync(path.join('native-ios',String(file)),'utf8');
+  for (const match of source.matchAll(/uncensiaText\("((?:\\.|[^"\\])*)"/g)) {
+    const raw = match[1]!;
+    if (raw.includes('\\(')) continue;
+    const key = JSON.parse(`"${raw}"`) as string;
+    assert.ok(nativeEn.has(key), `${file}: missing native English translation for ${key}`);
+    assert.ok(nativeZh.has(key), `${file}: missing native Chinese translation for ${key}`);
+    nativeUses++;
+  }
+}
+console.log(`PASS localization: ${count} Web labels, interpolation and language switching; ${nativeEn.size} matching native resource entries covering ${nativeUses} native uses (Xcode runtime validation separate)`);

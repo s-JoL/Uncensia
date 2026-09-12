@@ -7,7 +7,8 @@ final class ChatManagementTests: XCTestCase {
     guard ProcessInfo.processInfo.environment["UNCENSIA_IOS_FIXTURE"] == "1" else {
       throw XCTSkip("Set UNCENSIA_IOS_FIXTURE=1 while the isolated fixture is running")
     }
-    let server = URL(string: "http://127.0.0.1:18093")!
+    let environment = ProcessInfo.processInfo.environment
+    let server = URL(string: environment["UNCENSIA_SERVER_URL"] ?? "http://127.0.0.1:18093")!
     let anonymous = APIClient(server: server)
     do { _ = try await anonymous.request("GET", "/health") } catch {
       throw XCTSkip("The isolated iOS fixture is not available")
@@ -15,7 +16,7 @@ final class ChatManagementTests: XCTestCase {
     let auth = try await anonymous.request(
       "POST", "/auth/token",
       body: .object([
-        "accessCode": .string("IOS-CI-ACCEPTANCE"), "deviceName": .string("ChatManagementTests"),
+        "accessCode": .string(environment["UNCENSIA_ACCESS_CODE"] ?? "IOS-CI-ACCEPTANCE"), "deviceName": .string("ChatManagementTests"),
       ]))
     let token = try XCTUnwrap(auth["token"].stringValue)
     let api = APIClient(server: server, token: { token })
@@ -26,13 +27,35 @@ final class ChatManagementTests: XCTestCase {
     XCTAssertFalse(modelID.isEmpty)
     var cleanup: [String] = []
     var caught: Error?
+    var operation = "create conversation"
     do {
       let marker = "native-management-\(UUID().uuidString)"
+      operation = "create and update project"
+      let project = try await api.request("POST", "/projects", body: .object([
+        "title": .string(marker), "instructions": .string("initial native instructions"),
+      ]))
+      let projectID = try XCTUnwrap(project["id"].stringValue)
+      let updatedProject = try await api.request("PATCH", "/projects/\(projectID)", body: .object([
+        "title": .string(marker), "instructions": .string("updated native instructions"),
+        "revision": project["revision"],
+      ]))
+      XCTAssertEqual(updatedProject["instructions"].stringValue, "updated native instructions")
+      operation = "create project conversation"
       let created = try await api.request(
         "POST", "/conversations",
-        body: .object(["modelId": .string(modelID), "title": .string(marker)]))
+        body: .object(["modelId": .string(modelID), "title": .string(marker), "projectId": .string(projectID)]))
       let id = try XCTUnwrap(created["id"].stringValue)
       cleanup.append(id)
+      XCTAssertEqual(created["projectId"].stringValue, projectID)
+      let projectChats = try await api.request("GET", "/projects/\(projectID)/conversations").arrayValue ?? []
+      XCTAssertTrue(projectChats.contains { $0["id"].stringValue == id })
+      let library = try await api.request("GET", "/files?limit=100&offset=0")
+      let fixtureFile = try XCTUnwrap((library["items"].arrayValue ?? []).first { $0["name"].stringValue == "ios-ui-fixture.md" })
+      let fixtureFileID = try XCTUnwrap(fixtureFile["id"].stringValue)
+      _ = try await api.request("PUT", "/projects/\(projectID)/files/\(fixtureFileID)")
+      let projectFiles = try await api.request("GET", "/projects/\(projectID)/files")
+      XCTAssertTrue(projectFiles["items"].arrayValue?.contains { $0["id"].stringValue == fixtureFileID } == true)
+      _ = try await api.request("DELETE", "/projects/\(projectID)/files/\(fixtureFileID)")
       let role = RoleplayDraft(
         .object([
           "enabled": .bool(true), "character": .string("角色"), "persona": .string("我"),
@@ -44,21 +67,36 @@ final class ChatManagementTests: XCTestCase {
           "enabled": .bool(true), "description": .string("视觉圣经"), "references": .array([]),
           "lastImageId": .null, "lastPrompt": .string(""),
         ]))
+      operation = "save roleplay and visual context"
       _ = try await api.request(
         "PATCH", "/conversations/\(id)",
         body: .object(["roleplay": role.json, "visualContinuity": visual.json]))
       let detail = try await api.request("GET", "/conversations/\(id)")
       XCTAssertEqual(detail["roleplay"], role.json)
       XCTAssertEqual(detail["visualContinuity"], visual.json)
+      operation = "create and control continuous future task"
       let task = try await api.request(
         "POST", "/conversations/\(id)/background-tasks",
         body: .object([
           "prompt": .string("fixture future task"), "modelId": .string(modelID),
-          "runAt": .number(Date().addingTimeInterval(120).timeIntervalSince1970 * 1000),
+          "runAt": .integer(Int(Date().addingTimeInterval(120).timeIntervalSince1970 * 1000)),
+          "mode": .string("continuous"), "intervalMs": .null, "maxRuns": .integer(3),
         ]))
       let taskID = try XCTUnwrap(task["id"].stringValue)
+      XCTAssertEqual(task["state"]["mode"].stringValue, "continuous")
+      XCTAssertEqual(task["state"]["maxRuns"].doubleValue, 3)
+      let paused = try await api.request(
+        "PATCH", "/background-tasks/\(taskID)", body: .object(["action": .string("pause")]))
+      XCTAssertEqual(paused["status"].stringValue, "paused")
+      let resumed = try await api.request(
+        "PATCH", "/background-tasks/\(taskID)", body: .object(["action": .string("resume")]))
+      XCTAssertEqual(resumed["status"].stringValue, "pending")
+      let taskRuns = try await api.request("GET", "/background-tasks/\(taskID)/runs")
+      XCTAssertEqual(taskRuns["items"].arrayValue, [])
+      operation = "cancel future task"
       let cancelled = try await api.request("DELETE", "/background-tasks/\(taskID)")
       XCTAssertEqual(cancelled["status"].stringValue, "cancelled")
+      operation = "create and settle run"
       let run = try await api.request(
         "POST", "/conversations/\(id)/runs",
         body: .object(["text": .string(marker), "attachments": .array([])]),
@@ -73,6 +111,7 @@ final class ChatManagementTests: XCTestCase {
         "GET", "/conversations/search?q=\(urlPart(marker))&limit=20")
       XCTAssertTrue(
         (search["items"].arrayValue ?? []).contains { $0["conversationId"].stringValue == id })
+      operation = "fork conversation tree"
       let tree = try await api.request("GET", "/conversations/\(id)/tree")
       let entryID = try XCTUnwrap((tree["entries"].arrayValue ?? []).first?["id"].stringValue)
       let fork = try await api.request(
@@ -81,7 +120,7 @@ final class ChatManagementTests: XCTestCase {
       cleanup.append(forkID)
       let forkDetail = try await api.request("GET", "/conversations/\(forkID)")
       XCTAssertEqual(forkDetail["id"].stringValue, forkID)
-    } catch { caught = error }
+    } catch { caught = NSError(domain: "ChatManagementContract", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(operation): \(error)", NSUnderlyingErrorKey: error]) }
     for id in cleanup.reversed() { _ = try? await api.request("DELETE", "/conversations/\(id)") }
     if let caught { throw caught }
   }
@@ -92,6 +131,34 @@ final class ChatManagementTests: XCTestCase {
       "world": .string("w"), "scene": .string("s"), "style": .string("v"), "examples": .string("e"),
     ])
     XCTAssertEqual(RoleplayDraft(input).json, input)
+  }
+
+  func testBackgroundTaskDraftBuildsWebCompatibleSchedules() {
+    let now = Date(timeIntervalSince1970: 1_000)
+    var draft = BackgroundTaskDraft(
+      prompt: "  keep going  ", modelID: "model-a", mode: "interval", scheduled: false,
+      intervalMinutes: 15, maxRuns: 7)
+    XCTAssertEqual(draft.payload(now: now), .object([
+      "prompt": .string("keep going"), "modelId": .string("model-a"),
+      "runAt": .integer(1_000_000), "mode": .string("interval"),
+      "intervalMs": .integer(900_000), "maxRuns": .integer(7),
+    ]))
+    draft.mode = "continuous"
+    draft.unlimited = true
+    XCTAssertEqual(draft.payload(now: now)["intervalMs"], .null)
+    XCTAssertEqual(draft.payload(now: now)["maxRuns"], .null)
+  }
+
+  func testProjectDraftPreservesRevisionForOptimisticUpdates() {
+    let record = ProjectRecord(raw: .object([
+      "id": .string("project-a"), "title": .string("A"),
+      "instructions": .string("Keep evidence"), "revision": .integer(4),
+    ]))
+    let draft = ProjectDraft(record)
+    XCTAssertEqual(draft.project?.id, "project-a")
+    XCTAssertEqual(draft.project?.revision, 4)
+    XCTAssertEqual(draft.title, "A")
+    XCTAssertEqual(draft.instructions, "Keep evidence")
   }
 
   func testVisualRoundTripPreservesServerManagedAndFixedReferences() {
@@ -134,8 +201,8 @@ final class ChatManagementTests: XCTestCase {
   }
 
   func testChineseStatusAndURLHelpers() {
-    XCTAssertEqual(taskStatus("pending"), "等待中")
-    XCTAssertEqual(roleLabel("user"), "你")
+    XCTAssertEqual(taskStatus("pending"), uncensiaText("等待中"))
+    XCTAssertEqual(roleLabel("user"), uncensiaText("你"))
     XCTAssertEqual(urlPart("a&b"), "a%26b")
   }
 }
