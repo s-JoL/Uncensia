@@ -481,6 +481,7 @@ export const EMPTY_VISUAL_CONTINUITY_CONTEXT: VisualContinuityContext = {
 };
 
 export interface ConversationSummary {
+  projectId?: string | null;
   id: string;
   title: string;
   modelId: string;
@@ -618,6 +619,9 @@ export type FileKind = "all" | "docs" | "images" | "videos";
 export const FILE_SOURCE_LABELS: Record<string, string> = {
   web: "网页原件",
   excerpt: "原文摘录",
+  "tool-output": "工具原始记录",
+  deliverable: "交付快照",
+  mcp: "MCP 资料",
   workspace: "工作成果",
   upload: "上传",
   generated: "生成",

@@ -25,7 +25,7 @@ import {
  */
 const relevanceAgainst = (best: number) => (hit: SearchHit) => (best > 0 ? hit.retrievalScore / best : 0);
 
-export function fileSearchTool(retrieval: Retrieval, mode: FileSearchMode): AgentTool {
+export function fileSearchTool(retrieval: Retrieval, mode: FileSearchMode, defaultScope?: () => string[]): AgentTool {
   return {
     name: "file_search",
     label: "file_search",
@@ -45,8 +45,15 @@ export function fileSearchTool(retrieval: Retrieval, mode: FileSearchMode): Agen
     }),
     execute: async (_callId, params) => {
       const { query, file_ids: fileIds } = params as { query: string; file_ids?: unknown };
-      const scope = Array.isArray(fileIds) ? fileIds.filter((id): id is string => typeof id === "string" && !!id) : [];
+      const named = Array.isArray(fileIds) ? fileIds.filter((id): id is string => typeof id === "string" && !!id) : [];
+      const scope = named.length ? named : defaultScope?.();
       const turn = nextCitationId();
+      // Retrieval's legacy empty-array contract means all files. Never let an
+      // empty project silently turn into a search of another project's data.
+      if (scope?.length === 0) return {
+        content:[{type:"text",text:"No files in the current scope. Add project files or explicitly select IDs from list_resources with scope:personal."}],
+        details:{structuredContent:{file_search:{turn,sources:[],fileCitations:true}}},
+      };
       const result = await retrieval.searchFiles(query, mode, 10, scope);
       const matches = result.results.filter((hit) => hit.excerpt.trim());
       const relevanceOf = relevanceAgainst(matches[0]?.retrievalScore ?? 0);
@@ -54,9 +61,9 @@ export function fileSearchTool(retrieval: Retrieval, mode: FileSearchMode): Agen
       if (!matches.length) {
         const text =
           result.index.ready === 0
-            ? "No files to search. Instruct the user to add files for the search."
-            : scope.length
-              ? "No matching content in the file(s) you named. Try different wording, or drop file_ids to search the whole library."
+            ? "No indexed passages found. Check available files with list_resources; use read_resource for a named original. Files may still need indexing."
+            : scope?.length
+              ? "No matching content in the selected files. Try different wording or explicitly select other file IDs."
               : "No content found in the files. The files may not have been processed correctly or you may need to refine your query.";
         return {
           content: [{ type: "text", text }],

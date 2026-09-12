@@ -1,5 +1,6 @@
 ﻿import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { getProject, linkConversationFile, projectFileFilter } from "../projects.ts";
 import type {
   ApiMode,
   Approval,
@@ -410,7 +411,8 @@ export class Store {
 
   // ----------------------------------------------------------- conversations
 
-  createConversation(modelId: string, title = "New conversation") {
+  createConversation(modelId: string, title = "New conversation", projectId?: string | null) {
+    if (projectId && !getProject(this,projectId)) throw new Error("Project not found");
     const id = newId("conv");
     const now = Date.now();
     this.db.run(
@@ -421,16 +423,30 @@ export class Store {
       now,
       now,
     );
+    if (projectId) this.setConversationProject(id,projectId);
     return this.getConversation(id)!;
   }
 
+  setConversationProject(id: string, projectId: string | null) {
+    if (projectId && !getProject(this,projectId)) throw new Error("Project not found");
+    this.db.transaction(() => {
+      this.db.run("DELETE FROM conversation_projects WHERE conversation_id=?",id);
+      if (projectId) {
+        this.db.run("INSERT INTO conversation_projects(conversation_id,project_id) VALUES(?,?)",id,projectId);
+        this.db.run("INSERT OR IGNORE INTO project_files(project_id,file_id) SELECT ?,id FROM files WHERE conversation_id=?",projectId,id);
+      }
+      this.db.run("UPDATE conversations SET updated_at=MAX(updated_at+1,?) WHERE id=?",Date.now(),id);
+    });
+  }
+
   getConversation(id: string) {
-    const row = this.db.get("SELECT * FROM conversations WHERE id = ?", id);
+    const row = this.db.get("SELECT c.*,p.project_id FROM conversations c LEFT JOIN conversation_projects p ON p.conversation_id=c.id WHERE c.id = ?", id);
     if (!row) return undefined;
     return {
       id: String(row.id),
       title: String(row.title),
       modelId: String(row.model_id),
+      projectId: row.project_id ? String(row.project_id) : null,
       roleplay: normalizedRoleplay(json(row.roleplay, EMPTY_ROLEPLAY_CONTEXT)),
       visualContinuity: visualContinuitySchema.parse(
         json(row.visual_continuity, EMPTY_VISUAL_CONTINUITY_CONTEXT),
@@ -443,7 +459,7 @@ export class Store {
 
   listConversations(limit: number, before?: number) {
     const rows = this.db.all(
-      `SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
+      `SELECT c.*, (SELECT project_id FROM conversation_projects p WHERE p.conversation_id=c.id) AS project_id, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS message_count
        FROM conversations c
        WHERE c.archived = 0 AND (? IS NULL OR c.updated_at < ?)
        ORDER BY c.updated_at DESC LIMIT ?`,
@@ -462,6 +478,7 @@ export class Store {
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at),
       messageCount: Number(row.message_count),
+      projectId: row.project_id ? String(row.project_id) : null,
     }));
   }
 
@@ -1019,7 +1036,7 @@ export class Store {
     // so collapsing them would save one file and dangle three references.
     if (input.deduplicate !== false && !input.mime.startsWith("image/") && !input.mime.startsWith("video/")) {
       const existing = this.documentBySha256(input.sha256);
-      if (existing) return existing;
+      if (existing) { linkConversationFile(this,input.conversationId,existing.id); return existing; }
     }
     const id = input.id ?? newId("file");
     this.db.run(
@@ -1038,13 +1055,14 @@ export class Store {
       input.height ?? null,
       input.createdAt ?? Date.now(),
     );
+    linkConversationFile(this,input.conversationId,id);
     return this.getFile(id)!;
   }
 
   /** The oldest document holding exactly these bytes, if the library has one. */
   documentBySha256(sha256: string) {
     const row = this.db.get<{ id: string }>(
-      `SELECT f.id AS id FROM files f WHERE f.sha256 = ? AND f.source <> 'excerpt' AND NOT ${VISUAL}
+      `SELECT f.id AS id FROM files f WHERE f.sha256 = ? AND f.source NOT IN ('excerpt','tool-output','deliverable') AND NOT ${VISUAL}
         ORDER BY f.created_at, f.id LIMIT 1`,
       sha256,
     );
@@ -1135,12 +1153,14 @@ export class Store {
   }
 
   /** Files eligible for `file_search`, i.e. non-image documents with chunks. */
-  searchableFiles() {
+  searchableFiles(projectId?: string | null) {
+    const scope = projectFileFilter(projectId);
     return this.db
       .all(
         `SELECT f.id, f.name FROM files f
-         WHERE f.mime NOT LIKE 'image/%' AND EXISTS (SELECT 1 FROM chunks c WHERE c.file_id = f.id)
+         WHERE ${scope.sql} AND f.mime NOT LIKE 'image/%' AND EXISTS (SELECT 1 FROM chunks c WHERE c.file_id = f.id)
          ORDER BY f.created_at DESC`,
+        ...scope.args,
       )
       .map((row) => ({ id: String(row.id), name: String(row.name) }));
   }

@@ -27,6 +27,13 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 
 -- Stable evidence, separate from the editable file and transcript projections.
+CREATE TABLE IF NOT EXISTS resource_history_refs (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  source_conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  entry_id TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS resource_sources (
   id TEXT PRIMARY KEY, file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
   data TEXT NOT NULL, created_at INTEGER NOT NULL
@@ -44,6 +51,11 @@ CREATE TABLE IF NOT EXISTS deliverables (
   conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   key TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL,
   PRIMARY KEY(conversation_id, key)
+);
+CREATE TABLE IF NOT EXISTS deliverable_versions (
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  key TEXT NOT NULL, revision INTEGER NOT NULL, data TEXT NOT NULL,
+  PRIMARY KEY(conversation_id, key, revision)
 );
 
 -- Every configuration value the web UI can edit. Stored as JSON so a new
@@ -396,3 +408,24 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 CREATE INDEX IF NOT EXISTS jobs_recent ON jobs(created_at DESC);
 CREATE INDEX IF NOT EXISTS jobs_status ON jobs(status, created_at);
+
+-- Membership never owns or deletes the underlying conversation/file.
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  instructions TEXT NOT NULL DEFAULT '',
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS conversation_projects (
+  conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS conversation_projects_project ON conversation_projects(project_id);
+CREATE TABLE IF NOT EXISTS project_files (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  PRIMARY KEY(project_id,file_id)
+);
+CREATE INDEX IF NOT EXISTS project_files_file ON project_files(file_id);

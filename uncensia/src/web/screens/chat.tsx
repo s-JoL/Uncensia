@@ -37,6 +37,7 @@ import {
   IMAGE_REFERENCE_ROLES,
 } from "@shared/types.ts";
 import type { ImageReferenceRole } from "@shared/types.ts";
+import type { Project } from "@shared/projects.ts";
 import { AssetPicker } from "../ui/asset-picker.tsx";
 import { CharacterCardImport } from "../ui/character-card-import.tsx";
 import { ConversationTree } from "../ui/conversation-tree.tsx";
@@ -104,6 +105,7 @@ export function Chat({
   const [live, setLive] = useState<Turn | null>(null);
   const [pendingUser, setPendingUser] = useState<Turn | null>(null);
   const [running, setRunning] = useState(false);
+  const [feedbackRevision, setFeedbackRevision] = useState(0);
   const {draft,setDraft,attachments,setAttachments,referenceRoles,setReferenceRoles} = useChatDraft(conversationId);
   const [pickingAsset, setPickingAsset] = useState(false);
   const [showTree, setShowTree] = useState(false);
@@ -113,6 +115,9 @@ export function Chat({
   const [title, setTitle] = useState("");
   const [modelId, setModelId] = useState(bootstrap.defaultModelId);
   const [picking, setPicking] = useState(false);
+  const [projectId,setProjectId] = useState<string|null>(null);
+  const [projects,setProjects] = useState<Project[]>([]);
+  useEffect(()=>{if (picking) void api.projects().then(setProjects).catch(e=>toast(String(e),true));},[picking,toast]);
   const [roleplay, setRoleplay] = useState<RoleplayContext>({ ...EMPTY_ROLEPLAY_CONTEXT });
   const [visualContinuity, setVisualContinuity] = useState<VisualContinuityContext>({
     ...EMPTY_VISUAL_CONTINUITY_CONTEXT,
@@ -268,6 +273,7 @@ export function Chat({
       setTitle("");
       setModelId(bootstrap.defaultModelId);
       setRoleplay({ ...EMPTY_ROLEPLAY_CONTEXT });
+      setProjectId(null);
       setVisualContinuity({ ...EMPTY_VISUAL_CONTINUITY_CONTEXT, references: [] });
       return;
     }
@@ -283,6 +289,7 @@ export function Chat({
         setTitle(summary.title);
         setModelId(summary.modelId);
         setRoleplay(summary.roleplay);
+        setProjectId(summary.projectId ?? null);
         setVisualContinuity(summary.visualContinuity);
         if (summary.activeRun) {
           void follow(
@@ -330,6 +337,7 @@ export function Chat({
           setTitle(summary.title);
           setModelId(summary.modelId);
           setRoleplay(summary.roleplay);
+          setProjectId(summary.projectId ?? null);
           setVisualContinuity(summary.visualContinuity);
           if (summary.activeRun) {
             void follow(
@@ -619,7 +627,8 @@ export function Chat({
     }
     setSavingContext(true);
     try {
-      const saved = await api.setConversationContext(conversationId, { roleplay, visualContinuity });
+      const saved = await api.setConversationContext(conversationId, { roleplay, visualContinuity, projectId });
+      setProjectId(saved.projectId ?? null);
       setRoleplay(saved.roleplay);
       setVisualContinuity(saved.visualContinuity);
       setPicking(false);
@@ -707,7 +716,7 @@ export function Chat({
           <MenuItem disabled={running} onSelect={() => setShowTree(true)}>{uiText("查看版本与分支")}</MenuItem>
           <MenuItem disabled={running} onSelect={async () => { try { setRunning(true); const run = await api.compactConversation(conversationId); await follow(conversationId, run.runId, run.seq, new Set()); } catch (error) { setRunning(false); toast(error instanceof Error ? error.message : String(error), true); } }}>{uiText("整理上下文")}</MenuItem>
         </Menu> : null}
-        <Button variant="ghost" size="sm" aria-label={uiText("本次对话的任务")} onClick={() => setShowTasks(true)}><ListTodo />{uiText("任务")}{backgroundTasks.some(task => ["pending", "running"].includes(task.status)) ? " ·" : ""}</Button>
+        <Button variant="ghost" size="sm" aria-label={uiText("任务与成果")} onClick={() => setShowTasks(true)}><ListTodo />{uiText("任务与成果")}{backgroundTasks.some(task => ["pending", "running"].includes(task.status)) ? " ·" : ""}</Button>
         {showTree && conversationId ? <ConversationTree id={conversationId} onClose={() => setShowTree(false)} onFork={onConversationCreated} /> : null}
 
         <Button
@@ -747,7 +756,7 @@ export function Chat({
                 key={`${turn.id}-${index}`}
                 turn={turn}
                 citations={turn === live ? citations : citationsByTurn.get(turn) ?? settledCitations}
-                onFeedback={conversationId && turn.role === "assistant" ? async text => { await api.saveFeedback(conversationId, turn.seq, text); } : undefined}
+                onFeedback={conversationId && turn.role === "assistant" ? async text => { await api.saveFeedback(conversationId, turn.seq, text); setFeedbackRevision(n => n + 1); } : undefined}
                 streaming={running && turn === live}
                 onImageClick={setZoom}
                 editing={turn.role === "user" && turn.seq === editingSeq}
@@ -937,12 +946,12 @@ export function Chat({
         </div> : <p className="mx-auto mt-2 max-w-3xl text-center text-[11px] text-muted-foreground">{running ? uiText("你可以随时停止，或继续补充要求") : uiText("重要内容请核对。图片与文件可在资料库中继续使用。")}</p>}
       </div>
 
-      <Modal open={showTasks} onOpenChange={setShowTasks} title={uiText("本次对话的任务")} description={uiText("安排时间、持续推进，随时查看进度和结果。")}>
+      <Modal open={showTasks} onOpenChange={setShowTasks} title={uiText("任务与成果")} description={uiText("安排时间、持续推进，随时查看进度和结果。")}>
+        {conversationId ? <ConversationEvidence key={conversationId} id={conversationId} revision={`${messages.length}:${running}:${feedbackRevision}`} /> : null}
         <TaskPanel key={conversationId || "new"} conversationId={conversationId || undefined} modelId={modelId} onCreated={task => {
           setBackgroundTasks(current => [task, ...current]);
           if (!conversationId) onConversationCreated(task.conversationId);
         }} />
-        {conversationId ? <ConversationEvidence id={conversationId} /> : null}
       </Modal>
 
       <Modal open={picking} onOpenChange={setPicking} title={uiText("本次对话")} description={uiText("直接说出需求即可开始。这里的资料可选，只用于这段对话。")} footer={
@@ -952,6 +961,13 @@ export function Chat({
       }>
         <div className="flex max-h-[75dvh] flex-col gap-4 overflow-y-auto pr-1">
           <Field label={uiText("模型")}>{modelSelect("w-full")}</Field>
+          <Field label={uiText("所属项目")} hint={uiText("切换后使用所选项目的说明与资料；已有对话历史保留。工具的文件系统工作目录不受影响。") }>
+            <select aria-label={uiText("所属项目")} className="w-full rounded border bg-background p-2 text-sm" disabled={running || !conversationId} value={projectId ?? ""} onChange={e=>setProjectId(e.target.value || null)}>
+              <option value="">{uiText("普通对话（未归属项目）")}</option>
+              {projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}
+            </select>
+            {projectId ? <a className="text-sm underline" href={`/projects/${projectId}`}>{uiText("打开项目")}</a> : null}
+          </Field>
           <Switch
             label={uiText("使用保存的故事资料")}
             hint={uiText("需要复用人物、背景或文风时再填写。聊天中也能直接开始写作或角色互动，随时可以问普通问题。")}

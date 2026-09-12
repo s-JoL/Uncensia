@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { startOpenAiStub } from "./stub-openai.ts";
+import { requestEvidence, contentHash } from "../src/server/agent/evidence.ts";
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uncensia-context-"));
 process.env.UNCENSIA_DATA_DIR = dir;
 process.env.UNCENSIA_ACCESS_CODE = "CONTEXTAUDITCODE";
@@ -44,6 +45,18 @@ try {
   await services.runtime.start(run.id, conv.id, { message: "Update, then forget the saved preference as this fixture requests.", modelId: "fixture" });
   assert.equal(services.store.getRun(run.id)!.status, "completed");
   assert.equal(round, 4);
+  const evidence = services.store.db.all<{data:string}>("SELECT data FROM events WHERE run_id=? AND type='provider.request' ORDER BY seq", run.id).map(row=>JSON.parse(row.data));
+  assert.equal(evidence.length,stub.requests.length,"one evidence record per prepared provider request");
+  evidence.forEach((item,index) => {
+    assert.equal(item.requestIndex,index+1);
+    assert.equal(item.payloadHash,contentHash(stub.requests[index]));
+    assert.ok(item.tools.includes("set_memory"));
+    assert.equal(item.embeddedImages,0);
+    assert.ok(!JSON.stringify(item).includes("CONTEXT_MARKER"),"evidence does not duplicate private prompts");
+  });
+  assert.deepEqual(requestEvidence({messages:[{content:[{type:"image_url",image_url:{url:"data:image/png;base64,AAAA"}},{type:"image_url",image_url:{url:"https://example.com/image.png"}}]}]}).embeddedImages,1);
+  assert.equal(requestEvidence({contents:[{parts:[{inlineData:{mimeType:"image/png",data:"AAAA"}}]}]}).embeddedImages,1);
+  assert.equal(requestEvidence({messages:[{content:[{type:"image",source:{type:"base64",data:"AAAA"}}]}]}).embeddedImages,1);
   const systems = stub.requests.map(r => JSON.stringify(r.messages?.filter(m => m.role === "system")));
   assert.ok(systems.every(s => s === systems[0] && !s.includes("CONTEXT_MARKER")));
   assert.ok(stub.requests.every(r => JSON.stringify(r.tools) === JSON.stringify(stub.requests[0]!.tools)));

@@ -3,6 +3,8 @@
  * localStorage for the Authorization header; the server also sets an HttpOnly
  * cookie, which is what lets plain `<img src="/v1/images/…">` work.
  */
+import type { ConversationEvidence, DeliverableRecord, DeliverableComparison } from "@shared/evidence.ts";
+import type { Project } from "@shared/projects.ts";
 import type {
   Approval,
   ImageAttachmentReference,
@@ -123,10 +125,12 @@ async function request<T>(
 }
 
 export const api = {
-  conversationEvidence: (id: string) => request<{ deliverables: Array<{ key: string; description: string; status: string; asset_id?: string; evidence?: string }>; feedback: Array<{ entry_id: string; text: string }>; contexts: Array<{ runId: string; modelId: string; modelInput: string[]; tools: string[] }> }>("GET", `/resources/conversations/${encodeURIComponent(id)}/evidence`),
+  conversationEvidence: (id: string) => request<ConversationEvidence>("GET", `/resources/conversations/${encodeURIComponent(id)}/evidence`),
+  deliverableVersions: (id: string, key: string) => request<DeliverableRecord[]>("GET", `/resources/conversations/${encodeURIComponent(id)}/deliverables/${encodeURIComponent(key)}/versions`),
+  reviewDeliverable: (id: string, key: string, revision: number, status: "accepted"|"rejected") => request<DeliverableRecord>("POST", `/resources/conversations/${encodeURIComponent(id)}/deliverables/${encodeURIComponent(key)}/review`, {revision,status}),
   acquireResource: (url: string) => request<{ file_id: string; indexing: string; index_error: string | null }>("POST", "/resources/acquire", { url }),
   resourceQuote: (id: string) => request<{ text: string; title: string; start_line: number; end_line: number; file_id: string }>("GET", `/resources/quotes/${encodeURIComponent(id)}`),
-  resourceText: (id: string, start = 1, encoding?: string) => request<{ text: string; title: string; next_line: number | null; total_lines: number }>("GET", `/resources/files/${encodeURIComponent(id)}?start=${start}${encoding ? `&encoding=${encodeURIComponent(encoding)}` : ""}`),
+  resourceText: (id: string, start = 1, encoding?: string, character = 0, version?: string) => request<{ text: string; title: string; version: string; text_start_line: number; next_line: number | null; total_lines: number; next_character: number | null; start_character: number; total_characters: number }>("GET", `/resources/files/${encodeURIComponent(id)}?start=${start}&character=${character}${encoding ? `&encoding=${encodeURIComponent(encoding)}` : ""}${version ? `&version=${encodeURIComponent(version)}` : ""}`),
   resourceSources: (id: string) => request<Array<{ original_url: string; final_url: string; fetched_at: string }>>("GET", `/resources/sources/${encodeURIComponent(id)}`),
   saveFeedback: (conversationId: string, seq: number, text: string) => request("POST", "/resources/feedback", { conversationId, seq, text }),
   modelReference: (model: string) => request<{ reference: ModelReference | null }>("GET", `/model-reference?model=${encodeURIComponent(model)}`),
@@ -170,8 +174,17 @@ export const api = {
       undefined,
       signal,
     ),
-  createConversation: (modelId?: string) =>
-    request<ConversationSummary>("POST", "/conversations", { modelId }),
+  projects: () => request<Project[]>("GET","/projects"),
+  compareDeliverables: (id:string,key:string,from:number,to:number) => request<DeliverableComparison>("GET",`/resources/conversations/${id}/deliverables/${encodeURIComponent(key)}/compare?from=${from}&to=${to}`),
+  project: (id: string) => request<Project>("GET",`/projects/${id}`),
+  saveProject: (input: {title:string;instructions:string}, previous?: Project) => previous
+    ? request<Project>("PATCH",`/projects/${previous.id}`,{...input,revision:previous.revision})
+    : request<Project>("POST","/projects",input),
+  projectFiles: (id: string, cursor?: string) => request<{items:FileRecord[];total:number;next_cursor:string|null}>("GET",`/projects/${id}/files${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`),
+  projectConversations: (id: string) => request<ConversationSummary[]>("GET",`/projects/${id}/conversations`),
+  linkProjectFile: (id: string, fileId: string, linked = true) => request<void>(linked ? "PUT" : "DELETE",`/projects/${id}/files/${fileId}`),
+  createConversation: (modelId?: string, projectId?: string) =>
+    request<ConversationSummary>("POST", "/conversations", { modelId, projectId }),
   conversation: (id: string) =>
     request<ConversationSummary & { activeRun: (RunSummary & { resumeSeq: number }) | null }>(
       "GET",
@@ -181,7 +194,7 @@ export const api = {
     request<ConversationSummary>("PATCH", `/conversations/${id}`, { modelId }),
   setConversationContext: (
     id: string,
-    input: { roleplay: RoleplayContext; visualContinuity: VisualContinuityContext },
+    input: { roleplay: RoleplayContext; visualContinuity: VisualContinuityContext; projectId?:string|null },
   ) => request<ConversationSummary>("PATCH", `/conversations/${id}`, input),
   deleteConversation: (id: string) => request<void>("DELETE", `/conversations/${id}`),
   conversationTree: (id: string) => request<{ leafId: string | null; entries: Array<{ id: string; parentId: string | null; type: string; role?: string; preview: string; timestamp: string }> }>("GET", `/conversations/${id}/tree`),

@@ -61,7 +61,7 @@ check("the prompt is assembled in the documented order", () => {
     "# Skills",
     MEMORY_TOOL_USAGE_GUARD,
     "# `web_search` Runtime Context",
-    "- Note: Use the file_search tool",
+    "- Available documents: use read_resource",
     MEMORY_INSTRUCTIONS,
   ];
   let cursor = -1;
@@ -105,6 +105,22 @@ check("an inlined attachment does not tell the model that no files were supplied
   });
   assert(prompt.includes("JADE-731") && prompt.includes("file_id=file_inline"), "current attachment text or identity lost");
   assert(!prompt.includes("no files are currently loaded") && !prompt.includes("Request the user to upload"), "inline document conflicts with empty-library instructions");
+  assert(prompt.includes("read_resource") && !prompt.includes("Search the rest with file_search"), "known attachment remainder does not use the direct reader");
+});
+
+check("saved feedback reaches the next request without becoming global memory", () => {
+  const prompt = buildModelSystemPrompt({
+    staticPrompt: STATIC,
+    memories: [],
+    searchableFiles: [],
+    filesEnabled: false,
+    memoryEnabled: false,
+    memoryTokenLimit: 16_000,
+    webEnabled: false,
+    feedback: [{ entry_id: "entry_previous", text: "Keep the first paragraph unchanged." }],
+  });
+  assert(prompt.includes("entry_previous") && prompt.includes("Keep the first paragraph unchanged."), "saved correction is absent");
+  assert(prompt.includes("not global memory"), "feedback scope is ambiguous");
 });
 
 check("a disabled capability contributes nothing rather than an empty heading", () => {
