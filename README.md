@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="uncensia/src/web/assets/uncensia.svg" alt="Uncensia" width="72" height="72" />
+
 ![Uncensia — Creative freedom, on your terms](uncensia/docs/showcase/hero.svg)
 
 **A self-hosted AI studio for creative freedom. NSFW-friendly. Your models, from conversation to images and video.**

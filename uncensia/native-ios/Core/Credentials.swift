@@ -13,11 +13,15 @@ public final class CredentialVault: @unchecked Sendable {
     }
     public func setToken(_ token: String, for server: URL) throws {
         let key: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "app.uncensia.session", kSecAttrAccount as String: account(server: server)]
-        SecItemDelete(key as CFDictionary)
-        var item = key
-        item[kSecValueData as String] = Data(token.utf8)
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(item as CFDictionary, nil)
+        let values = [kSecValueData as String: Data(token.utf8)]
+        var status = SecItemUpdate(key as CFDictionary, values as CFDictionary)
+        if status == errSecItemNotFound {
+            var item = key
+            item[kSecValueData as String] = Data(token.utf8)
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            status = SecItemAdd(item as CFDictionary, nil)
+            if status == errSecDuplicateItem { status = SecItemUpdate(key as CFDictionary, values as CFDictionary) }
+        }
         guard status == errSecSuccess else { throw VaultError.keychain(status) }
     }
     public func removeToken(for server: URL) throws {
@@ -41,6 +45,11 @@ public actor DraftStore {
     }
     public func save(_ draft: Draft, server: URL, conversationID: String?) {
         defaults.set(try? JSONEncoder().encode(draft), forKey: key(server: server, conversationID: conversationID))
+    }
+    public func appendAttachment(_ attachment: JSONValue, server: URL, conversationID: String?) {
+        var draft = load(server: server, conversationID: conversationID)
+        if !draft.attachments.contains(attachment) { draft.attachments.append(attachment) }
+        save(draft, server: server, conversationID: conversationID)
     }
     public func clear(server: URL, conversationID: String?) { defaults.removeObject(forKey: key(server: server, conversationID: conversationID)) }
 }

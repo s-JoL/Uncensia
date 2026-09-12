@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="uncensia/src/web/assets/uncensia.svg" alt="Uncensia" width="72" height="72" />
+
 ![Uncensia — 自由创作，由你掌控](uncensia/docs/showcase/hero.svg)
 
 **面向自由创作的自托管 AI 工作室。支持 NSFW，自选模型，从对话到图片与视频。**
