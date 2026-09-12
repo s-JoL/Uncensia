@@ -227,7 +227,7 @@ struct LibraryScreen: View {
 
 private enum LibraryLayout: String { case cards, list }
 
-private struct LibraryFile: Identifiable {
+struct LibraryFile: Identifiable {
   let raw: JSONValue
   var id: String { raw["id"].stringValue ?? "" }
   var name: String { raw["name"].stringValue ?? id }
@@ -474,7 +474,7 @@ private struct LibraryThumbnail: View {
   }
 }
 
-private struct LibraryPreview: View {
+struct LibraryPreview: View {
   let file: LibraryFile
   let api: APIClient?
   @Environment(\.dismiss) var dismiss

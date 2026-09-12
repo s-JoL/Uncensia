@@ -10,7 +10,7 @@ struct RootView: View {
     @State private var restoring = true
     var body: some View {
         @Bindable var app = app
-        Group { if restoring { ProgressView(uncensiaText("正在连接…")) } else if app.isReady { TabView(selection: $app.selectedTab) { Tab(uncensiaText("对话"), image: "lucide-messages-square", value: "chat") { ChatScreen() }; Tab(uncensiaText("创作台"), image: "lucide-images", value: "studio") { StudioScreen() }; Tab(uncensiaText("资料库"), image: "lucide-folder-closed", value: "library") { LibraryScreen() }; Tab(uncensiaText("设置"), image: "lucide-settings-2", value: "settings") { SettingsScreen() } } } else { SignInView() } }
+        Group { if restoring { ProgressView(uncensiaText("正在连接…")) } else if app.isReady { TabView(selection: $app.selectedTab) { Tab(uncensiaText("对话"), image: "lucide-messages-square", value: "chat") { ChatScreen() }; Tab(uncensiaText("创作台"), image: "lucide-images", value: "studio") { StudioScreen() }; Tab(uncensiaText("项目"), image: "lucide-folder-closed", value: "projects") { ProjectsScreen() }; Tab(uncensiaText("资料库"), image: "lucide-file-text", value: "library") { LibraryScreen() }; Tab(uncensiaText("设置"), image: "lucide-settings-2", value: "settings") { SettingsScreen() } } } else { SignInView() } }
         .task { await automaticConnection() }
     }
     private func automaticConnection() async {
@@ -18,7 +18,10 @@ struct RootView: View {
         let environment = ProcessInfo.processInfo.environment
         guard let raw = environment["UNCENSIA_SERVER_URL"], let server = URL(string: raw) else { await app.restoreConnection(); return }
         try? app.connect(server: server)
-        if app.credentials.token(for: server) == nil, let code = environment["UNCENSIA_ACCESS_CODE"] {
+        // A restarted isolated fixture reuses its URL but invalidates the old
+        // simulator Keychain token. An explicitly supplied test access code is
+        // authoritative and must refresh that credential every launch.
+        if let code = environment["UNCENSIA_ACCESS_CODE"] {
             if let response = try? await app.api?.request("POST", "/auth/token", body: .object(["accessCode": .string(code), "deviceName": .string("iOS") ])), let token = response["token"].stringValue { try? app.connect(server: server, token: token) }
         }
         #if DEBUG

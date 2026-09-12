@@ -248,26 +248,9 @@ struct TasksSettingsView: View {
         ContentUnavailableView(uncensiaText("目前没有定时任务"), image: "lucide-clock")
       } else {
         ForEach(store.tasks, id: \.stableID) { task in
-          VStack(alignment: .leading, spacing: 8) {
-            Text(task["prompt"].displayString)
-            HStack {
-              Text(formatDate(task["runAt"].doubleValue))
-              Text("·")
-              Text(task["status"].displayString).foregroundStyle(
-                task["status"].stringValue == "failed" ? .red : .secondary)
-            }.font(.caption)
-            if !task["error"].displayString.isEmpty {
-              Text(task["error"].displayString).font(.caption).foregroundStyle(.red)
-            }
-            if task["status"].stringValue == "pending" {
-              Button(uncensiaText("取消任务"), role: .destructive) {
-                withAPI(appModel, store: store) { api in
-                  _ = try await api.request(
-                    "DELETE", "/background-tasks/\(encodedPath(task["id"].displayString))")
-                  try await store.refreshTasks(api)
-                }
-              }
-            }
+          BackgroundTaskCard(task: task, api: appModel.api, onChanged: refresh) {
+            appModel.selectedConversationID = task["conversationId"].stringValue
+            appModel.selectedTab = "chat"
           }
         }
       }
@@ -276,8 +259,9 @@ struct TasksSettingsView: View {
       do { try await store.refreshTasks(api) } catch { store.fail(error) }
     }
   }
-  func formatDate(_ ms: Double?) -> String {
-    guard let ms else { return "" }
-    return Date(timeIntervalSince1970: ms / 1000).formatted(date: .abbreviated, time: .shortened)
+
+  private func refresh() async {
+    guard let api = appModel.api else { return }
+    do { try await store.refreshTasks(api) } catch { store.fail(error) }
   }
 }
