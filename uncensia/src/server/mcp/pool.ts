@@ -9,6 +9,9 @@ import { paths } from "../env.ts";
 import type { Store } from "../store/store.ts";
 import { portableSchema } from "./schema.ts";
 import { connectServer } from "./transport.ts";
+import { mcpResult } from "./result.ts";
+import { ingestFile } from "../library.ts";
+import { linkConversationFile } from "../projects.ts";
 
 const CALL_TIMEOUT_MS = 600_000;
 
@@ -38,8 +41,21 @@ export class McpPool {
     return this.statuses;
   }
 
-  currentTools() {
-    return this.tools;
+  currentTools(conversationId?: string) {
+    if (!conversationId) return this.tools;
+    return this.tools.map((tool) => ({
+      ...tool,
+      execute: async (...args: Parameters<typeof tool.execute>) => {
+        const result = await tool.execute(...args);
+        const savedFileIds = (result.details as { savedFileIds?: unknown } | undefined)?.savedFileIds;
+        if (Array.isArray(savedFileIds)) {
+          for (const fileId of savedFileIds) {
+            if (typeof fileId === "string") linkConversationFile(this.store, conversationId, fileId);
+          }
+        }
+        return result;
+      },
+    }));
   }
 
   private variables(): Record<string, string> {
@@ -67,11 +83,21 @@ export class McpPool {
         continue;
       }
       let client: Client | undefined;
+      const outputStart = output.length;
       try {
         const connected = await connectServer(server, (value) => expand(value, vars));
         client = connected;
         this.clients.push({ id: server.id, client: connected });
-        const listed = await connected.listTools();
+        const listed = connected.getServerCapabilities()?.tools ? await connected.listTools() : {tools:[], nextCursor:undefined};
+        const cursors = new Set<string>();
+        while (listed.nextCursor) {
+          if (cursors.has(listed.nextCursor)) throw new Error("MCP returned a repeated tools cursor");
+          cursors.add(listed.nextCursor);
+          const page = await connected.listTools({cursor:listed.nextCursor});
+          listed.tools.push(...page.tools);
+          listed.nextCursor = page.nextCursor;
+        }
+        if (new Set(listed.tools.map(tool => tool.name)).size !== listed.tools.length) throw new Error("MCP returned duplicate tool names");
         this.statuses.push({
           id: server.id,
           title: server.title,
@@ -93,30 +119,37 @@ export class McpPool {
                 undefined,
                 { signal, timeout: CALL_TIMEOUT_MS },
               );
-              const parts = (response.content ?? []) as Array<Record<string, unknown>>;
-              const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [];
-              for (const part of parts) {
-                if (part.type === "text") content.push({ type: "text", text: String(part.text ?? "") });
-                if (part.type === "image") {
-                  content.push({
-                    type: "image",
-                    data: String(part.data ?? ""),
-                    mimeType: String(part.mimeType ?? "image/png"),
-                  });
-                }
-              }
-              return {
-                content,
-                details: {
-                  server: server.id,
-                  structuredContent: response.structuredContent,
-                  resources: parts.filter((part) => part.type === "resource"),
-                },
-              };
+              return this.result(response, server.id);
             },
           });
         }
+        if (connected.getServerCapabilities()?.resources) {
+          const name = `uncensia_resources_mcp_${server.id.replaceAll(":", "__")}`;
+          if (output.some(tool => tool.name === name)) throw new Error("MCP resource reader name conflicts with a server tool");
+          output.push({
+            name, label:name,
+            description:"List this MCP server's resources/templates, or read an exact URI returned by its tools or catalog. Omit uri to list; set templates to discover parameterized resources. Follow nextCursor for more. Binary documents are saved as library files; images are returned as pixels.",
+            parameters:Type.Object({uri:Type.Optional(Type.String()),cursor:Type.Optional(Type.String()),templates:Type.Optional(Type.Boolean())}),
+            executionMode:"sequential",
+            execute:async (_id,args,signal) => {
+              const {uri,cursor,templates} = args as {uri?:string;cursor?:string;templates?:boolean};
+              if (uri && (cursor || templates)) throw new Error("Use either a resource URI or a catalog request");
+              if (uri) {
+                const read = await connected.readResource({uri},{signal,timeout:CALL_TIMEOUT_MS});
+                return this.result({content:read.contents.map(resource => ({type:"resource",resource}))},server.id);
+              }
+              const catalog = templates
+                ? await connected.listResourceTemplates({cursor},{signal,timeout:CALL_TIMEOUT_MS})
+                : await connected.listResources({cursor},{signal,timeout:CALL_TIMEOUT_MS});
+              return this.result({content:[{type:"text",text:JSON.stringify(catalog)}]},server.id);
+            },
+          });
+          this.statuses.at(-1)!.tools.push(name);
+        }
       } catch (error) {
+        output.splice(outputStart);
+        this.statuses = this.statuses.filter(status => status.id !== server.id);
+        this.clients = this.clients.filter(connection => connection.id !== server.id);
         const message = error instanceof Error ? error.message : String(error);
         this.statuses.push({
           id: server.id,
@@ -132,6 +165,17 @@ export class McpPool {
     }
     this.tools = output;
     return output;
+  }
+
+  private result(response: unknown, server: string) {
+    const savedFileIds: string[] = [];
+    const result = mcpResult(response,server,resource => {
+      const name = path.basename(new URL(resource.uri).pathname) || "resource.bin";
+      const {file} = ingestFile(this.store,{name,bytes:Buffer.from(resource.blob,"base64"),mime:resource.mimeType,source:"mcp"});
+      savedFileIds.push(file.id);
+      return `MCP resource ${resource.uri}: [${file.name}](file://${file.id}); file_id=${file.id}; ${file.bytes} bytes. Use read_resource for supported documents.`;
+    });
+    return { ...result, details: { ...result.details, savedFileIds } };
   }
 
   async close() {

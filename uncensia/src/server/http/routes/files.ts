@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
+import { compareDeliverables } from "../../deliverable-comparison.ts";
 import type { Context } from "hono";
 import type { FileKind, FileSearchMode, Provenance } from "@shared/types.ts";
 import { MAX_UPLOAD_BYTES, paths } from "../../env.ts";
@@ -11,7 +12,7 @@ import { ingestFile, mimeForName } from "../../library.ts";
 import type { Services } from "../../services.ts";
 import { readJson } from "../body.ts";
 import { fail, failFromError } from "../errors.ts";
-import { acquireResource, getQuote, readResource, saveFeedback } from "../../resources.ts";
+import { acquireResource, getQuote, listFeedback, readResource, saveFeedback, reviewDeliverable } from "../../resources.ts";
 
 /** `diskPath` and `sha256` are server-side bookkeeping; clients get neither. */
 function publicFile<T extends object>(file: T): Omit<T, "diskPath" | "sha256"> {
@@ -24,11 +25,27 @@ export function fileRoutes(services: Services) {
   const { store, config, retrieval } = services;
   app.get("/resources/conversations/:id/evidence", context => {
     const id = context.req.param("id");
+    if (!store.getConversation(id)) return fail(context, 404, "not_found", "Conversation not found");
     return context.json({
       deliverables: store.db.all<{ data: string }>("SELECT data FROM deliverables WHERE conversation_id=? ORDER BY updated_at,key", id).map(row => JSON.parse(row.data)),
-      feedback: store.db.all("SELECT entry_id,text,created_at FROM message_feedback WHERE conversation_id=? ORDER BY created_at DESC LIMIT 50", id),
-      contexts: store.db.all<{ data: string; run_id: string }>("SELECT data,run_id FROM events WHERE conversation_id=? AND type='context.captured' ORDER BY seq DESC LIMIT 10", id).map(row => ({ runId: row.run_id, ...JSON.parse(row.data) })),
+      feedback: listFeedback(store, id),
+      contexts: store.db.all<{ seq: number; data: string; run_id: string }>("SELECT seq,data,run_id FROM events e WHERE conversation_id=? AND (type='provider.request' OR (type='context.captured' AND seq=(SELECT MAX(seq) FROM events a WHERE a.run_id=e.run_id AND a.type='context.captured') AND NOT EXISTS (SELECT 1 FROM events p WHERE p.run_id=e.run_id AND p.type='provider.request'))) ORDER BY seq DESC LIMIT 30", id).map(row => ({ id:row.seq, runId: row.run_id, ...JSON.parse(row.data) })),
     });
+  });
+
+  app.get("/resources/conversations/:id/deliverables/:key/versions", context => context.json(
+    store.db.all<{data:string}>("SELECT data FROM deliverable_versions WHERE conversation_id=? AND key=? ORDER BY revision DESC", context.req.param("id"), context.req.param("key")).map(row => JSON.parse(row.data)),
+  ));
+  app.get("/resources/conversations/:id/deliverables/:key/compare", context => {
+    try { return context.json(compareDeliverables(store,context.req.param("id"),context.req.param("key"),Number(context.req.query("from")),Number(context.req.query("to")))); }
+    catch(error) { return fail(context,400,"comparison_failed",String(error)); }
+  });
+  app.post("/resources/conversations/:id/deliverables/:key/review", async context => {
+    try {
+      const body = await readJson<{revision:number; status:"accepted"|"rejected"}>(context);
+      if (typeof body.revision !== "number" || !body.status) return fail(context, 400, "invalid", "Revision and review status are required");
+      return context.json(reviewDeliverable(store, context.req.param("id"), context.req.param("key"), body.revision, body.status));
+    } catch (error) { return fail(context, 409, "review_conflict", String(error)); }
   });
 
   app.post("/resources/acquire", async context => {
@@ -46,7 +63,7 @@ export function fileRoutes(services: Services) {
   app.get("/resources/files/:id", async context => {
     try {
       const id = context.req.param("id");
-      const range = { file_id: id, start_line: Number(context.req.query("start") ?? 1), end_line: context.req.query("end") ? Number(context.req.query("end")) : undefined, encoding: context.req.query("encoding") };
+      const range = { file_id:id, start_line:Number(context.req.query("start") ?? 1), end_line:context.req.query("end") ? Number(context.req.query("end")) : undefined, start_character:context.req.query("character") ? Number(context.req.query("character")) : undefined, max_characters:12000, version:context.req.query("version"), encoding:context.req.query("encoding") };
       return context.json(await readResource(store, "", range));
     } catch (error) { return fail(context, 400, "resource_failed", String(error)); }
   });
@@ -97,7 +114,7 @@ export function fileRoutes(services: Services) {
 
   app.put("/files/:id/text", async (context) => {
     const file = store.getFile(context.req.param("id"));
-    if (file && store.db.get("SELECT 1 FROM resource_quotes WHERE file_id=?", file.id)) return fail(context, 409, "immutable", "Quoted snapshots are immutable; create a new document to edit this text");
+    if (file && (["tool-output", "deliverable"].includes(file.source) || store.db.get("SELECT 1 FROM resource_quotes WHERE file_id=?", file.id))) return fail(context, 409, "immutable", "Original snapshots are immutable; create a new document to edit this text");
     if (!file) return fail(context, 404, "not_found", "File not found");
     if (!isTextual(file.mime)) return fail(context, 400, "invalid", "This file is not editable text");
     const body = await readJson<{ name: string; text: string }>(context);

@@ -18,6 +18,7 @@ import {
 import { readJson } from "./body.ts";
 import { fail, failFromError } from "./errors.ts";
 import { conversationRoutes } from "./routes/conversations.ts";
+import { projectRoutes } from "./routes/projects.ts";
 import { fileRoutes } from "./routes/files.ts";
 import { jobRoutes } from "./routes/jobs.ts";
 import { memoryRoutes } from "./routes/memory.ts";
@@ -123,6 +124,7 @@ export function createApp(services: Services) {
 
   guarded.route("/", securityRoutes(services));
   guarded.route("/", conversationRoutes(services));
+  guarded.route("/", projectRoutes(services));
   guarded.route("/", settingsRoutes(services));
   guarded.route("/", fileRoutes(services));
   guarded.route("/", memoryRoutes(services));

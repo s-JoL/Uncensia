@@ -5,6 +5,7 @@ import path from "node:path";
 import { MAX_UPLOAD_BYTES, paths } from "./env.ts";
 import { forgetAssetIndex, writeImageSidecar } from "./images.ts";
 import type { Store } from "./store/store.ts";
+import { linkConversationFile } from "./projects.ts";
 
 const EXTENSION_MIME: Record<string, string> = {
   ".epub": "application/epub+zip",
@@ -16,6 +17,14 @@ const EXTENSION_MIME: Record<string, string> = {
 const MIME_EXTENSION = Object.fromEntries(Object.entries(EXTENSION_MIME).map(([extension, mime]) => [mime, extension]));
 export const mimeForName = (name: string) => EXTENSION_MIME[path.extname(name).toLowerCase()] ?? "application/octet-stream";
 
+/** Save complete tool text before its transcript projection is bounded. */
+export function preserveToolOutput(store: Store, conversationId: string, text: string) {
+  const bytes = Buffer.from(text), sha = createHash("sha256").update(bytes).digest("hex");
+  const existing = store.db.get<{id:string}>("SELECT id FROM files WHERE source='tool-output' AND sha256=? AND conversation_id=?",sha,conversationId);
+  const id = existing?.id ?? ingestFile(store,{name:"tool-output.txt",bytes,conversationId,source:"tool-output",deduplicate:false}).file.id;
+  return `Full original output: [Read or download](file://${id}). file_id=${id}; ${bytes.length} bytes; SHA-256=${sha}. Use read_resource to read any range; do not reconstruct omitted text.`;
+}
+
 export function ingestFile(store: Store, input: { name: string; bytes: Buffer; mime?: string; conversationId?: string | null; source?: string; deduplicate?: boolean }) {
   const { name, bytes } = input;
   if (bytes.length > MAX_UPLOAD_BYTES) throw new Error(`File exceeds ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB`);
@@ -26,7 +35,7 @@ export function ingestFile(store: Store, input: { name: string; bytes: Buffer; m
   // Documents reuse identical bytes. Visual assets retain independent identities
   // because their provenance and their use as editing sources belong to the ID.
   const duplicate = input.deduplicate !== false && !isImage && !isVideo ? store.documentBySha256(sha256) : undefined;
-  if (duplicate) return { file: duplicate, created: false };
+  if (duplicate) { linkConversationFile(store,input.conversationId,duplicate.id); return { file: duplicate, created: false }; }
   const id = `${isImage ? "img" : isVideo ? "vid" : "file"}_${randomBytes(16).toString("hex")}`;
   // Neither an uploaded filename nor its MIME subtype may become a storage path.
   const storageExtension = MIME_EXTENSION[mime] ?? (EXTENSION_MIME[extension] ? extension : ".bin");

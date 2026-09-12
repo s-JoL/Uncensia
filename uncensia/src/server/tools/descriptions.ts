@@ -59,9 +59,9 @@ Use anchor marker(s) immediately after the statement:
  * finding things in the library. Reading what the reader just handed over is not
  * a search problem.
  */
-export const FILE_SEARCH_DESCRIPTION = `Searches the reader's document library by meaning, and returns the passages that best match your query. Use it to find where something is said across files you have not been shown, or to reach the rest of a document whose text arrived truncated.
+export const FILE_SEARCH_DESCRIPTION = `Finds related passages in the reader's documents using the configured search mode. To read a known document or an omitted remainder verbatim, use read_resource with its exact file_id.
 
-For a current attachment, first use the supplied text under "Documents attached to this message". Search an omitted remainder with that document's exact file_id. Copy IDs from the library list, attachment or search result; a filename or citation anchor is not a file ID. A search without file_ids covers the whole library. Results are excerpts, not proof that you have read the complete document or chapter.
+For a current attachment, first use the supplied text under "Documents attached to this message". Copy IDs from the library list, attachment or search result; a filename or citation anchor is not a file ID. Without file_ids, search the current project and current attachments (or unassigned library in ordinary chats). To search elsewhere, first find exact IDs using list_resources with scope:personal, then pass file_ids. Results are excerpts, not proof that you have read the complete document or chapter.
 
 **CITE FILE SEARCH RESULTS:**
 Use the EXACT anchor markers shown below (copy them verbatim) immediately after statements derived from file content. Reference the filename in your text:
@@ -83,7 +83,7 @@ export const FILE_SEARCH_QUERY_DESCRIPTION =
  */
 export const FILE_SEARCH_IDS_DESCRIPTION = `Optional. Restrict the search to these exact file ids, in the form \`file_<32 lowercase hexadecimal characters>\`.
 Pass them when the question is about a particular document — one attached to a message, or one the reader named — so passages from unrelated files cannot come back as the answer.
-Leave this out to search the whole library, which is what a question like "which of my files covers X" wants.
+Leave this out to search the current project's files and current attachments, or the unassigned library for an ordinary conversation.
 A document attached to the current message already has its text in front of you; only search it when the text was truncated.`;
 
 export const SET_MEMORY_DESCRIPTION =

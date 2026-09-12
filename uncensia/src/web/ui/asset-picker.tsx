@@ -6,7 +6,7 @@ import { Button, Input, Modal, Spinner } from "../ui.tsx";
 
 const PAGE_SIZE = 48;
 
-export function AssetPicker({ onSelect, onClose }: { onSelect: (file: FileRecord) => void; onClose: () => void }) {
+export function AssetPicker({ onSelect, onClose, includeVideos = false }: { onSelect: (file: FileRecord) => void; onClose: () => void; includeVideos?:boolean }) {
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState<FileRecord[]>([]);
   const [offset, setOffset] = useState(0);
@@ -30,7 +30,7 @@ export function AssetPicker({ onSelect, onClose }: { onSelect: (file: FileRecord
     <Input aria-label={uiText("搜索资料库")} placeholder={uiText("搜索文件名称")} value={query} onChange={(event) => { setQuery(event.target.value); setOffset(0); setFiles([]); }} />
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     <div className="mt-3 grid max-h-[55vh] grid-cols-3 gap-2 overflow-y-auto">
-      {files.filter((file) => !file.mime.startsWith("video/")).map((file) => <button key={file.id} className="min-w-0 rounded-lg border p-2 text-left hover:bg-accent" onClick={() => onSelect(file)} title={file.name}>
+      {files.filter((file) => includeVideos || !file.mime.startsWith("video/")).map((file) => <button key={file.id} className="min-w-0 rounded-lg border p-2 text-left hover:bg-accent" onClick={() => onSelect(file)} title={file.name}>
         {file.mime.startsWith("image/") ? <img src={`/v1/images/${file.id}?w=160`} alt={file.name} className="aspect-square w-full rounded-md object-contain" loading="lazy" /> : <div className="grid aspect-square place-content-center bg-muted text-sm">{uiText("文档")}</div>}
         <span className="mt-1 block truncate text-xs">{file.name}</span>
       </button>)}
