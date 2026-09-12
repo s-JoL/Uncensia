@@ -160,10 +160,22 @@ struct ConversationContextSheet: View {
   @State private var importing = false
   @State private var saving = false
   @State private var error: String?
+  @State private var projects: [ProjectRecord] = []
+  @State private var projectID = ""
   var body: some View {
     NavigationStack {
       Form {
         if let error { Text(error).foregroundStyle(.red) }
+        Section {
+          Picker(uncensiaText("所属项目"), selection: $projectID) {
+            Text(uncensiaText("不属于项目")).tag("")
+            ForEach(projects) { project in Text(project.title).tag(project.id) }
+          }
+        } header: {
+          Text(uncensiaText("所属项目"))
+        } footer: {
+          Text(uncensiaText("项目说明和资料会用于这段对话。运行中不能移动项目。"))
+        }
         Section {
           Toggle(uncensiaText("使用保存的故事资料"), isOn: $role.enabled)
         } footer: {
@@ -227,6 +239,8 @@ struct ConversationContextSheet: View {
       }.onAppear {
         role = RoleplayDraft(details["roleplay"])
         visual = VisualDraft(details["visualContinuity"])
+        projectID = details["projectId"].stringValue ?? ""
+        Task { await loadProjects() }
       }.fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
         if case .success(let url) = result {
           read(url)
@@ -306,10 +320,19 @@ struct ConversationContextSheet: View {
     do {
       let saved = try await api.request(
         "PATCH", "/conversations/\(urlPart(id))",
-        body: .object(["roleplay": role.json, "visualContinuity": visual.json]))
+        body: .object([
+          "roleplay": role.json, "visualContinuity": visual.json,
+          "projectId": projectID.isEmpty ? .null : .string(projectID),
+        ]))
       store.conversationDetails = saved
       error = nil
       dismiss()
+    } catch { self.error = error.localizedDescription }
+  }
+  private func loadProjects() async {
+    guard let api else { return }
+    do {
+      projects = try await api.request("GET", "/projects").arrayValue?.map(ProjectRecord.init) ?? []
     } catch { self.error = error.localizedDescription }
   }
 }
@@ -389,122 +412,6 @@ struct BranchSheet: View {
       app.selectedConversationID = newID
       error = nil
       dismiss()
-    } catch { self.error = error.localizedDescription }
-  }
-}
-
-struct BackgroundTasksSheet: View {
-  let id: String?
-  let api: APIClient?
-  let app: AppModel
-  @Environment(\.dismiss) private var dismiss
-  @State private var tasks: [JSONValue] = []
-  @State private var models: [JSONValue] = []
-  @State private var prompt = ""
-  @State private var scheduled = false
-  @State private var runAt = Date()
-  @State private var model = ""
-  @State private var busy = false
-  @State private var cancelling: String?
-  @State private var error: String?
-  var body: some View {
-    NavigationStack {
-      List {
-        Section(uncensiaText("新任务")) {
-          TextField(uncensiaText("稍后要处理的事"), text: $prompt, axis: .vertical).lineLimit(3...8)
-          Picker(uncensiaText("模型"), selection: $model) {
-            Text(uncensiaText("沿用本对话模型")).tag("")
-            ForEach(models, id: \.self) {
-              Text($0["name"].stringValue ?? $0["id"].stringValue ?? uncensiaText("模型")).tag(
-                $0["id"].stringValue ?? "")
-            }
-          }
-          Toggle(uncensiaText("指定执行时间"), isOn: $scheduled)
-          if scheduled {
-            DatePicker(
-              uncensiaText("执行时间"), selection: $runAt,
-              in: Date()...Calendar.current.date(byAdding: .year, value: 1, to: Date())!)
-          }
-          Button(uncensiaText("创建后台任务")) { Task { await create() } }.disabled(
-            busy || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        if let error { Text(error).foregroundStyle(.red) }
-        Section(uncensiaText("这段对话的任务")) {
-          if busy { ProgressView() }
-          if tasks.isEmpty && !busy { Text(uncensiaText("暂无后台任务")).foregroundStyle(.secondary) }
-          ForEach(tasks, id: \.self) { task in
-            VStack(alignment: .leading, spacing: 5) {
-              Text(task["prompt"].stringValue ?? "")
-              Text(
-                "\(taskStatus(task["status"].stringValue)) · \(task["modelId"].stringValue ?? "")"
-              ).font(.caption)
-              if let stamp = task["runAt"].doubleValue {
-                Text(
-                  Date(timeIntervalSince1970: stamp / 1000),
-                  format: .dateTime.year().month().day().hour().minute()
-                ).font(.caption)
-              }
-              if let failure = task["error"].stringValue { Text(failure).foregroundStyle(.red) }
-              if task["status"].stringValue == "pending", let taskID = task["id"].stringValue {
-                Button(cancelling == taskID ? uncensiaText("正在取消…") : uncensiaText("取消任务"), role: .destructive) {
-                  Task { await cancel(taskID) }
-                }.disabled(cancelling != nil)
-              }
-            }.padding(.vertical, 3)
-          }
-        }
-      }.navigationTitle(uncensiaText("后台任务")).toolbar {
-        ToolbarItem(placement: .cancellationAction) { Button(uncensiaText("关闭")) { dismiss() } }
-        ToolbarItem(placement: .confirmationAction) {
-          Button(uncensiaText("刷新")) { Task { await load() } }.disabled(busy)
-        }
-      }.task { await load() }.refreshable { await load() }
-    }
-  }
-  private func load() async {
-    guard let id, let api else {
-      error = uncensiaText("请先打开一段对话")
-      return
-    }
-    busy = true
-    defer { busy = false }
-    do {
-      async let a = api.request("GET", "/conversations/\(urlPart(id))/background-tasks")
-      async let b = api.request("GET", "/models")
-      let (x, y) = try await (a, b)
-      tasks = x["items"].arrayValue ?? []
-      models = (y["items"].arrayValue ?? []).filter {
-        $0["kind"].stringValue == "chat" && $0["enabled"].boolValue != false
-          && $0["configured"].boolValue != false
-      }
-      error = nil
-    } catch { self.error = error.localizedDescription }
-  }
-  private func create() async {
-    guard let id, let api else { return }
-    busy = true
-    defer { busy = false }
-    var payload: [String: JSONValue] = [
-      "prompt": .string(prompt.trimmingCharacters(in: .whitespacesAndNewlines)),
-      "runAt": .integer(Int((scheduled ? runAt : Date()).timeIntervalSince1970 * 1000)),
-    ]
-    if !model.isEmpty { payload["modelId"] = .string(model) }
-    do {
-      _ = try await api.request(
-        "POST", "/conversations/\(urlPart(id))/background-tasks", body: .object(payload))
-      prompt = ""
-      error = nil
-      await load()
-    } catch { self.error = error.localizedDescription }
-  }
-  private func cancel(_ taskID: String) async {
-    guard let api else { return }
-    cancelling = taskID
-    defer { cancelling = nil }
-    do {
-      _ = try await api.request("DELETE", "/background-tasks/\(urlPart(taskID))")
-      error = nil
-      await load()
     } catch { self.error = error.localizedDescription }
   }
 }
@@ -658,7 +565,7 @@ func urlPart(_ x: String) -> String {
 }
 func roleLabel(_ x: String?) -> String { x == "user" ? uncensiaText("你") : x == "assistant" ? uncensiaText("助手") : x ?? "" }
 func taskStatus(_ x: String?) -> String {
-  ["pending": uncensiaText("等待中"), "running": uncensiaText("运行中"), "completed": uncensiaText("已完成"), "failed": uncensiaText("失败"), "cancelled": uncensiaText("已取消")][
+  ["pending": uncensiaText("等待中"), "running": uncensiaText("运行中"), "paused": uncensiaText("已暂停"), "completed": uncensiaText("已完成"), "failed": uncensiaText("失败"), "cancelled": uncensiaText("已取消")][
     x ?? ""] ?? x ?? uncensiaText("未知")
 }
 private struct RemoteImage: View {

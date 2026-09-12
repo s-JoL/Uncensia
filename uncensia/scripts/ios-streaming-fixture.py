@@ -53,6 +53,7 @@ class Fixture:
             self.resource_reads = []
             self.imports = []
             self.feedback = []
+            self.delivery_review = None
             self.failed_feedback = False
             self.hold_quotes = hold_quotes
             self.initial_chunks = initial_chunks
@@ -195,6 +196,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply({"error": {"message": "Fixture feedback save failed; retry the same text."}}, 400)
                 fixture.feedback.append(payload)
             return self.reply({"saved": True})
+        if path.endswith("/deliverables/fixture-delivery/review"):
+            if payload.get("revision") != 2 or payload.get("status") not in ["accepted", "rejected"]:
+                return self.reply({"error": {"message": "Invalid fixture review"}}, 400)
+            with fixture.condition:
+                fixture.delivery_review = payload["status"]
+            return self.reply({"key": "fixture-delivery", "description": "Verified fixture delivery",
+                               "status": "verified", "asset_id": "fixture-note", "revision": 2,
+                               "review": {"status": payload["status"], "at": int(time.time() * 1000)}})
         if path == "/conversations":
             conversation = "new-" + uuid.uuid4().hex
             with fixture.condition:
@@ -261,12 +270,25 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply({"text": f"Original page at line {start}\nEncoding: {encoding}\n原文应逐字保留。",
                                "title": NOTE["name"], "next_line": start + 2 if start < 5 else None, "total_lines": 6})
         if path.startswith("/resources/conversations/") and path.endswith("/evidence"):
+            review = {"status": fixture.delivery_review, "at": int(time.time() * 1000)} if fixture.delivery_review else None
             return self.reply({"deliverables": [{"key": "fixture-delivery", "description": "Verified fixture delivery",
-                                "status": "verified", "asset_id": "fixture-note", "evidence": "Original file checked by the fixture."}],
+                                "status": "verified", "asset_id": "fixture-note", "source_asset_id": "fixture-note",
+                                "revision": 2, "review": review, "evidence": "Original file checked by the fixture."}],
                                "feedback": [{"entry_id": "fixture-entry", "text": "Keep the original wording."}]
                                 + [{"entry_id": f"feedback-{i}", "text": value["text"]} for i, value in enumerate(fixture.feedback)],
                                "contexts": [{"runId": "fixture-run", "modelId": "fixture-model",
                                 "modelInput": ["Original selected source, version 2"], "tools": ["read_resource"]}]})
+        if path.endswith("/deliverables/fixture-delivery/versions"):
+            return self.reply([
+                {"key": "fixture-delivery", "description": "Verified fixture delivery", "status": "verified",
+                 "asset_id": "fixture-note", "revision": 2},
+                {"key": "fixture-delivery", "description": "Earlier fixture delivery", "status": "produced",
+                 "asset_id": "fixture-note", "revision": 1},
+            ])
+        if path.endswith("/deliverables/fixture-delivery/compare"):
+            return self.reply({"kind": "text", "patch": "-Earlier fixture line\n+Verified fixture line",
+                               "from": {"revision": 1, "asset_id": "fixture-note"},
+                               "to": {"revision": 2, "asset_id": "fixture-note"}})
         if path == "/conversations":
             with fixture.condition:
                 return self.reply({"items": [fixture.summary(key) for key in fixture.messages], "nextCursor": None})

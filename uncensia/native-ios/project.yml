@@ -21,6 +21,7 @@ targets:
       - Core
       - Chat
       - Library
+      - Projects
       - Studio
       - Settings
       - Resources

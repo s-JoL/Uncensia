@@ -365,8 +365,20 @@ import XCTest
         let app = try await launch("settled-fixture")
         app.buttons["conversation.actions"].tap()
         app.buttons["Deliverables, feedback and execution"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Verified fixture delivery"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Verified fixture delivery")).firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Keep the original wording."].exists)
+        app.buttons["View versions"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["Hide versions"].waitForExistence(timeout: 5))
+        let earlier = app.staticTexts["Version 1 · Earlier fixture delivery"]
+        guard earlier.waitForExistence(timeout: 5) else {
+            screenshot(app, "deliverable-versions-missing")
+            XCTFail("Deliverable versions did not render")
+            return
+        }
+        app.buttons["Compare with current"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["-Earlier fixture line\n+Verified fixture line"].waitForExistence(timeout: 5))
+        app.buttons["Accept version 2"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Accepted by user")).firstMatch.waitForExistence(timeout: 5))
         app.buttons["fixture-model"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts["Original selected source, version 2"].waitForExistence(timeout: 5))
         screenshot(app, "conversation-delivery-feedback-and-context")

@@ -46,4 +46,16 @@ const readStrings = (lang: string) => new Map(fs.readFileSync(`native-ios/Resour
 const nativeEn = readStrings('en'), nativeZh = readStrings('zh-Hans');
 assert.deepEqual([...nativeEn.keys()], [...nativeZh.keys()]);
 for (const [key, value] of nativeEn) assert.equal((value.match(/%@/g) ?? []).length, (key.match(/%@/g) ?? []).length, key);
-console.log(`PASS localization: ${count} Web labels, interpolation and language switching; ${nativeEn.size} matching native resource entries (Xcode runtime validation separate)`);
+let nativeUses = 0;
+for (const file of fs.readdirSync('native-ios', {recursive:true}).filter(file => String(file).endsWith('.swift'))) {
+  const source = fs.readFileSync(path.join('native-ios',String(file)),'utf8');
+  for (const match of source.matchAll(/uncensiaText\("((?:\\.|[^"\\])*)"/g)) {
+    const raw = match[1]!;
+    if (raw.includes('\\(')) continue;
+    const key = JSON.parse(`"${raw}"`) as string;
+    assert.ok(nativeEn.has(key), `${file}: missing native English translation for ${key}`);
+    assert.ok(nativeZh.has(key), `${file}: missing native Chinese translation for ${key}`);
+    nativeUses++;
+  }
+}
+console.log(`PASS localization: ${count} Web labels, interpolation and language switching; ${nativeEn.size} matching native resource entries covering ${nativeUses} native uses (Xcode runtime validation separate)`);
