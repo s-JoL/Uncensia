@@ -9,31 +9,40 @@ struct MessageRow: View {
   init(message: ChatMessage, api: APIClient?) {
     self.message = message
     self.api = api
-    parts = TranscriptPart.decode(message.content, prefix: message.id)
+    parts = TranscriptPart.decode(message.content, prefix: message.id).filter { part in
+      guard message.role == "toolResult" else { return true }
+      switch part.kind { case .image, .video, .file: return true; default: return false }
+    }
   }
 
   var body: some View {
-    HStack(alignment: .top) {
-      if message.role == "user" { Spacer(minLength: 44) }
-      VStack(alignment: .leading, spacing: 10) {
-        if message.role == "toolResult" {
-          ToolTranscriptCard(name: message.content["toolName"].stringValue ?? message.raw["toolName"].stringValue ?? uncensiaText("工具结果"), arguments: .null, result: message.text)
+    Group {
+      if message.role == "user" {
+        HStack(alignment: .top) {
+          Spacer(minLength: 44)
+          messageContent.padding(13)
+            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
         }
-        ForEach(parts.filter { part in
-          if message.role != "toolResult" { return true }
-          switch part.kind { case .image, .video, .file: return true; default: return false }
-        }) { part in
-          TranscriptPartView(part: part, api: api, user: message.role == "user")
-        }
+      } else {
+        // Let the answer report its complete height directly. A surrounding
+        // HStack can retain a taller measurement after long Markdown reflows,
+        // leaving an empty region below the actual final line.
+        messageContent.fixedSize(horizontal: false, vertical: true)
       }
-      .padding(message.role == "user" ? 13 : 0)
-      .background(
-        message.role == "user" ? Color.secondary.opacity(0.12) : .clear,
-        in: RoundedRectangle(cornerRadius: 18))
-      if message.role != "user" { Spacer(minLength: 16) }
     }
     .frame(maxWidth: .infinity, alignment: message.role == "user" ? .trailing : .leading)
 
+  }
+
+  private var messageContent: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      if message.role == "toolResult" {
+        ToolTranscriptCard(name: message.content["toolName"].stringValue ?? message.raw["toolName"].stringValue ?? uncensiaText("工具结果"), arguments: .null, result: message.text)
+      }
+      ForEach(parts) { part in
+        TranscriptPartView(part: part, api: api, user: message.role == "user")
+      }
+    }
   }
 }
 
@@ -92,7 +101,6 @@ private struct TranscriptPart: Identifiable {
     case video(String, String?)
     case file(String, String, String)
     case tool(String, JSONValue)
-    case result(String)
     case unknown(String)
   }
   let id: String
@@ -186,7 +194,6 @@ private struct TranscriptPartView: View {
         }.buttonStyle(.bordered)
       case .tool(let name, let arguments):
         ToolTranscriptCard(name: name, arguments: arguments, result: nil)
-      case .result(let result): ToolTranscriptCard(name: uncensiaText("工具结果"), arguments: .null, result: result)
       case .unknown(let raw):
         if !raw.isEmpty {
           DisclosureGroup(uncensiaText("详细内容")) { Text(raw).font(.caption.monospaced()).textSelection(.enabled) }
@@ -240,23 +247,32 @@ private struct ToolTranscriptCard: View {
     cache.countLimit = 100; cache.totalCostLimit = 4 * 1024 * 1024
     return cache
   }()
+  private static var latestStream: (String, [MarkdownBlock])?
   static func parse(_ text: String) -> [MarkdownBlock] {
+    if latestStream?.0 == text { return latestStream!.1 }
     let key = text as NSString
     if let entry = cache.object(forKey: key) { return entry.blocks }
     let blocks = MarkdownBlock.parse(text)
     cache.setObject(Entry(blocks), forKey: key, cost: text.utf8.count * 3)
     return blocks
   }
+  static func rememberStream(_ text: String, blocks: [MarkdownBlock]) {
+    latestStream = (text, blocks)
+  }
 }
 
 struct RichMarkdown: View {
   let text: String
   let api: APIClient?
+  let streaming: Bool
   @State private var blocks: [MarkdownBlock]
   @State private var parsedText: String
+  @State private var parser = StreamingMarkdownParser()
+  @State private var resource: TranscriptResourceLink?
   init(text: String, api: APIClient? = nil, streaming: Bool = false) {
     self.text = text
     self.api = api
+    self.streaming = streaming
     _blocks = State(initialValue: streaming ? [] : SettledMarkdownCache.parse(text))
     _parsedText = State(initialValue: streaming ? "" : text)
   }
@@ -264,85 +280,204 @@ struct RichMarkdown: View {
     VStack(alignment: .leading, spacing: 10) {
       ForEach(blocks) { block in
         switch block.kind {
-        case .prose(let value): MarkdownProse(value).equatable()
+        case .prose(let value):
+          MarkdownProse(value, streaming: streaming && block.id == blocks.last?.id).equatable()
         case .code(let language, let code):
-          VStack(alignment: .leading, spacing: 4) {
-            HStack { Text(language.isEmpty ? "Code" : language).font(.caption2).foregroundStyle(.secondary); Spacer(); Button { UIPasteboard.general.string = code } label: { Image("lucide-copy") }.accessibilityLabel(uncensiaText("复制代码")) }.padding(.horizontal, 10).padding(.top, 8)
-            ScrollView(.horizontal) {
-              Text(code).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                .padding(10)
-            }
-          }.background(.black.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
-        case .table(let rows): MarkdownTable(rows: rows)
+          MarkdownCodeBlock(language: language, code: code).equatable()
+        case .table(let rows): MarkdownTable(rows: rows).equatable()
         case .image(let id, let label):
           TranscriptPartView(part: .init(id: id, kind: id.hasPrefix("vid_") ? .video(id, nil) : .image(id, nil)), api: api, user: false)
           if !label.isEmpty { Text(label).font(.caption).foregroundStyle(.secondary) }
+        case .quote(let id):
+          ResourceQuoteCard(id: id, api: api).id("\(id)-\(api.map { String(describing: ObjectIdentifier($0)) } ?? "none")")
+        case .math(let latex, let closed): MarkdownMathView(latex: latex, pending: streaming && !closed)
         }
       }
     }.frame(maxWidth: .infinity, alignment: .leading)
       .task(id: text) {
         guard parsedText != text else { return }
         let source = text
-        let parsed = await Task.detached(priority: .userInitiated) { MarkdownBlock.parse(source) }.value
-        guard !Task.isCancelled else { return }; blocks = parsed; parsedText = source
+        guard let parsed = try? await parser.parse(source), !Task.isCancelled else { return }
+        blocks = parsed; parsedText = source
+        if streaming { SettledMarkdownCache.rememberStream(source, blocks: parsed) }
       }
+      .environment(\.openURL, OpenURLAction { url in
+        guard let link = TranscriptResourceLink.resolve(url, server: api?.server) else { return .systemAction }
+        resource = link
+        return .handled
+      })
+      .sheet(item: $resource) { TranscriptResourceViewer(resource: $0, api: api) }
+  }
+}
+
+private struct MarkdownCodeBlock: View, Equatable {
+  let language: String
+  let code: String
+  @State private var copied = false
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.language == rhs.language && lhs.code == rhs.code }
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack {
+        Text(language.isEmpty ? "Code" : language).font(.caption).foregroundStyle(.secondary)
+        Spacer()
+        Button {
+          UIPasteboard.general.string = code
+          copied = true
+        } label: { Image(systemName: copied ? "checkmark" : "doc.on.doc") }
+          .accessibilityLabel(copied ? uncensiaText("已复制") : uncensiaText("复制代码"))
+      }.padding(.horizontal, 12).padding(.top, 10)
+      ScrollView(.horizontal) {
+        Text(code).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+          .fixedSize(horizontal: true, vertical: false).padding(12)
+      }
+    }.background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+      .onChange(of: code) { _, _ in copied = false }
   }
 }
 private struct MarkdownProse: View, Equatable {
-  nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.text == rhs.text }
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.text == rhs.text && lhs.streaming == rhs.streaming }
   let text: String
+  let streaming: Bool
   @Environment(TranscriptCitationIndex.self) private var index
-  init(_ text: String) { self.text = text }
+  init(_ text: String, streaming: Bool = false) { self.text = text; self.streaming = streaming }
   var body: some View {
-    let rendered = index.render(text)
+    let rendered = index.render(streaming ? MarkdownStreamingTail.prepare(text) : text)
     VStack(alignment: .leading, spacing: 5) {
       ForEach(Array(rendered.components(separatedBy: .newlines).enumerated()), id: \.offset) {
         _, line in
-        proseLine(line)
+        MarkdownProseLine(line: line).equatable()
       }
-    }.textSelection(.enabled).tint(.accentColor)
+    }.textSelection(.enabled).tint(.accentColor).lineSpacing(3)
   }
-  @ViewBuilder private func proseLine(_ line: String) -> some View {
-    if line.hasPrefix("### ") {
-      inline(String(line.dropFirst(4))).font(.headline)
-    } else if line.hasPrefix("## ") {
-      inline(String(line.dropFirst(3))).font(.title3.bold())
-    } else if line.hasPrefix("# ") {
-      inline(String(line.dropFirst(2))).font(.title2.bold())
+}
+
+private struct MarkdownProseLine: View, Equatable {
+  let line: String
+  @Environment(\.colorScheme) private var colorScheme
+  @Environment(\.displayScale) private var scale
+  @ScaledMetric(relativeTo: .body) private var fontSize: CGFloat = 17
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.line == rhs.line }
+  var body: some View {
+    if let heading = line.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
+      let level = line[..<heading.upperBound].prefix(while: { $0 == "#" }).count
+      inline(String(line[heading.upperBound...])).font(level == 1 ? .title2.bold() : level == 2 ? .title3.bold() : .headline)
     } else if line.hasPrefix("> ") {
       HStack(spacing: 9) {
-        Capsule().fill(.secondary.opacity(0.45)).frame(width: 3)
+        Rectangle().fill(.secondary.opacity(0.45)).frame(width: 3)
         inline(String(line.dropFirst(2))).foregroundStyle(.secondary)
       }.padding(.vertical, 2)
+    } else if line.trimmingCharacters(in: .whitespaces).range(of: #"^(?:-{3,}|\*{3,}|_{3,})$"#, options: .regularExpression) != nil {
+      Divider().padding(.vertical, 5)
+    } else if let match = line.range(of: #"^\s*[-*+]\s+\[[ xX]\]\s+"#, options: .regularExpression) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Image(systemName: line[..<match.upperBound].lowercased().contains("[x]") ? "checkmark.square.fill" : "square")
+          .foregroundStyle(.secondary)
+        inline(String(line[match.upperBound...]))
+      }.padding(.leading, indentation)
     } else if let match = line.range(of: #"^\s*[-*+]\s+"#, options: .regularExpression) {
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Text("•")
         inline(String(line[match.upperBound...]))
-      }.padding(.leading, 8)
+      }.padding(.leading, indentation)
     } else if let match = line.range(of: #"^\s*\d+[.)]\s+"#, options: .regularExpression) {
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Text(String(line[..<match.upperBound]).trimmingCharacters(in: .whitespaces))
           .foregroundStyle(.secondary)
         inline(String(line[match.upperBound...]))
-      }.padding(.leading, 8)
+      }.padding(.leading, indentation)
     } else if line.isEmpty {
       Color.clear.frame(height: 3)
     } else {
-      inline(line)
+      inline(line).frame(maxWidth: .infinity, alignment: .leading)
     }
   }
+  private var indentation: CGFloat { 8 + CGFloat(min(6, line.prefix(while: { $0 == " " || $0 == "\t" }).count / 2)) * 12 }
   private func inline(_ value: String) -> Text {
-    Text((try? AttributedString(markdown: value)) ?? AttributedString(value))
+    InlineMarkdownCache.text(value, fontSize: fontSize, dark: colorScheme == .dark, scale: scale)
+  }
+}
+
+@MainActor private enum InlineMarkdownCache {
+  private final class Entry: NSObject {
+    let value: AttributedString
+    init(_ value: AttributedString) { self.value = value }
+  }
+  private static let cache: NSCache<NSString, Entry> = {
+    let value = NSCache<NSString, Entry>(); value.totalCostLimit = 4 * 1024 * 1024; value.countLimit = 1500; return value
+  }()
+  static func parse(_ value: String) -> AttributedString {
+    if let cached = cache.object(forKey: value as NSString) { return cached.value }
+    let rendered = (try? AttributedString(markdown: value, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(value)
+    cache.setObject(Entry(rendered), forKey: value as NSString, cost: max(64, value.utf8.count * 3))
+    return rendered
+  }
+  static func text(_ value: String, fontSize: CGFloat, dark: Bool, scale: CGFloat) -> Text {
+    let spans = MarkdownMathSource.spans(value)
+    var source = "", substitutions: [(marker: String, latex: String, original: String)] = []
+    for span in spans {
+      switch span {
+      case .text(let text): source += text
+      case .math(let latex, let original):
+        let marker = "\u{F0000}\(substitutions.count)\u{F0001}"
+        substitutions.append((marker, latex, original)); source += marker
+      }
+    }
+    let attributed = parse(source)
+    guard !substitutions.isEmpty else { return Text(attributed) }
+    var cursor = attributed.startIndex, result = Text("")
+    for substitution in substitutions {
+      guard let range = attributed.range(of: substitution.marker) else { continue }
+      result = result + Text(AttributedString(attributed[cursor..<range.lowerBound]))
+      if attributed[range].link == nil,
+        let rendered = NativeMathCache.render(substitution.latex, display: false, fontSize: fontSize, dark: dark, scale: scale) {
+        result = result + Text(Image(uiImage: rendered.image)).baselineOffset(-rendered.descent).accessibilityLabel(substitution.latex)
+      } else {
+        var literal = AttributedString(substitution.original)
+        if let attributes = attributed[range].runs.first?.attributes { literal.setAttributes(attributes) }
+        result = result + Text(literal)
+      }
+      cursor = range.upperBound
+    }
+    return result + Text(AttributedString(attributed[cursor...]))
   }
 }
 
 @MainActor @Observable final class TranscriptCitationIndex {
+  private struct Source: Equatable { let label: String; let url: String? }
   @ObservationIgnored private var indexed: [String: JSONValue] = [:]
-  func reset() { links = [:]; indexed = [:] }
-  private var links: [String: (String, String?)] = [:]
+  @ObservationIgnored private var sourceCache: [String: [String: Source]] = [:]
+  private var scopes: [String: TranscriptCitationIndex] = [:]
+  func reset() { links = [:]; indexed = [:]; sourceCache = [:]; scopes = [:] }
+  private var links: [String: Source] = [:]
+  func scope(for messageID: String) -> TranscriptCitationIndex { scopes[messageID] ?? self }
+  /// A tool can reuse turn0search0 in a later run. Freeze each answer's sources
+  /// at its transcript position, including when older pages are prepended.
+  func replaceMessages(_ messages: [ChatMessage]) {
+    var accumulated: [String: Source] = [:]
+    var next: [String: TranscriptCitationIndex] = [:]
+    var current: TranscriptCitationIndex?
+    for message in messages {
+      accumulated.merge(sources(in: message)) { _, newer in newer }
+      if let existing = scopes[message.id], existing.links == accumulated { current = existing }
+      else if current?.links != accumulated { current = nil }
+      if current == nil { let value = TranscriptCitationIndex(); value.links = accumulated; current = value }
+      next[message.id] = current
+    }
+    if links != accumulated { links = accumulated }
+    scopes = next
+    let ids = Set(messages.map(\.id))
+    indexed = indexed.filter { ids.contains($0.key) }
+    sourceCache = sourceCache.filter { ids.contains($0.key) }
+  }
   func ingest(_ message: ChatMessage) {
-    guard message.role == "toolResult", indexed[message.id] != message.content else { return }
+    let additions = sources(in: message)
+    for (key, source) in additions where links[key] != source { links[key] = source }
+  }
+  private func sources(in message: ChatMessage) -> [String: Source] {
+    guard message.role == "toolResult" else { return [:] }
+    if indexed[message.id] == message.content { return sourceCache[message.id] ?? [:] }
     indexed[message.id] = message.content
+    var found: [String: Source] = [:]
     for block in message.text.replacingOccurrences(of: "\nFile:", with: "\n#File:").components(separatedBy: "\n#") {
       let lines = block.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
       guard let anchor = lines.first(where: { $0.lowercased().hasPrefix("anchor:") }),
@@ -350,11 +485,15 @@ private struct MarkdownProse: View, Equatable {
         let keyRange = String(anchor[match]).range(of: #"turn\d+(?:file|search|news|image|video)\d+"#, options: [.regularExpression, .caseInsensitive]) else { continue }
       let marked = String(anchor[match])
       let key = String(marked[keyRange]).lowercased()
+      let fileID = lines.first(where: { $0.hasPrefix("file_id: ") }).map { String($0.dropFirst(9)) }
       let url = lines.first(where: { $0.hasPrefix("URL: ") }).map { String($0.dropFirst(5)) }
+        ?? fileID.map { "file://\($0)" }
       let file = anchor.range(of: #"\([^)]+\)"#, options: .regularExpression).map { String(anchor[$0].dropFirst().dropLast()) }
-      let label = url.flatMap { URL(string: $0)?.host() } ?? file ?? uncensiaText("来源")
-      if links[key]?.0 != label || links[key]?.1 != url { links[key] = (label, url) }
+      let label = file ?? url.flatMap { URL(string: $0)?.host() } ?? uncensiaText("来源")
+      found[key] = Source(label: label, url: url)
     }
+    sourceCache[message.id] = found
+    return found
   }
   func render(_ text: String) -> String {
     var output = text
@@ -372,26 +511,35 @@ private struct MarkdownProse: View, Equatable {
       let key = String(output[body]).lowercased()
       let source = links[key]
       guard let source else { output.replaceSubrange(range, with: ""); continue }
-      let label = source.0.replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "")
+      let label = source.label.replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "")
       output.replaceSubrange(
-        range, with: source.1.map { uncensiaText("[来源·%@](%@)", String(describing: label), String(describing: $0)) } ?? uncensiaText("[来源·%@]", String(describing: label)))
+        range, with: source.url.map { uncensiaText("[来源·%@](%@)", String(describing: label), String(describing: $0)) } ?? uncensiaText("[来源·%@]", String(describing: label)))
     }
     return output.replacingOccurrences(
       of: #"\\ue20[0134]|[\uE200\uE201\uE203\uE204]"#, with: "", options: .regularExpression
     )
   }
 }
-private struct MarkdownTable: View {
+private struct MarkdownTable: View, Equatable {
   let rows: [[String]]
+  @Environment(TranscriptCitationIndex.self) private var index
+  @Environment(\.colorScheme) private var colorScheme
+  @Environment(\.displayScale) private var scale
+  @ScaledMetric(relativeTo: .callout) private var fontSize: CGFloat = 16
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.rows == rhs.rows }
   var body: some View {
     ScrollView(.horizontal) {
-      Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+      MarkdownTableGrid(columns: rows.first?.count ?? 0) {
         ForEach(Array(rows.enumerated()), id: \.offset) { row, cells in
-          GridRow {
-            ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
-              Text(cell).font(row == 0 ? .caption.bold() : .caption).padding(7).frame(
-                minWidth: 90, alignment: .leading
-              ).overlay { Rectangle().stroke(.secondary.opacity(0.25)) }
+          ForEach(0..<(rows.first?.count ?? 0), id: \.self) { column in
+            let cell = column < cells.count ? cells[column] : ""
+            ZStack(alignment: .leading) {
+              Rectangle().fill(row == 0 ? Color.secondary.opacity(0.10) : .clear)
+                .overlay { Rectangle().stroke(.secondary.opacity(0.20), lineWidth: 0.5) }
+              InlineMarkdownCache.text(index.render(cell), fontSize: fontSize, dark: colorScheme == .dark, scale: scale)
+                .font(row == 0 ? .callout.bold() : .callout).textSelection(.enabled)
+                .frame(minWidth: 90, maxWidth: 260, alignment: .leading).padding(10)
+                .fixedSize(horizontal: false, vertical: true)
             }
           }
         }
@@ -399,87 +547,76 @@ private struct MarkdownTable: View {
     }
   }
 }
-struct MarkdownBlock: Identifiable, Sendable {
-  enum Kind: Sendable {
-    case prose(String)
-    case code(String, String)
-    case table([[String]])
-    case image(String, String)
+
+/// Each row gets the height of its tallest cell, including typeset formulas.
+/// Measuring with an unspecified height and placing with finite cell rectangles
+/// keeps table borders continuous without introducing a flexible vertical tail.
+private struct MarkdownTableGrid: Layout {
+  let columns: Int
+  struct Cache {
+    var widths: [CGFloat]
+    var heights: [CGFloat]
   }
-  let id: Int
-  let kind: Kind
-  static func parse(_ text: String) -> [Self] {
-    var result: [Self] = []
-    var prose: [String] = []
-    let media = try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\((?:(?:image|video)://|/(?:v1/)?(?:images|videos)/)((?:img|vid)_[A-Za-z0-9_-]+)(?:\?[^)]*)?\)|\[image image_id=(img_[A-Za-z0-9_-]+)\]"#)
-    func flush() {
-      guard !prose.isEmpty else { return }
-      let value = prose.joined(separator: "\n")
-      var cursor = value.startIndex
-      // Inline code is literal, including image examples.
-      let code = try! NSRegularExpression(pattern: #"`[^`\n]+`"#)
-      let protected = code.matches(in: value, range: NSRange(value.startIndex..., in: value)).map(\.range)
-      for match in media.matches(in: value, range: NSRange(value.startIndex..., in: value)) {
-        guard !protected.contains(where: { NSIntersectionRange($0, match.range).length > 0 }),
-          let range = Range(match.range, in: value) else { continue }
-        if cursor < range.lowerBound { result.append(.init(id: result.count, kind: .prose(String(value[cursor..<range.lowerBound])))) }
-        let idRange = Range(match.range(at: match.range(at: 3).location == NSNotFound ? 2 : 3), in: value)!
-        let label = Range(match.range(at: 1), in: value).map { String(value[$0]) } ?? ""
-        result.append(.init(id: result.count, kind: .image(String(value[idRange]), label)))
-        cursor = range.upperBound
-      }
-      if cursor < value.endIndex { result.append(.init(id: result.count, kind: .prose(String(value[cursor...])))) }
-      prose = []
+  func makeCache(subviews: Subviews) -> Cache { measurements(subviews) }
+  func updateCache(_ cache: inout Cache, subviews: Subviews) { cache = measurements(subviews) }
+  private func measurements(_ subviews: Subviews) -> Cache {
+    guard columns > 0 else { return Cache(widths: [], heights: []) }
+    var widths = [CGFloat](repeating: 110, count: columns)
+    for (index, cell) in subviews.enumerated() {
+      let width = cell.sizeThatFits(.unspecified).width
+      widths[index % columns] = max(widths[index % columns], min(280, width))
     }
-    let lines = text.components(separatedBy: .newlines)
-    var i = 0
-    func cells(_ line: String) -> [String] {
-      var value = line.trimmingCharacters(in: .whitespaces)
-      if value.hasPrefix("|") { value.removeFirst() }
-      if value.hasSuffix("|") { value.removeLast() }
-      return value.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+    var heights = [CGFloat](repeating: 0, count: (subviews.count + columns - 1) / columns)
+    for (index, cell) in subviews.enumerated() {
+      let size = cell.sizeThatFits(ProposedViewSize(width: widths[index % columns], height: nil))
+      heights[index / columns] = max(heights[index / columns], size.height)
     }
-    while i < lines.count {
-      let line = lines[i]
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
-      if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
-        flush()
-        let fence = String(trimmed.prefix(3))
-        let language = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-        var code: [String] = []; i += 1
-        while i < lines.count && !lines[i].trimmingCharacters(in: .whitespaces).hasPrefix(fence) { code.append(lines[i]); i += 1 }
-        result.append(.init(id: result.count, kind: .code(language, code.joined(separator: "\n"))))
-      } else if i + 1 < lines.count, line.contains("|"), cells(lines[i + 1]).allSatisfy({ $0.range(of: #"^:?-{3,}:?$"#, options: .regularExpression) != nil }) {
-        flush(); var rows = [cells(line)]; i += 2
-        while i < lines.count && lines[i].contains("|") { rows.append(cells(lines[i])); i += 1 }
-        result.append(.init(id: result.count, kind: .table(rows))); continue
-      } else { prose.append(line) }
-      i += 1
+    return Cache(widths: widths, heights: heights)
+  }
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
+    CGSize(width: cache.widths.reduce(0, +), height: cache.heights.reduce(0, +))
+  }
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
+    guard columns > 0 else { return }
+    var x = bounds.minX, y = bounds.minY
+    for (index, cell) in subviews.enumerated() {
+      let column = index % columns, row = index / columns
+      if column == 0 { x = bounds.minX }
+      cell.place(at: CGPoint(x: x, y: y), anchor: .topLeading,
+        proposal: ProposedViewSize(width: cache.widths[column], height: cache.heights[row]))
+      x += cache.widths[column]
+      if column == columns - 1 { y += cache.heights[row] }
     }
-    flush(); return result
   }
 }
 
 private actor TranscriptImageCache {
   static let shared = TranscriptImageCache()
+  private var inFlight: [NSString: Task<UIImage, Error>] = [:]
   private let cache: NSCache<NSString, UIImage> = {
     let cache = NSCache<NSString, UIImage>(); cache.totalCostLimit = 48 * 1024 * 1024; return cache
   }()
   func image(path: String, api: APIClient) async throws -> UIImage {
     let key = "\(ObjectIdentifier(api))-\(path)" as NSString
     if let image = cache.object(forKey: key) { return image }
-    let data = try await api.download(path)
-    let image = try await Task.detached(priority: .userInitiated) {
-      guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-        let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-          kCGImageSourceCreateThumbnailFromImageAlways: true,
-          kCGImageSourceCreateThumbnailWithTransform: true,
-          kCGImageSourceShouldCacheImmediately: true,
-          kCGImageSourceThumbnailMaxPixelSize: 1280
-        ] as CFDictionary) else { throw URLError(.cannotDecodeContentData) }
-      return UIImage(cgImage: cg)
-    }.value
-    try Task.checkCancellation()
+    let request: Task<UIImage, Error>
+    if let running = inFlight[key] { request = running }
+    else {
+      request = Task.detached(priority: .userInitiated) {
+        let data = try await api.download(path)
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+          let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: 1280
+          ] as CFDictionary) else { throw URLError(.cannotDecodeContentData) }
+        return UIImage(cgImage: cg)
+      }
+      inFlight[key] = request
+    }
+    defer { inFlight[key] = nil }
+    let image = try await request.value
     cache.setObject(image, forKey: key, cost: (image.cgImage?.bytesPerRow ?? 0) * (image.cgImage?.height ?? 0))
     return image
   }
@@ -506,33 +643,41 @@ private struct AuthenticatedTranscriptImage: View {
         } else { ProgressView() }
       }
       .clipped()
-    .task(id: "\(path)-\(attempt)") {
+    .task(id: "\(api.map { String(describing: ObjectIdentifier($0)) } ?? "none")-\(path)-\(attempt)") {
+      image = nil; failed = false
       guard let api, let ui = try? await TranscriptImageCache.shared.image(path: path, api: api) else { if !Task.isCancelled { failed = true }; return }
       guard !Task.isCancelled else { return }
       image = Image(uiImage: ui)
     }
   }
 }
-private struct TranscriptPreview: Identifiable {
+struct TranscriptPreview: Identifiable {
   enum Kind: Equatable { case image, video, document, file }
   let id: String
   let name: String
   let kind: Kind
 }
-private struct TranscriptMediaViewer: View {
+struct TranscriptMediaViewer: View {
   let item: TranscriptPreview
   let api: APIClient?
   @Environment(\.dismiss) var dismiss
   @State private var url: URL?
   @State private var error: String?
+  @State private var attempt = 0
+  @State private var files = TranscriptMediaFileStore()
   var body: some View {
     NavigationStack {
       Group {
         if let url {
           TranscriptQuickLook(url: url).accessibilityIdentifier("media.preview")
         } else if let error {
-          ContentUnavailableView(
-            uncensiaText("无法打开"), image: "lucide-triangle-alert", description: Text(error))
+          ContentUnavailableView {
+            Label(uncensiaText("无法打开"), image: "lucide-triangle-alert")
+          } description: {
+            Text(error)
+          } actions: {
+            Button(uncensiaText("重试")) { attempt += 1 }.accessibilityIdentifier("media.retry")
+          }
         } else {
           ProgressView(uncensiaText("正在读取…"))
         }
@@ -545,31 +690,54 @@ private struct TranscriptMediaViewer: View {
                 TranscriptProvenance(assetID: item.id, kind: item.kind, api: api)
               } label: {
                 Image("lucide-info")
-              }
+              }.accessibilityLabel(uncensiaText("来源")).accessibilityIdentifier("media.provenance")
             }
             ShareLink(item: url) { Image("lucide-share") }
           }
         }
-      }.task {
-        guard let api else { return }
+      }
+    }
+      .task(id: "\(api.map { String(describing: ObjectIdentifier($0)) } ?? "none")-\(item.id)-\(attempt)") {
+        if let old = url { url = nil; await files.remove(old) }
+        error = nil
+        guard let api else { error = uncensiaText("无法打开"); return }
         do {
           let path =
             item.kind == .image
             ? "/images/\(item.id)"
             : item.kind == .video ? "/videos/\(item.id)" : "/files/\(item.id)/content"
           let data = try await api.download(path)
-          let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "uncensia-transcript-\(UUID().uuidString)", isDirectory: true)
-          try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-          let target = directory.appendingPathComponent((item.name as NSString).lastPathComponent)
-          try data.write(to: target, options: .atomic)
+          try Task.checkCancellation()
+          let target = try await files.write(data, name: item.name)
+          guard !Task.isCancelled else { await files.remove(target); return }
           url = target
-        } catch let caught { error = caught.localizedDescription }
+        } catch let caught { if !Task.isCancelled { error = caught.localizedDescription } }
       }.onDisappear {
-        if let url { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        // This belongs to the modal, not its first navigation destination.
+        // Opening provenance must leave the preview/share file alive.
+        if let old = url { url = nil; Task { await files.remove(old) } }
       }
-    }
   }
+}
+
+actor TranscriptMediaFileStore {
+  private let root: URL
+  init(root: URL = FileManager.default.temporaryDirectory) { self.root = root }
+  func write(_ data: Data, name: String) throws -> URL {
+    try Task.checkCancellation()
+    let directory = root.appendingPathComponent("uncensia-transcript-\(UUID().uuidString)", isDirectory: true)
+    var published = false
+    defer { if !published { try? FileManager.default.removeItem(at: directory) } }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let component = (name as NSString).lastPathComponent
+    let filename = component.isEmpty || component == "." || component == ".." ? "download" : component
+    let target = directory.appendingPathComponent(filename)
+    try data.write(to: target, options: .atomic)
+    try Task.checkCancellation()
+    published = true
+    return target
+  }
+  func remove(_ url: URL) { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
 }
 private struct TranscriptProvenance: View {
   let assetID: String
@@ -611,9 +779,13 @@ private struct TranscriptQuickLook: UIViewControllerRepresentable {
     controller.dataSource = context.coordinator
     return controller
   }
-  func updateUIViewController(_ uiViewController: QLPreviewController, context: Context) {}
+  func updateUIViewController(_ uiViewController: QLPreviewController, context: Context) {
+    guard context.coordinator.url != url else { return }
+    context.coordinator.url = url
+    uiViewController.reloadData()
+  }
   final class Coordinator: NSObject, QLPreviewControllerDataSource {
-    let url: URL
+    var url: URL
     init(_ url: URL) { self.url = url }
     func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
     func previewController(_ controller: QLPreviewController, previewItemAt index: Int)

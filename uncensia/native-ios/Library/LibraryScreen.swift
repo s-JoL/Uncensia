@@ -8,6 +8,7 @@ struct LibraryScreen: View {
   @Environment(AppModel.self) private var app
   @State private var store = LibraryWorkspace()
   @State private var importing = false
+  @State private var importingURL = false
   @State private var note: LibraryNote?
   @State private var preview: LibraryFile?
   @State private var confirmDelete: LibraryFile?
@@ -39,11 +40,12 @@ struct LibraryScreen: View {
           } label: {
             Label(uncensiaText("新建笔记"), image: "lucide-square-pen")
           }
-          Button {
-            importing = true
+          Menu {
+            Button(uncensiaText("选取文件"), systemImage: "folder") { importing = true }
+            Button(uncensiaText("从链接导入"), systemImage: "link") { importingURL = true }
           } label: {
             Label(uncensiaText("上传"), image: "lucide-share")
-          }
+          }.accessibilityIdentifier("library.import")
           Menu {
             Picker(uncensiaText("布局"), selection: $layout) {
               Label(uncensiaText("卡片"), image: "lucide-grid-2x2").tag(LibraryLayout.cards)
@@ -67,6 +69,9 @@ struct LibraryScreen: View {
       }
       .sheet(item: $note) { value in
         NoteEditor(note: value) { edited in await store.save(edited, api: app.api) }
+      }
+      .sheet(isPresented: $importingURL) {
+        ResourceImportSheet(api: app.api) { _ in await store.load(api: app.api, reset: true) }
       }
       .sheet(item: $preview) { file in LibraryPreview(file: file, api: app.api) }
       .alert(
@@ -162,7 +167,7 @@ struct LibraryScreen: View {
       } label: {
         LibraryThumbnail(file: file, api: app.api).frame(height: 120).frame(maxWidth: .infinity)
           .background(.quaternary).clipShape(RoundedRectangle(cornerRadius: 11))
-      }
+      }.accessibilityIdentifier("library.open.\(file.id)")
       Text(file.name).font(.headline).lineLimit(1)
       Text("\(file.byteLabel) · \(file.source)").font(.caption).foregroundStyle(.secondary)
         .lineLimit(1)
@@ -198,7 +203,7 @@ struct LibraryScreen: View {
       if file.isImage { Button(uncensiaText("编辑这张图片")) { attach(file, role: "base") } }
     } label: {
       Image("lucide-message-square-plus")
-    }
+    }.accessibilityIdentifier("library.attach.\(file.id)")
   }
 
   private func actions(_ file: LibraryFile) -> some View {
@@ -216,9 +221,7 @@ struct LibraryScreen: View {
 
   private func open(_ file: LibraryFile) { preview = file }
   private func attach(_ file: LibraryFile, role: String) {
-    app.pendingAttachments.append(.object(["file": file.raw, "role": .string(role)]))
-    app.selectedConversationID = nil
-    app.selectedTab = "chat"
+    app.startNewChat(attachments: [.object(["file": file.raw, "role": .string(role)])])
   }
 }
 
@@ -276,25 +279,38 @@ private struct LibrarySource {
   var searchMode = "hybrid"
   var sources: [LibrarySource] = []
   private let pageSize = 60
+  private var loadRevision = UUID()
+  private var searchRevision = UUID()
   func load(api: APIClient?, reset: Bool) async {
     guard let api else {
       failure = uncensiaText("请先连接服务器。")
       return
     }
+    // A newer filter owns the list immediately, even if an older response is
+    // still in flight. Repeated pagination taps share the one active request.
+    guard reset || !loading else { return }
+    let request = UUID()
+    loadRevision = request
+    let requestedKind = kind, requestedSource = source, requestedName = nameQuery
+    func ownsRequest() -> Bool {
+      loadRevision == request && kind == requestedKind && source == requestedSource && nameQuery == requestedName
+    }
     loading = true
-    defer { loading = false }
+    defer { if loadRevision == request { loading = false } }
     let offset = reset ? 0 : files.count
     var components = URLComponents()
     components.queryItems = [
-      URLQueryItem(name: "kind", value: kind), URLQueryItem(name: "source", value: source),
-      URLQueryItem(name: "q", value: nameQuery),
+      URLQueryItem(name: "kind", value: requestedKind), URLQueryItem(name: "source", value: requestedSource),
+      URLQueryItem(name: "q", value: requestedName),
       URLQueryItem(name: "limit", value: String(pageSize)),
       URLQueryItem(name: "offset", value: String(offset)),
     ]
     do {
       let response = try await api.request("GET", "/files?\(components.percentEncodedQuery ?? "")")
+      guard !Task.isCancelled, ownsRequest() else { return }
       let page = response["items"].arrayValue?.map(LibraryFile.init) ?? []
-      files = reset ? page : files + page
+      let existing = Set(files.map(\.id))
+      files = reset ? page : files + page.filter { !existing.contains($0.id) }
       total = Int(response["total"].doubleValue ?? 0)
       sources =
         response["facets"]["sources"].arrayValue?.compactMap { value in
@@ -302,10 +318,18 @@ private struct LibrarySource {
           return LibrarySource(id: id, count: Int(value["count"].doubleValue ?? 0))
         } ?? []
       failure = nil
-    } catch { failure = error.localizedDescription }
+    } catch {
+      if !Task.isCancelled, ownsRequest() { failure = error.localizedDescription }
+    }
   }
   func search(api: APIClient?) async {
-    guard let api, !contentQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    let request = UUID()
+    searchRevision = request
+    let requestedQuery = contentQuery, requestedMode = searchMode
+    func ownsRequest() -> Bool {
+      searchRevision == request && contentQuery == requestedQuery && searchMode == requestedMode
+    }
+    guard let api, !requestedQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       hits = []
       return
     }
@@ -313,11 +337,14 @@ private struct LibrarySource {
       let value = try await api.request(
         "POST", "/files/search",
         body: .object([
-          "query": .string(contentQuery), "mode": .string(searchMode), "limit": .number(20),
+          "query": .string(requestedQuery), "mode": .string(requestedMode), "limit": .number(20),
         ]))
+      guard !Task.isCancelled, ownsRequest() else { return }
       hits = value["results"].arrayValue?.map(LibraryHit.init) ?? []
       failure = nil
-    } catch { failure = error.localizedDescription }
+    } catch {
+      if !Task.isCancelled, ownsRequest() { failure = error.localizedDescription }
+    }
   }
   func importFiles(_ result: Result<[URL], Error>, api: APIClient?) async {
     guard let api else {
@@ -326,9 +353,12 @@ private struct LibrarySource {
     }
     do {
       for url in try result.get() {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        let data = try Data(contentsOf: url)
+        let data = try await Task.detached(priority: .userInitiated) {
+          let scoped = url.startAccessingSecurityScopedResource()
+          defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+          return try Data(contentsOf: url, options: .mappedIfSafe)
+        }.value
+        try Task.checkCancellation()
         _ = try await api.upload(
           data: data, filename: url.lastPathComponent,
           mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
@@ -450,6 +480,7 @@ private struct LibraryPreview: View {
   @Environment(\.dismiss) var dismiss
   @State private var localURL: URL?
   @State private var failure: String?
+  @State private var showReader = false
   var body: some View {
     NavigationStack {
       Group {
@@ -463,11 +494,18 @@ private struct LibraryPreview: View {
         }
       }.navigationTitle(file.name).navigationBarTitleDisplayMode(.inline).toolbar {
         ToolbarItem(placement: .cancellationAction) { Button(uncensiaText("完成")) { dismiss() } }
+        ToolbarItem(placement: .primaryAction) {
+          Button { showReader = true } label: { Image(systemName: "text.book.closed") }
+            .accessibilityLabel(uncensiaText("来源与正文"))
+            .accessibilityIdentifier("library.resourceReader")
+        }
         if let localURL {
           ToolbarItem(placement: .primaryAction) {
             ShareLink(item: localURL) { Image("lucide-share") }
           }
         }
+      }.sheet(isPresented: $showReader) {
+        ResourceReaderSheet(fileID: file.id, title: file.name, media: file.visual, api: api)
       }.task {
         guard let api else {
           failure = uncensiaText("请先连接服务器。")

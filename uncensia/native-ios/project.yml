@@ -8,6 +8,10 @@ settings:
     SWIFT_VERSION: "6.0"
     PRODUCT_BUNDLE_IDENTIFIER: app.uncensia.native
     CODE_SIGN_STYLE: Automatic
+packages:
+  SwiftMath:
+    url: https://github.com/mgriebling/SwiftMath.git
+    exactVersion: 1.7.3
 targets:
   Uncensia:
     type: application
@@ -20,15 +24,24 @@ targets:
       - Studio
       - Settings
       - Resources
+    dependencies:
+      - package: SwiftMath
     info:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Uncensia
+        CFBundleShortVersionString: "1.0.1"
+        CFBundleVersion: "2"
         UILaunchScreen: {}
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
     settings:
