@@ -5,6 +5,7 @@ import type { FileFacets, FileKind, FileRecord } from "@shared/types.ts";
 import { FILE_SOURCE_LABELS } from "@shared/types.ts";
 import { api, type FileHit } from "../api.ts";
 import { handToChat } from "../chat-draft.ts";
+import { ResourceReader } from "../resource-view.tsx";
 import {
   Badge,
   Button,
@@ -45,10 +46,10 @@ const STATUS: Record<string, { text: string; tone: "success" | "warning" | "dang
 
 const EMPTY_FACETS: FileFacets = { kinds: { all: 0, docs: 0, images: 0, videos: 0 }, sources: [] };
 
-const sourceLabel = (id: string) => FILE_SOURCE_LABELS[id] ?? id;
+const sourceLabel = (id: string) => uiText(FILE_SOURCE_LABELS[id] ?? id);
 
 /** Text documents are the only ones that can be opened in the built-in editor. */
-const isEditable = (file: FileRecord) => file.mime.startsWith("text/") || file.mime === "application/json";
+const isEditable = (file: FileRecord) => file.source !== "excerpt" && (file.mime.startsWith("text/") || file.mime === "application/json");
 
 function Chip({ on, count, children, onClick }: { on: boolean; count?: number; children: React.ReactNode; onClick: () => void }) {
   return (
@@ -83,6 +84,9 @@ export function Files({ onOpenRail, navigation }: { onOpenRail: () => void; navi
   const [zoom, setZoom] = useState("");
   /** The clip being watched. Separate from `zoom`, which is a still in a lightbox. */
   const [playing, setPlaying] = useState("");
+  const [importUrl, setImportUrl] = useState<string | null>(null);
+  const [importError, setImportError] = useState("");
+  const [reading, setReading] = useState<FileRecord | null>(null);
 
   const filter = useMemo(() => ({ kind, source, q: needle.trim() }), [kind, source, needle]);
   const currentFilter = useRef(filter);
@@ -152,6 +156,7 @@ export function Files({ onOpenRail, navigation }: { onOpenRail: () => void; navi
   return (
     <>
       <PageHeader title={uiText("资料库")} onOpenRail={onOpenRail}>
+        <Button size="sm" onClick={() => { setImportError(""); setImportUrl(""); }}>{uiText("从链接导入")}</Button>
         {busy ? <Spinner className="text-muted-foreground" /> : null}
         <Button size="sm" onClick={() => setEditing({ id: "", name: "", text: "" })}>
           {uiText("新建文档")}</Button>
@@ -169,6 +174,21 @@ export function Files({ onOpenRail, navigation }: { onOpenRail: () => void; navi
           />
         </label>
       </PageHeader>
+      <Modal open={importUrl !== null} onOpenChange={open => !open && setImportUrl(null)} title={uiText("从链接导入")}>
+        <div className="flex flex-col gap-3">
+          <Input value={importUrl ?? ""} onChange={e => setImportUrl(e.target.value)} placeholder="https://…" aria-label="URL" />
+          {importError ? <p role="alert" className="break-words text-sm text-destructive">{importError}</p> : null}
+          <Button disabled={busy || !importUrl?.trim()} onClick={() => void act(async () => {
+            setBusy(true); setImportError("");
+            try { const result = await api.acquireResource(importUrl!); await refresh(); setImportUrl(null); if (result.index_error) toast(result.index_error, true); }
+            catch (error) { setImportError(String(error)); }
+            finally { setBusy(false); }
+          })}>{busy ? uiText("正在获取并索引…") : uiText("导入")}</Button>
+        </div>
+      </Modal>
+      <Modal open={reading !== null} onOpenChange={open => !open && setReading(null)} title={reading?.name ?? ""}>
+        {reading ? <ResourceReader key={reading.id} id={reading.id} media={reading.mime.startsWith("image/") || reading.mime.startsWith("video/")} /> : null}
+      </Modal>
       {navigation ? <div className="shrink-0 border-b px-4 py-2">{navigation}</div> : null}
 
       <div
@@ -279,8 +299,7 @@ export function Files({ onOpenRail, navigation }: { onOpenRail: () => void; navi
                 <button className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden bg-muted/50" aria-label={uiText("预览 {0}", [file.name])} onClick={async () => {
                   if (file.mime.startsWith("image/")) setZoom(`/v1/images/${file.id}`);
                   else if (file.mime.startsWith("video/")) setPlaying(file.id);
-                  else if (isEditable(file)) { try { setEditing(await api.fileText(file.id)); } catch (error) { toast(String(error), true); } }
-                  else window.open(`/v1/files/${file.id}/content`, "_blank", "noopener");
+                  else setReading(file);
                 }}>
                   {file.mime.startsWith("image/") ? <img src={`/v1/images/${file.id}?w=320`} alt="" loading="lazy" className="size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" /> : file.mime.startsWith("video/") ? <Play className="size-9 text-muted-foreground/60" /> : <FileText className="size-9 text-muted-foreground/60" />}
                 </button>
@@ -290,6 +309,8 @@ export function Files({ onOpenRail, navigation }: { onOpenRail: () => void; navi
                   <div className="mt-3 flex items-center justify-between">
                     {!file.mime.startsWith("video/") ? <Button size="sm" variant="ghost" className="h-8 rounded-full px-2 text-xs" onClick={() => handToChat(file)}><Plus />{uiText("加入对话")}</Button> : <span />}
                     <Menu trigger={<Button size="icon-sm" variant="ghost" aria-label={uiText("{0} 的操作", [file.name])}><MoreHorizontal /></Button>}>
+                      <MenuItem onSelect={() => setReading(file)}>{uiText("查看原文与来源")}</MenuItem>
+                      {isEditable(file) ? <MenuItem onSelect={() => void act(async () => { setEditing(await api.fileText(file.id)); })}>{uiText("编辑 {0}", [file.name])}</MenuItem> : null}
                       {file.mime.startsWith("image/") ? <MenuItem onSelect={() => handToChat(file,"base")}>{uiText("修改这张图片")}</MenuItem> : null}
                       <MenuItem onSelect={() => window.open(`/v1/files/${file.id}/content`, "_blank", "noopener")}>{uiText("下载原文件")}</MenuItem>
                       <MenuItem danger onSelect={() => void act(() => api.deleteFile(file.id)).then(() => refresh())}>{uiText("删除")}</MenuItem>
@@ -360,6 +381,7 @@ export function Files({ onOpenRail, navigation }: { onOpenRail: () => void; navi
                         {isVideo ? <Play /> : <Eye />}
                       </Button>
                     ) : null}
+                    <Button variant="ghost" size="icon-sm" aria-label={uiText("查看原文与来源")} onClick={() => setReading(file)}><FileText /></Button>
                     {isEditable(file) ? (
                       <Button
                         variant="ghost"

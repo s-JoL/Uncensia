@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { parse, type DefaultTreeAdapterMap } from "parse5";
+import { epubChapters } from "./epub.ts";
 
 export interface ExtractedPage {
   page: number | null;
@@ -49,6 +50,10 @@ function decodeText(bytes: Buffer) {
 
 /** Splits a document into page-tagged text. Non-paginated formats yield one page with `page: null`. */
 export async function extract(diskPath: string, name: string, mime: string): Promise<Extraction> {
+  if (mime === "application/epub+zip" || extensionOf(name) === "epub") {
+    const chapters = await epubChapters(diskPath);
+    return { pages: chapters.map((html, index) => ({ page: index + 1, text: normalize(htmlText(html)) })), pageCount: chapters.length };
+  }
   if (mime === "application/pdf" || extensionOf(name) === "pdf") return extractPdf(diskPath);
   if (mime === DOCX || extensionOf(name) === "docx") return extractDocx(diskPath);
   const decoded = decodeText(await fs.readFile(diskPath));
@@ -63,10 +68,13 @@ function htmlText(source: string) {
   const visit = (node: DefaultTreeAdapterMap["node"]) => {
     if ("tagName" in node && (["script", "style", "template"].includes(node.tagName) || node.attrs.some(attr => attr.name === "hidden"))) return;
     if (node.nodeName === "#text" && "value" in node) blocks.push(node.value);
+    const boundary = "tagName" in node && /^(p|div|h[1-6]|li|section|article|blockquote|br|tr)$/.test(node.tagName);
+    if (boundary) blocks.push("\n\n");
     if ("childNodes" in node) for (const child of node.childNodes) visit(child);
+    if (boundary) blocks.push("\n\n");
   };
   visit(parse(source));
-  return blocks.join(" ");
+  return blocks.join("").replace(/[\t ]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n");
 }
 
 async function extractPdf(diskPath: string): Promise<Extraction> {

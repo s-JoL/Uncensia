@@ -276,6 +276,8 @@ export interface FilesCapability {
 }
 
 export interface WebCapability {
+  /** Optional explicit DNS-over-HTTPS JSON endpoint for downloads behind fake-IP DNS. */
+  downloadDnsUrl?: string;
   enabled: boolean;
   /**
    * Names the adapter in the search registry (`tools/web-search.ts`). A plain
@@ -319,6 +321,8 @@ export interface Capabilities {
   files: FilesCapability;
   web: WebCapability;
   coding: CodingCapability;
+  /** Optional only for pre-split clients/configurations; Config normalizes it. */
+  learning?: { skills: boolean; prompts: boolean };
   embedding: EmbeddingCapability;
   studio: StudioCapability;
 }
@@ -612,6 +616,8 @@ export type FileKind = "all" | "docs" | "images" | "videos";
  * clients label the ones they know and fall back to the raw value.
  */
 export const FILE_SOURCE_LABELS: Record<string, string> = {
+  web: "网页原件",
+  excerpt: "原文摘录",
   workspace: "工作成果",
   upload: "上传",
   generated: "生成",

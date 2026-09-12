@@ -458,6 +458,18 @@ function sameShape(a: Part, b: Part) {
  * Builds the anchor → source map by re-reading tool output, so citations keep
  * resolving after a reload without persisting a second copy of the sources.
  */
+/** A later legacy anchor must not retarget an earlier answer. */
+export function collectCitationsByTurn(turns: Turn[]) {
+  const result = new Map<Turn, Map<string, Citation>>();
+  let accumulated = new Map<string, Citation>();
+  for (const turn of turns) {
+    const additions = collectCitations([turn]);
+    if (additions.size) accumulated = new Map([...accumulated, ...additions]);
+    result.set(turn, accumulated);
+  }
+  return result;
+}
+
 export function collectCitations(turns: Turn[]): Map<string, Citation> {
   const citations = new Map<string, Citation>();
   for (const turn of turns) {
@@ -467,7 +479,8 @@ export function collectCitations(turns: Turn[]): Map<string, Citation> {
         const anchor = block.match(/Anchor:\s*((?:\\ue202|\ue202)turn\d+(?:file|search|news|image|video)\d+)/i);
         if (!anchor?.[1]) continue;
         const file = block.match(/Anchor:\s*(?:\\ue202|\ue202)turn\d+file\d+\s*\(([^)]+)\)/i);
-        const url = block.match(/^URL:\s*(\S+)$/m)?.[1];
+        const fileId = block.match(/^file_id:\s*(file_[0-9a-f]{32})$/m)?.[1];
+        const url = block.match(/^URL:\s*(\S+)$/m)?.[1] ?? (fileId ? `/v1/files/${fileId}/content?download=1` : undefined);
         const title = block.match(/^#\s*(?:Search|News)\s*\d+:\s*"?([^"\n]*)"?/m)?.[1];
         citations.set(citationKey(anchor[1]), {
           label: file?.[1] ?? (url ? hostOf(url) : (title ?? "source")),

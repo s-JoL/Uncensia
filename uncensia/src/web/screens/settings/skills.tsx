@@ -30,7 +30,7 @@ export function SkillsSection() {
         <p className="font-medium">{uiText("助手改进记录")}</p>
         <p className="text-xs text-muted-foreground">{uiText("最近 50 次修改尝试，保留原因和修改前内容。可将旧内容复制回编辑器，或让助手恢复；是否生效以实际工具结果为准。")}</p>
         <Button size="sm" variant="outline" onClick={() => void act(refresh)}>{uiText("刷新记录")}</Button>
-        {!history.length ? <p className="text-sm text-muted-foreground">{uiText("尚无记录。开启设置中的「允许助手改自己」后，可以让助手把已验证的经验整理成技能。")}</p> : null}
+        {!history.length ? <p className="text-sm text-muted-foreground">{uiText("尚无记录。在工具与权限中允许修改技能后，可以让助手把已验证的经验整理成技能。")}</p> : null}
         {history.map(change => <details key={change.id} className="rounded-lg border p-3">
           <summary className="cursor-pointer break-words text-sm">{new Date(change.at).toLocaleString(language())} · {change.kind === "prompt" ? uiText("提示词") : uiText("技能")} · {change.reason}</summary>
           <p className="break-all text-xs text-muted-foreground">{change.target}</p>

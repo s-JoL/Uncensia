@@ -25,6 +25,7 @@ import type { Retrieval } from "../rag/retrieval.ts";
 import type { Store } from "../store/store.ts";
 import { codingTools } from "../tools/coding.ts";
 import { workspaceFileTools } from "../tools/workspace-files.ts";
+import { resourceTools } from "../tools/resources.ts";
 import { fileSearchTool } from "../tools/file-search.ts";
 import { generationTools, uploadedImageContext } from "../tools/generation.ts";
 import { generationStatusTool } from "../tools/generation-status.ts";
@@ -339,6 +340,7 @@ export class Runtime {
       );
     }
     tools.push(...codingTools(capabilities.coding));
+    tools.push(...resourceTools(this.config, this.store, conversationId, file => this.retrieval.indexFile(file)));
     tools.push(...learningTools(this.config, this.store, conversationId,
       capabilities.files.searchEnabled ? file => this.retrieval.indexFile(file) : undefined));
     if (capabilities.files.enabled) tools.push(...workspaceFileTools(this.store, capabilities.coding, conversationId,
@@ -422,6 +424,7 @@ export class Runtime {
               return (inSkill ? known : contextual).execute(id, { ...args as object, path: file }, signal, update);
             } };
           }
+          this.emit(runId, conversationId, "context.captured", { modelId: spec.id, modelInput: spec.input, tools: assembled.map(tool => tool.name), taskId: input.taskId ?? null });
           return assembled.map(tool => ({ ...tool, parameters: stringifyToolEnums(tool.parameters) }));
         },
         persist: (message) => {

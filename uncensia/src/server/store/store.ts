@@ -532,7 +532,7 @@ export class Store {
           (row.message as { role?: string } | null)?.role ?? "unknown",
           JSON.stringify(row.message),
           row.entryId,
-          now,
+          typeof (row.message as { timestamp?: unknown })?.timestamp === "number" ? (row.message as { timestamp: number }).timestamp : now,
         );
       });
     });
@@ -1012,11 +1012,12 @@ export class Store {
     height?: number | null;
     /** Adopted and migrated files keep the time they were actually produced. */
     createdAt?: number;
+    deduplicate?: boolean;
   }) {
     // Two identical documents are one document. Two identical assets are not:
     // an id is the handle for a provenance row, a sidecar and a thumbnail cache,
     // so collapsing them would save one file and dangle three references.
-    if (!input.mime.startsWith("image/") && !input.mime.startsWith("video/")) {
+    if (input.deduplicate !== false && !input.mime.startsWith("image/") && !input.mime.startsWith("video/")) {
       const existing = this.documentBySha256(input.sha256);
       if (existing) return existing;
     }
@@ -1043,7 +1044,7 @@ export class Store {
   /** The oldest document holding exactly these bytes, if the library has one. */
   documentBySha256(sha256: string) {
     const row = this.db.get<{ id: string }>(
-      `SELECT f.id AS id FROM files f WHERE f.sha256 = ? AND NOT ${VISUAL}
+      `SELECT f.id AS id FROM files f WHERE f.sha256 = ? AND f.source <> 'excerpt' AND NOT ${VISUAL}
         ORDER BY f.created_at, f.id LIMIT 1`,
       sha256,
     );
@@ -1687,15 +1688,16 @@ export class Store {
     const value = meta as Record<string, unknown> | null;
     const imageId = typeof value?.image_id === "string" ? value.image_id.toLowerCase() : "";
     if (!/^img_[0-9a-f]{32}$/.test(imageId)) return undefined;
-    const parents = Array.isArray(value?.parent_image_ids) ? value.parent_image_ids.map(String) : [];
+    const existing = this.getImageAsset(imageId);
+    const parents = Array.isArray(value?.parent_image_ids) ? value.parent_image_ids.map(String) : existing?.parentImageIds ?? [];
     this.db.run(
       `INSERT INTO image_assets(image_id, mime, width, height, provider, model, parent_image_ids, created_at)
        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(image_id) DO UPDATE SET
-         mime = excluded.mime, width = excluded.width, height = excluded.height,
-         provider = excluded.provider, model = excluded.model, parent_image_ids = excluded.parent_image_ids`,
+         mime = excluded.mime, width = COALESCE(excluded.width, image_assets.width), height = COALESCE(excluded.height, image_assets.height),
+         provider = COALESCE(excluded.provider, image_assets.provider), model = COALESCE(excluded.model, image_assets.model), parent_image_ids = excluded.parent_image_ids`,
       imageId,
-      String(value?.mime_type ?? "image/png"),
+      String(value?.mime_type ?? existing?.mime ?? "image/png"),
       value?.width == null ? null : Number(value.width),
       value?.height == null ? null : Number(value.height),
       value?.provider == null ? null : String(value.provider),

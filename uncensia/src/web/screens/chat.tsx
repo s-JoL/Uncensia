@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TaskPanel } from "../ui/task-panel.tsx";
+import { ConversationEvidence } from "../resource-view.tsx";
 import type {
   Approval,
   BackgroundTask,
@@ -49,6 +50,7 @@ import {
   attachmentIdsOf,
   buildTurns,
   collectCitations,
+  collectCitationsByTurn,
   LiveTurn,
   toolCallIds,
   turnText,
@@ -413,7 +415,8 @@ export function Chat({
    * referentially stable through a stream, which is what stops every settled
    * turn in the transcript from re-parsing its Markdown on each delta.
    */
-  const settledCitations = useMemo(() => collectCitations(turns), [turns]);
+  const citationsByTurn = useMemo(() => collectCitationsByTurn(turns), [turns]);
+  const settledCitations = useMemo(() => citationsByTurn.get(turns.at(-1)!) ?? new Map<string, Citation>(), [citationsByTurn, turns]);
   const liveRef = useRef<Turn | null>(null);
   liveRef.current = live;
   const liveToolState = live
@@ -596,7 +599,7 @@ export function Chat({
     ...listedModels.map((model) => ({
       value: model.id,
       label: model.name,
-      hint: model.providerId,
+      hint: `${model.providerId} · ${model.input.includes("image") ? uiText("可看图") : uiText("仅文字")}`,
     })),
   ];
 
@@ -743,7 +746,8 @@ export function Chat({
               <TurnView
                 key={`${turn.id}-${index}`}
                 turn={turn}
-                citations={citations}
+                citations={turn === live ? citations : citationsByTurn.get(turn) ?? settledCitations}
+                onFeedback={conversationId && turn.role === "assistant" ? async text => { await api.saveFeedback(conversationId, turn.seq, text); } : undefined}
                 streaming={running && turn === live}
                 onImageClick={setZoom}
                 editing={turn.role === "user" && turn.seq === editingSeq}
@@ -938,6 +942,7 @@ export function Chat({
           setBackgroundTasks(current => [task, ...current]);
           if (!conversationId) onConversationCreated(task.conversationId);
         }} />
+        {conversationId ? <ConversationEvidence id={conversationId} /> : null}
       </Modal>
 
       <Modal open={picking} onOpenChange={setPicking} title={uiText("本次对话")} description={uiText("直接说出需求即可开始。这里的资料可选，只用于这段对话。")} footer={
@@ -1119,6 +1124,7 @@ const TurnView = memo(function TurnView({
   onSubmitEdit,
   onRegenerate,
   onContinue,
+  onFeedback,
 }: {
   turn: Turn;
   citations: Map<string, Citation>;
@@ -1130,7 +1136,11 @@ const TurnView = memo(function TurnView({
   onSubmitEdit: (text: string) => void;
   onRegenerate?: () => void;
   onContinue?: () => void;
+  onFeedback?: (text: string) => Promise<void>;
 }) {
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedbackError, setFeedbackError] = useState("");
+  const [feedbackSaved, setFeedbackSaved] = useState(false);
   if (turn.role === "user") {
     const images = turn.parts.filter((part) => part.kind === "image");
     const documents = turn.parts.filter((part) => part.kind === "file");
@@ -1216,7 +1226,7 @@ const TurnView = memo(function TurnView({
               aria-label={uiText("打开生成的图片")}
               onClick={() => onImageClick(`/v1/images/${part.imageId}`)}
             ><img
-              className="max-h-150 w-fit max-w-full rounded-lg border"
+              className="max-h-150 h-auto w-auto max-w-full object-contain rounded-lg border"
               src={`/v1/images/${part.imageId}?w=1280`}
               alt=""
               loading="lazy"
@@ -1261,8 +1271,9 @@ const TurnView = memo(function TurnView({
         </p>
       ) : null}
 
-      {onRegenerate || onContinue ? (
-        <div className="flex items-center gap-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      {onRegenerate || onContinue || onFeedback ? (
+        <div className="flex flex-wrap items-center gap-1 text-muted-foreground">
+          {onFeedback ? <Button variant="ghost" size="sm" onClick={() => setFeedback("")}>{feedbackSaved ? uiText("反馈已保存") : uiText("反馈")}</Button> : null}
           {onRegenerate ? (
             <Button variant="ghost" size="sm" onClick={onRegenerate}>
               <RefreshCw />
@@ -1275,6 +1286,11 @@ const TurnView = memo(function TurnView({
           <CopyButton text={turnText(turn)} />
         </div>
       ) : null}
+      {feedback !== null && onFeedback ? <div className="flex flex-col gap-2 rounded-lg border p-3">
+        <Textarea aria-label={uiText("反馈")} value={feedback} onChange={e => setFeedback(e.target.value)} maxLength={4000} />
+        {feedbackError ? <p role="alert">{feedbackError}</p> : null}
+        <div className="flex gap-2"><Button size="sm" disabled={!feedback.trim()} onClick={() => void onFeedback(feedback).then(() => { setFeedback(null); setFeedbackSaved(true); }).catch(e => setFeedbackError(String(e)))}>{uiText("保存")}</Button><Button size="sm" variant="ghost" onClick={() => setFeedback(null)}>{uiText("取消")}</Button></div>
+      </div> : null}
     </div>
   );
 });

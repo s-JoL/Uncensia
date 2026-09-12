@@ -11,6 +11,7 @@ import { ingestFile, mimeForName } from "../../library.ts";
 import type { Services } from "../../services.ts";
 import { readJson } from "../body.ts";
 import { fail, failFromError } from "../errors.ts";
+import { acquireResource, getQuote, readResource, saveFeedback } from "../../resources.ts";
 
 /** `diskPath` and `sha256` are server-side bookkeeping; clients get neither. */
 function publicFile<T extends object>(file: T): Omit<T, "diskPath" | "sha256"> {
@@ -21,6 +22,44 @@ function publicFile<T extends object>(file: T): Omit<T, "diskPath" | "sha256"> {
 export function fileRoutes(services: Services) {
   const app = new Hono();
   const { store, config, retrieval } = services;
+  app.get("/resources/conversations/:id/evidence", context => {
+    const id = context.req.param("id");
+    return context.json({
+      deliverables: store.db.all<{ data: string }>("SELECT data FROM deliverables WHERE conversation_id=? ORDER BY updated_at,key", id).map(row => JSON.parse(row.data)),
+      feedback: store.db.all("SELECT entry_id,text,created_at FROM message_feedback WHERE conversation_id=? ORDER BY created_at DESC LIMIT 50", id),
+      contexts: store.db.all<{ data: string; run_id: string }>("SELECT data,run_id FROM events WHERE conversation_id=? AND type='context.captured' ORDER BY seq DESC LIMIT 10", id).map(row => ({ runId: row.run_id, ...JSON.parse(row.data) })),
+    });
+  });
+
+  app.post("/resources/acquire", async context => {
+    if (!config.capabilities().files.enabled || !config.capabilities().web.enabled) return fail(context, 403, "disabled", "Library and web access must be enabled");
+    try {
+      const body = await readJson<{ url: string; name?: string }>(context);
+      if (typeof body.url !== "string" || (body.name !== undefined && typeof body.name !== "string")) return fail(context, 400, "invalid", "Expected a URL and optional filename");
+      return context.json(await acquireResource(store, { url: body.url, name: body.name }, config.capabilities().files.searchEnabled ? file => retrieval.indexFile(file) : undefined, context.req.raw.signal, config.capabilities().web.downloadDnsUrl, () => { if (!config.capabilities().files.enabled || !config.capabilities().web.enabled) throw new Error("Library or web access was disabled during download"); }));
+    } catch (error) { return fail(context, 400, "resource_failed", String(error)); }
+  });
+  app.get("/resources/quotes/:id", context => {
+    const quote = getQuote(store, context.req.param("id"));
+    return quote ? context.json(quote) : fail(context, 404, "not_found", "Excerpt not found");
+  });
+  app.get("/resources/files/:id", async context => {
+    try {
+      const id = context.req.param("id");
+      const range = { file_id: id, start_line: Number(context.req.query("start") ?? 1), end_line: context.req.query("end") ? Number(context.req.query("end")) : undefined, encoding: context.req.query("encoding") };
+      return context.json(await readResource(store, "", range));
+    } catch (error) { return fail(context, 400, "resource_failed", String(error)); }
+  });
+  app.get("/resources/sources/:id", context => context.json(store.db.all<{ data: string }>("SELECT data FROM resource_sources WHERE file_id=? ORDER BY created_at DESC", context.req.param("id")).map(row => JSON.parse(row.data))));
+  app.post("/resources/feedback", async context => {
+    try {
+      const body = await readJson<{ conversationId: string; seq: number; text: string }>(context);
+      if (typeof body.conversationId !== "string" || typeof body.seq !== "number" || !Number.isSafeInteger(body.seq) || typeof body.text !== "string") return fail(context, 400, "invalid", "Invalid feedback");
+      const entryId = store.messageEntryId(body.conversationId, body.seq);
+      if (!entryId) return fail(context, 404, "not_found", "Message not found");
+      return context.json(saveFeedback(store, body.conversationId, entryId, body.text));
+    } catch (error) { return fail(context, 400, "invalid", String(error)); }
+  });
 
   app.get("/files", (context) => {
     const query = context.req.query();
@@ -58,6 +97,7 @@ export function fileRoutes(services: Services) {
 
   app.put("/files/:id/text", async (context) => {
     const file = store.getFile(context.req.param("id"));
+    if (file && store.db.get("SELECT 1 FROM resource_quotes WHERE file_id=?", file.id)) return fail(context, 409, "immutable", "Quoted snapshots are immutable; create a new document to edit this text");
     if (!file) return fail(context, 404, "not_found", "File not found");
     if (!isTextual(file.mime)) return fail(context, 400, "invalid", "This file is not editable text");
     const body = await readJson<{ name: string; text: string }>(context);
@@ -237,6 +277,7 @@ export function fileRoutes(services: Services) {
     if (!asset && !video && !file) return fail(context, 404, "not_found", "Asset not found");
 
     const job = store.jobForAsset(assetId);
+    const produced = job?.assets.find(item => item.assetId === assetId);
     const model = job ? store.getModel(job.modelId) : undefined;
     const record: Provenance = {
       assetId,
@@ -245,9 +286,9 @@ export function fileRoutes(services: Services) {
       width: asset?.width ?? video?.width ?? file?.width ?? null,
       height: asset?.height ?? video?.height ?? file?.height ?? null,
       durationMs: video?.durationMs ?? null,
-      provider: asset?.provider ?? video?.provider ?? file?.source ?? null,
-      model: asset?.model ?? video?.model ?? null,
-      parents: asset?.parentImageIds ?? video?.parentImageIds ?? [],
+      provider: asset?.provider ?? video?.provider ?? produced?.provider ?? file?.source ?? null,
+      model: asset?.model ?? video?.model ?? produced?.model ?? null,
+      parents: asset?.parentImageIds.length ? asset.parentImageIds : video?.parentImageIds.length ? video.parentImageIds : job?.sources ?? [],
       createdAt: asset?.createdAt ?? video?.createdAt ?? file?.createdAt ?? 0,
       job: job
         ? {

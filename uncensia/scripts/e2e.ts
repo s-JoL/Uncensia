@@ -26,7 +26,7 @@ import { startOpenAiStub, type OpenAiStub } from "./stub-openai.ts";
 
 const BASE = process.env.UNCENSIA_BASE ?? "http://127.0.0.1:8095/v1";
 const CODE = process.env.UNCENSIA_ACCESS_CODE ?? "AUDITCODE";
-const only = process.argv[2] ?? "";
+const filters = process.argv.slice(2);
 
 /** Handoff between checks that build on each other. */
 const carry: { fileId?: string; conversationId?: string; imageId?: string; phrase?: string } = {};
@@ -407,7 +407,7 @@ class Skip extends Error {
 }
 
 async function check(name: string, fn: () => Promise<string>) {
-  if (only && !name.includes(only)) return;
+  if (filters.length && !filters.some(filter => name.includes(filter))) return;
   const started = Date.now();
   process.stdout.write(`… ${name}`);
   try {

@@ -83,6 +83,12 @@ const transcript = (messages: ChatMessage[]) => {
 
 const intent = (text: string) => text.slice(0, 40);
 
+function imageFixtureArgs(body: ChatRequest, name: string, args: Record<string, unknown>) {
+  const schema = body.tools?.find(tool => tool.function?.name === name)?.function?.parameters as { required?: string[]; properties?: Record<string, { default?: unknown; enum?: unknown[] }> } | undefined;
+  if (schema?.required?.includes("size")) args.size = schema.properties?.size?.default ?? schema.properties?.size?.enum?.[0] ?? "1024x1024";
+  return args;
+}
+
 function decide(body: ChatRequest): Reply {
   const names = toolNames(body);
   const { user, calls, all } = transcript(body.messages ?? []);
@@ -136,7 +142,7 @@ function decide(body: ChatRequest): Reply {
 
   const imageTool = names.find((name) => name.startsWith("generate_image"));
   if (imageTool && /生成一张图|画一张/.test(user) && !used.some((name) => name.startsWith("generate_image"))) {
-    return { kind: "tool", name: imageTool, args: { intent: intent(user), prompt: user } };
+    return { kind: "tool", name: imageTool, args: imageFixtureArgs(body, imageTool, { intent: intent(user), prompt: user }) };
   }
   if (used.some((name) => name.startsWith("generate_image"))) {
     return { kind: "text", text: "图已经生成，主色是深蓝和霓虹倒影，偏电影感的冷色调。" };
@@ -151,7 +157,7 @@ function decide(body: ChatRequest): Reply {
     return {
       kind: "tool",
       name: editTool,
-      args: { intent: intent(user), prompt: user, source_image_id: source },
+      args: imageFixtureArgs(body, editTool, { intent: intent(user), prompt: user, source_image_id: source }),
     };
   }
   if (used.some((name) => name.includes("edit_image"))) {

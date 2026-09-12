@@ -72,8 +72,11 @@ export function useAction() {
  * where it came from are the same impulse, so the panel belongs here, but this
  * file stays presentational and the screen supplies whatever does the asking.
  */
+export const ImageComparisonContext = createContext<((source: string) => void) | null>(null);
 export function Lightbox({ src, onClose, aside, actions }: { src: string; onClose: () => void; aside?: ReactNode; actions?: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [comparison, setComparison] = useState("");
+  useEffect(() => setComparison(""), [src]);
 
   return (
     <Primitive.Root open onOpenChange={value => { if (!value) onClose(); }}><Primitive.Portal><Primitive.Content aria-describedby={undefined}
@@ -81,7 +84,10 @@ export function Lightbox({ src, onClose, aside, actions }: { src: string; onClos
       onClick={onClose}
     >
       <Primitive.Title className="sr-only">{uiText("查看图片")}</Primitive.Title>
-      <img src={src} alt="" className="max-h-[calc(100dvh-9rem)] max-w-full rounded-md object-contain shadow-2xl" onClick={event => event.stopPropagation()} />
+      <div className={comparison ? "grid max-h-[80dvh] w-full grid-cols-2 items-center gap-3" : "contents"} onClick={event => event.stopPropagation()}>
+        {comparison ? <img src={comparison} alt={uiText("参考图")} className="max-h-[75dvh] w-full object-contain" /> : null}
+        <img src={src} alt="" className="max-h-[calc(100dvh-9rem)] max-w-full rounded-md object-contain shadow-2xl" onClick={event => event.stopPropagation()} />
+      </div>
       {actions ? <div className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-full border border-white/15 bg-neutral-900/90 p-2 text-white shadow-xl" onClick={event => event.stopPropagation()}>{actions}</div> : null}
       {aside && open ? (
         // Clicks inside are for the panel; the backdrop keeps closing the viewer.
@@ -89,10 +95,11 @@ export function Lightbox({ src, onClose, aside, actions }: { src: string; onClos
           className="absolute inset-y-4 right-4 flex items-start justify-end overflow-hidden"
           onClick={(event) => event.stopPropagation()}
         >
-          {aside}
+          <ImageComparisonContext.Provider value={source => { setComparison(source); setOpen(false); }}>{aside}</ImageComparisonContext.Provider>
         </div>
       ) : null}
       <div className="absolute top-4 right-4 flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+        {comparison ? <button className="rounded bg-white/10 p-2 text-white" onClick={() => setComparison("")}>{uiText("结束对比")}</button> : null}
         {aside ? (
           <button
             className={cn(

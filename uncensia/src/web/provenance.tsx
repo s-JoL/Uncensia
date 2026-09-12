@@ -19,6 +19,8 @@ import { useEffect, useState } from "react";
 import type { Provenance } from "@shared/types.ts";
 import { OP_LABELS } from "@shared/types.ts";
 import { api } from "./api.ts";
+import { useContext } from "react";
+import { ImageComparisonContext } from "./ui/feedback.tsx";
 import { handToStudio } from "./studio-draft.ts";
 import { Badge, Button, Empty, formatDuration, formatTime, Spinner, useToast } from "./ui.tsx";
 
@@ -40,6 +42,7 @@ function readable(params: Record<string, unknown>) {
 }
 
 export function ProvenanceCard({ assetId }: { assetId: string }) {
+  const compare = useContext(ImageComparisonContext);
   const [record, setRecord] = useState<Provenance | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,6 +89,7 @@ export function ProvenanceCard({ assetId }: { assetId: string }) {
 
   return (
     <div className="flex max-h-[80dvh] w-80 flex-col gap-3 overflow-y-auto rounded-xl border bg-card p-3 text-sm shadow-2xl">
+      {!video && compare ? job?.sources.map(source => <Button key={source} variant="secondary" onClick={() => compare(`/v1/images/${source}`)}>{uiText("对比参考图")}: {source.slice(-6)}</Button>) : null}
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
         <Badge tone="outline">{video ? uiText("视频") : uiText("图片")}</Badge>
         {record.width && record.height ? <Badge tone="outline">{`${record.width}×${record.height}`}</Badge> : null}

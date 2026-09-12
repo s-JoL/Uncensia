@@ -123,6 +123,12 @@ async function request<T>(
 }
 
 export const api = {
+  conversationEvidence: (id: string) => request<{ deliverables: Array<{ key: string; description: string; status: string; asset_id?: string; evidence?: string }>; feedback: Array<{ entry_id: string; text: string }>; contexts: Array<{ runId: string; modelId: string; modelInput: string[]; tools: string[] }> }>("GET", `/resources/conversations/${encodeURIComponent(id)}/evidence`),
+  acquireResource: (url: string) => request<{ file_id: string; indexing: string; index_error: string | null }>("POST", "/resources/acquire", { url }),
+  resourceQuote: (id: string) => request<{ text: string; title: string; start_line: number; end_line: number; file_id: string }>("GET", `/resources/quotes/${encodeURIComponent(id)}`),
+  resourceText: (id: string, start = 1, encoding?: string) => request<{ text: string; title: string; next_line: number | null; total_lines: number }>("GET", `/resources/files/${encodeURIComponent(id)}?start=${start}${encoding ? `&encoding=${encodeURIComponent(encoding)}` : ""}`),
+  resourceSources: (id: string) => request<Array<{ original_url: string; final_url: string; fetched_at: string }>>("GET", `/resources/sources/${encodeURIComponent(id)}`),
+  saveFeedback: (conversationId: string, seq: number, text: string) => request("POST", "/resources/feedback", { conversationId, seq, text }),
   modelReference: (model: string) => request<{ reference: ModelReference | null }>("GET", `/model-reference?model=${encodeURIComponent(model)}`),
   skills: () => request<{ items: ManagedSkill[]; diagnostics: string[] }>("GET", "/skills"),
   learningHistory: () => request<{ items: LearningChange[] }>("GET", "/learning/history"),
@@ -337,7 +343,7 @@ export interface MemorySnapshot {
   suggestedKeys: string[];
 }
 
-type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
+type DeepPartial<T> = { [K in keyof T]?: NonNullable<T[K]> extends object ? DeepPartial<NonNullable<T[K]>> : T[K] };
 
 export type RunEventHandler = (type: string, data: Record<string, unknown>, seq: number) => void;
 

@@ -26,6 +26,26 @@ CREATE TABLE IF NOT EXISTS meta (
   value TEXT NOT NULL
 );
 
+-- Stable evidence, separate from the editable file and transcript projections.
+CREATE TABLE IF NOT EXISTS resource_sources (
+  id TEXT PRIMARY KEY, file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+  data TEXT NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS resource_quotes (
+  id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE, data TEXT NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS message_feedback (
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  entry_id TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL,
+  PRIMARY KEY(conversation_id, entry_id)
+);
+CREATE TABLE IF NOT EXISTS deliverables (
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  key TEXT NOT NULL, data TEXT NOT NULL, updated_at INTEGER NOT NULL,
+  PRIMARY KEY(conversation_id, key)
+);
+
 -- Every configuration value the web UI can edit. Stored as JSON so a new
 -- capability never needs a migration just to be persisted.
 CREATE TABLE IF NOT EXISTS settings (

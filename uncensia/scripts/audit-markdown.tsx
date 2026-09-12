@@ -8,7 +8,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Markdown } from "../src/web/markdown.tsx";
-import { collectCitations, type Citation } from "../src/web/messages.ts";
+import { collectCitations, collectCitationsByTurn, type Turn, type Citation } from "../src/web/messages.ts";
+import assert from "node:assert/strict";
 
 const GROUP_START = "\ue200";
 const GROUP_END = "\ue201";
@@ -59,6 +60,12 @@ const render = (text: string, citations: Map<string, Citation>, streaming: boole
 };
 
 let failures = 0;
+const legacyTurns = ["a", "b"].map((letter, index) => ({ id: letter, role: "assistant", seq: index, parts: [{ kind: "tool", callId: letter, name: "file_search", args: {}, result: `File: ${letter}\nAnchor: \\ue202turn0file0 (${letter}.txt)\nfile_id: file_${letter.repeat(32)}`, isError: false, running: false }] })) as Turn[];
+const scopedCitations = collectCitationsByTurn(legacyTurns);
+assert.equal(scopedCitations.get(legacyTurns[0]!)?.get("\\ue202turn0file0")?.url, `/v1/files/file_${"a".repeat(32)}/content?download=1`);
+assert.equal(scopedCitations.get(legacyTurns[1]!)?.get("\\ue202turn0file0")?.url, `/v1/files/file_${"b".repeat(32)}/content?download=1`);
+assert.ok(render("[Original](excerpt://quote_0123456789abcdef0123456789abcdef)", new Map(), false).includes('data-testid="resource-quote"'));
+console.log("PASS legacy citations retain their original files; excerpt links render a resource block");
 const videoId = "vid_0123456789abcdef0123456789abcdef";
 for (const url of [`video://${videoId}`, `/v1/videos/${videoId}`]) {
   const embedded = render(`![clip](${url})`, new Map(), false);
