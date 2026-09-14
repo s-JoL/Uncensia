@@ -315,7 +315,7 @@ private struct TranscriptView: View {
         }
     }
     private func transcriptMessage(_ message: ChatMessage) -> some View {
-        MessageRow(message: message, api: api)
+        MessageRow(message: message, api: api, inlineMedia: store.mediaIndex.byMessage[message.id] ?? [])
             .environment(store.citations.scope(for: message.id))
             .id(message.id).accessibilityElement(children: .contain)
             .accessibilityIdentifier("chat.message.\(message.id)").contextMenu {

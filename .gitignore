@@ -11,6 +11,11 @@
 *.pyc
 __pycache__/
 
+# Local provider keys, adopted on first run. Never commit real credentials.
+.env
+.env.*
+!.env.example
+
 # Finder leaves these in every directory it has been asked to display.
 .DS_Store
 

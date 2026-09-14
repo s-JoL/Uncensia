@@ -4,7 +4,7 @@
 
 ## 模型与参数
 
-`providers` 保存服务地址和鉴权方式，密钥加密存储，API 只返回是否配置。`models` 保存精确模型 ID、协议、输入能力、上下文、输出预算和可选参数。对话走 Pi ModelRuntime，图片与视频走生成适配器。
+`providers` 保存服务地址和鉴权方式（`bearer`／`header`／`none`，可附带随每次请求发送的固定头，如 OpenCode Zen 的 `x-opencode-session`），密钥加密存储，API 只返回是否配置。`models` 保存精确模型 ID、协议、输入能力、上下文、输出预算和可选参数。对话走 Pi ModelRuntime，图片与视频走生成适配器。
 
 模型发现读取提供方 `/models`，可探测不同类型列表；只有列表确实不同才采纳其类型。能力建议的优先级是：提供方明确返回值 → Pi 原厂型号目录的精确匹配 → 标注待核实的默认值。已知日期别名显式映射，未知版本不按模型族猜上下文。建议只填表单，保存后不在运行时静默改写。
 
@@ -22,7 +22,7 @@ Gemini 原生协议的请求参数由 `models/params.ts` 处理；用户保存�
 
 只将摘要列入模型目录，正文按需读取。`disable-model-invocation` 声明的技能仅显式调用；已有 `/skill:name` 仍走 SDK 展开。技能可携带支持文件；当前 Web 添加入口编辑标准 SKILL.md，不是完整的插件安装、依赖管理或热重载中心。
 
-`contexts` 是 Uncensia 提供的可选状态声明：`roleplay` 与 `visual-continuity`。头部解析复用 Pi，代码只按声明附加已保存数据。社区经验见 [community-skills.md](community-skills.md)，上下文生命周期见 [Agent](02-agent.md)。
+`contexts` 是 Uncensia 提供的可选状态声明：`roleplay` 与 `visual-continuity`。头部解析复用 Pi，代码只按声明附加已保存数据。上下文生命周期见 [Agent](02-agent.md)。
 
 ## 文件、检索与记忆
 
@@ -48,7 +48,7 @@ HTTP 和 agent 写入共用数据库中的原子预算检查，以保存时的�
 
 ## 搜索、工作目录与 MCP
 
-联网搜索使用 `web_search`：Tavily 需要密钥，SearXNG 使用自托管地址；Tavily 可读取页面正文，SearXNG 返回搜索摘要。不存在的提供方明确报错。
+联网搜索使用 `web_search`：Tavily 需要密钥，SearXNG 使用自托管地址；Tavily 可读取页面正文，SearXNG 只返回搜索摘要。默认只取摘要，`read_pages`（0–5）才逐页抓正文；图片结果是候选 URL，查看或复用前需先 `acquire_resource` 入库。未配置提供方时回退默认 Tavily，配置了不存在的提供方则明确报错。
 
 | 工作目录权限 | 可用工具 |
 |---|---|
@@ -65,18 +65,6 @@ MCP 使用 stdio 或 Streamable HTTP。设置管理进程/地址、参数、环�
 ## 提示词与定时任务
 
 “技能与长期指令”使用独立的 `learning.skills`、`learning.prompts` 开关，分别提供 `manage_skill`、`manage_prompt`。任一项开启时提供 `learning_history`，仅返回对应类别；每次调用重新检查权限。旧配置首次保存时继承原有 coding.write 的授权状态并独立持久化，以后修改文件写入权限不再联动。已有技能的发现和读取不依赖修改开关。技能启停和提示词更改下一轮加载。`data/learning-history` 在修改前保留原因、来源对话与新旧正文，设置 → 技能展示最近 50 次尝试；备份记录不代表写入一定成功。恢复时使用旧正文与当前版本再次更新。源代码仍走工作目录工具、备份和审批，验证与部署状态分别报告。专用工具开关不是文件系统隔离；开放 shell 或相应目录写入时，本机工具仍可修改技能与指令文件。
-
-## 工具与权限整理（2026-09-11）
-
-Pi 默认只提供 read、write、edit、bash，grep/find/ls 是可选读取工具。Uncensia 的增量工具服务于持久资料、媒体任务及应用状态，不应全部归为 Pi 内置工具。
-
-- 删除“允许助手改自己”的一键读写按钮及常用设置的重复入口：它不是训练模型或自动升级程序，原名称无法准确表达权限。
-- 拆开原来由 coding.write 同时决定的文件写入、技能修改和长期指令修改；界面按作用对象分组并说明生效时间。
-- grep/find/ls 与 shell 有功能重叠，但在不允许命令执行时仍有独立作用，暂保留。移动、删除、恢复工具带备份和审批契约，不能直接用裸 shell 替代。
-- file_search 是相关片段检索，read_resource 是原文范围读取，quote_resource 是稳定展示；三者不合并。import_file/publish_file 连接资料库与工作目录，acquire_resource 下载原件，save_knowledge 保存整理后的研究，语义不同。
-- 每个额外媒体模型增加工具，以及低频管理能力常驻，仍是后续工具数量收敛点。本次不新增工具加载器、不删除现有生成入口，不将权限页重设计冒充已完成所有工具精简。
-
-验收：audit-learning 覆盖旧配置两种迁移、权限独立、已取得工具撤权、版本冲突与真实 Runtime 调用；Web 隔离实例操作关闭技能与文件修改，长期指令保持开启，刷新持久保存。完整 audit、类型检查和构建通过（日志 `run/permissions-audit.log`）。桌面与 390px Web 页面已实看，窄屏无横向溢出。
 
 全局和工具提示词在设置管理，并落到 `data/prompts/global.md`、`tools.md`；文件存在时以文件为准。模型可配置专属系统提示词。保留原有 writing brief 和用户自定义内容，更新使用包资源所有权机制。更改通常下一轮生效，源代码变更需重启。
 

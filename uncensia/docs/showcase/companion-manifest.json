@@ -1,0 +1,63 @@
+{
+  "date": "2026-09-14",
+  "subject": "Original fictional characters created for this public showcase. No private user data was used.",
+  "provider": "Siray",
+  "pipeline": "Generated through the same Siray Seedream 5.0 Pro Spicy models Uncensia's generation adapter drives. The companion set is one text-to-image portrait plus two image-to-image edits from it; the compose set is a second text-to-image portrait, then one image-to-image job that takes TWO reference images as sources. A documented creative example, not a benchmark; results depend on the model and can need revisions.",
+  "outputs": [
+    {
+      "file": "companion-01-cafe.png",
+      "op": "text_to_image",
+      "model": "bytedance/seedream-5.0-pro-t2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "task_id": "doubao-image-1789351448-12944bcc",
+      "sha256": "2981b9ffb67ae2de00d19ce612e27bfba398fa0451d460ae1a8c6a7723572beb",
+      "sources": [],
+      "status": "succeeded"
+    },
+    {
+      "file": "companion-02-night.png",
+      "op": "image_to_image",
+      "model": "bytedance/seedream-5.0-pro-i2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "task_id": "doubao-image-1789351553-d4bcec72",
+      "sha256": "4653296d131dd50e2382bcc69d296806aaadd9be1d03165a06ea7723ce90cb0c",
+      "sources": ["companion-01-cafe.png"],
+      "status": "succeeded"
+    },
+    {
+      "file": "companion-03-home.png",
+      "op": "image_to_image",
+      "model": "bytedance/seedream-5.0-pro-i2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "task_id": "doubao-image-1789351600-757144bb",
+      "sha256": "5abfb569a5fe6262d5bdea8d6b422de344e958b79b515e1a5c2fefde71db71dc",
+      "sources": ["companion-01-cafe.png"],
+      "status": "succeeded"
+    },
+    {
+      "file": "compose-b-friend.png",
+      "op": "text_to_image",
+      "model": "bytedance/seedream-5.0-pro-t2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "task_id": "doubao-image-1789351781-3f49cbd1",
+      "sha256": "e831f62591023cb825e11ebf3fe25e4f4c6f0da94317a7ee4e69d075dbd2c354",
+      "sources": [],
+      "status": "succeeded"
+    },
+    {
+      "file": "compose-result.png",
+      "op": "image_to_image",
+      "model": "bytedance/seedream-5.0-pro-i2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "task_id": "doubao-image-1789351870-8314ba77",
+      "sha256": "0d6495ae135e7e22ed97cde05701cf340d13f80c9489053f4d25075ff88bfe83",
+      "sources": ["companion-01-cafe.png", "compose-b-friend.png"],
+      "status": "succeeded"
+    }
+  ]
+}

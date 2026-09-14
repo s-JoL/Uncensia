@@ -30,7 +30,7 @@ globalThis.fetch = async (url, init) => {
   assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-only");
   if (catalogue) {
     assert.match(String(url), /^https:\/\/api\.siray\.ai\/v1\/models/);
-    return Response.json({ data: [...sirayModels.map(spec => ({ id: spec.model })), { id: "bytedance/seedream-5.0-pro-t2i-spicy" }, { id: "alibaba/wan-3.0-i2v-prime-spicy" }] });
+    return Response.json({ data: [...sirayModels.map(spec => ({ id: spec.model })), { id: "alibaba/wan-3.0-i2v-prime-spicy" }] });
   }
   if (init?.method === "POST") {
     posts++; body = JSON.parse(String(init.body));
@@ -69,9 +69,12 @@ try {
       await sirayAdapter.resume!(request, ctx, "task-1"); assert.equal(posts, before, "resume must never resubmit");
       console.log(`PASS ${spec.model} ${op}: submit, adopt, poll, persist, resume`);
     }
-    if (image) assert.deepEqual(opsOf(spec), ["image_to_image"]);
+    if (image) assert.deepEqual(opsOf(spec), [spec.model.includes("-t2i-") ? "text_to_image" : "image_to_image"]);
   }
   image = true;
+  const textModel = models.find(spec => spec.model === "bytedance/seedream-5.0-pro-t2i-spicy")!;
+  await assert.rejects(sirayAdapter.run({ spec: textModel, provider, op: "text_to_image", prompt: "Create", params: { size: "1024x1024" }, sources: [source] }, ctx), /source count/);
+  assert.equal(schemaOf(textModel, "text_to_image").properties?.source_image_id, undefined);
   const request: GenerationRequest = { spec: models[0]!, provider, op: "image_to_image", prompt: "Edit", params: { size: "1024x1024" }, sources: [source] };
   failure = true;
   await assert.rejects(sirayAdapter.run(request, ctx), /provider rejected parameters/);

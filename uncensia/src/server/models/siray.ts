@@ -19,6 +19,13 @@ export const sirayModels: ModelInput[] = [
       output_format: { ...choice("文件格式", ["jpg", "png"]), default: "png", audience: "studio" },
     },
   }),
+  row("bytedance/seedream-5.0-pro-t2i-spicy", "Seedream 5.0 Pro Spicy · T2I", "image", ["text_to_image"], {
+    sources: "none", maxSources: 0, required: ["prompt", "size"], fields: {
+      prompt: { ...prompt, description: "Describe the image to create." },
+      size: choice("输出尺寸", ["1024x1024", "1152x864", "864x1152", "1424x800", "800x1424", "1248x832", "832x1248", "1568x672", "2048x2048", "2368x1776", "1776x2368", "2816x1584", "1584x2816", "2496x1664", "1664x2496", "3136x1344"]),
+      output_format: { ...choice("文件格式", ["jpg", "png"]), default: "png", audience: "studio" },
+    },
+  }, { enabled: true, agentTool: false }),
   row("alibaba/qwen-image-3-pro-edit-spicy", "Qwen Image 3 Pro Spicy · I2I", "image", ["image_to_image"], {
     sources: "images", maxSources: 3, required: ["prompt", "size", "aspect_ratio"], fields: {
       prompt, size: choice("分辨率", ["1k", "2k"]),

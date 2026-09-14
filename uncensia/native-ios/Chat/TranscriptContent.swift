@@ -6,10 +6,20 @@ struct MessageRow: View {
   let message: ChatMessage
   let api: APIClient?
   private let parts: [TranscriptPart]
-  init(message: ChatMessage, api: APIClient?) {
+  init(message: ChatMessage, api: APIClient?, inlineMedia: Set<String> = []) {
     self.message = message
     self.api = api
-    parts = TranscriptPart.decode(message.content, prefix: message.id).filter { part in
+    parts = Self.visibleParts(message: message, inlineMedia: inlineMedia)
+  }
+
+  static func visibleParts(message: ChatMessage, inlineMedia: Set<String>) -> [TranscriptPart] {
+    TranscriptPart.decode(message.content, prefix: message.id).filter { part in
+      switch part.kind {
+      case .image(let id, _), .video(let id, _):
+        if message.role == "toolResult", (message.content["toolName"].stringValue ?? message.raw["toolName"].stringValue) == "view_image" { return false }
+        if message.role != "user" && inlineMedia.contains(id) { return false }
+      default: break
+      }
       guard message.role == "toolResult" else { return true }
       switch part.kind { case .image, .video, .file: return true; default: return false }
     }
@@ -93,7 +103,7 @@ private func localizedStreamingStatus(_ status: String) -> String {
   return labels[status] ?? status
 }
 
-private struct TranscriptPart: Identifiable {
+struct TranscriptPart: Identifiable {
   enum Kind {
     case text(String)
     case thinking(String)
@@ -799,5 +809,36 @@ extension JSONValue {
     return (try? JSONSerialization.jsonObject(with: data)).flatMap {
       try? JSONSerialization.data(withJSONObject: $0, options: [.prettyPrinted, .sortedKeys])
     }.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+  }
+}
+
+/// Index only visible assistant prose, scoped to the reply between user messages.
+/// Reuse parsed IDs when history changes so streaming never reparses old Markdown.
+struct TranscriptMediaIndex {
+  private var cache: [String: (JSONValue, Set<String>)] = [:]
+  private(set) var byMessage: [String: Set<String>] = [:]
+  mutating func replaceMessages(_ messages: [ChatMessage]) {
+    var next: [String: (JSONValue, Set<String>)] = [:]
+    var group: [String] = [], media: Set<String> = []
+    byMessage = [:]
+    func flush() { for id in group { byMessage[id] = media }; group = []; media = [] }
+    for message in messages {
+      if message.role == "user" { flush(); continue }
+      group.append(message.id)
+      guard message.role == "assistant" else { continue }
+      let ids: Set<String>
+      if let saved = cache[message.id], saved.0 == message.content { ids = saved.1 }
+      else {
+        ids = Set(TranscriptPart.decode(message.content, prefix: message.id).flatMap { part -> [String] in
+          guard case .text(let text) = part.kind else { return [] }
+          return MarkdownBlock.parse(text).compactMap { block in
+            if case .image(let id, _) = block.kind { return id }; return nil
+          }
+        })
+      }
+      next[message.id] = (message.content, ids)
+      media.formUnion(ids)
+    }
+    flush(); cache = next
   }
 }

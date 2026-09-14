@@ -10,9 +10,9 @@ The Web interface uses Chinese source strings as stable lookup keys and an Engli
 
 Native iOS uses `uncensiaText` and matching `Resources/en.lproj` / `Resources/zh-Hans.lproj/Localizable.strings`. App language selection is handled by iOS. Use `%@` placeholders for values passed to `uncensiaText`; do not translate those values. Dynamic provider text stays verbatim. XcodeGen includes Resources in the application target.
 
-Run `npm run typecheck` and `npm run audit`. The localization audit checks literal Web keys, interpolation contracts, language switching, and native resource parity. Inspect real pages at desktop and phone widths in both languages. Native compilation and device tests must be run on macOS.
+Run `npm run typecheck` and `npm run audit`. The localization audit (`scripts/audit-i18n.ts`) checks literal `uiText` keys against `en.json`, interpolation contracts (`{0}` slot parity), language switching, and native resource parity — the `en.lproj` and `zh-Hans.lproj` key sets and `%@` counts must match, and every `uncensiaText` literal must exist in both. Inspect real pages at desktop and phone widths in both languages. Native compilation and device tests must be run on macOS.
 
-The paired project READMEs and this English user/developer guide cover the release. Detailed engineering contracts and dated historical evidence remain in their original language; keep those boundaries explicit when documenting coverage.
+The paired project READMEs and this English user/developer guide cover the release. Detailed engineering references remain in Chinese; keep those boundaries explicit when documenting coverage.
 
 ## 中文
 
@@ -22,6 +22,6 @@ Web 使用中文原文作为稳定索引，英文词典位于 `src/web/locales/e
 
 原生 iOS 使用 `uncensiaText` 和一一对应的 `Resources/en.lproj`、`Resources/zh-Hans.lproj/Localizable.strings`，由 iOS 管理应用语言。传入 `uncensiaText` 的动态值使用 `%@` 占位，不翻译这些值。服务商返回文案保持原文。XcodeGen 将 Resources 加入应用目标。
 
-执行 `npm run typecheck` 和 `npm run audit`。本地化检查覆盖 Web 字面量索引、插值、语言切换及原生资源一致性。还要检查两种语言下的桌面和手机页面；原生编译与设备测试需要 macOS。
+执行 `npm run typecheck` 和 `npm run audit`。本地化检查（`scripts/audit-i18n.ts`）覆盖 Web `uiText` 字面量索引是否在 `en.json` 中、插值占位（`{0}` 数量一致）、语言切换，以及原生资源一致性——`en.lproj` 与 `zh-Hans.lproj` 的键集合和 `%@` 数量必须一致，且每个 `uncensiaText` 字面量都要两边都有。还要检查两种语言下的桌面和手机页面；原生编译与设备测试需要 macOS。
 
-两份项目 README 与英文使用/开发指南覆盖发布使用路径。详细技术契约和有日期的历史证据保留原文，说明双语覆盖时要明确这个范围。
+两份项目 README 与英文使用/开发指南覆盖发布使用路径。详细技术参考保持中文，说明双语覆盖时要明确这个范围。

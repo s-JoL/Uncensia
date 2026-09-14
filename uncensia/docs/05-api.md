@@ -1,7 +1,5 @@
 # HTTP API
 
-`GET /learning/history`：鉴权后读取最近 50 次 agent 长期行为修改尝试，包含原因、来源对话及新旧内容；记录先于写入保存，不等于成功状态。技能和提示词的常规编辑入口保持不变。
-
 Web 与 iOS 使用同一 `/v1` API；下文路径均省略 `/v1` 前缀，例如健康检查完整地址为 `/v1/health`。请求和响应完整字段以 `src/shared/types.ts`、`src/server/http/routes/` 为准；本页描述入口与行为，避免复制第二套类型定义。
 
 ## 鉴权
@@ -81,11 +79,14 @@ Bearer 与同源 cookie 均可用。Cookie 写请求检查来源；访问码、T
 
 `GET /jobs` 支持 status/conversationId、1–200 的 limit 和返回的 nextCursor。文件与图库用 offset 分页。文档同源响应保持 sandbox 策略，媒体 URL 使用 cookie 鉴权。
 
-资料原文使用 `GET /resources/files/:id`（start/end/encoding）；不可变摘录为 `GET /resources/quotes/:id`，来源为 `GET /resources/sources/:id`。`GET /resources/conversations/:id/evidence` 返回当前交付、反馈和最近 30 次请求证据；没有新式请求证据的旧 run 只展示最后一次工具装配。
+`POST /resources/acquire` 以 `{ url, name? }` 把公开 HTTP(S) 文档或图片抓取进资料库并按需索引，需同时启用资料库与联网，保留原始字节与来源 URL，返回真实 file_/img_ ID；不做鉴权登录，遇到需登录的来源明确失败。资料原文使用 `GET /resources/files/:id`（start/end/encoding）；不可变摘录为 `GET /resources/quotes/:id`，来源为 `GET /resources/sources/:id`。`GET /resources/conversations/:id/evidence` 返回当前交付、反馈和最近 30 次请求证据；没有新式请求证据的旧 run 只展示最后一次工具装配。
 
 `GET /resources/conversations/:id/deliverables/:key/versions` 返回历史版本。`POST .../:key/review` 接收 `{ revision, status: "accepted" | "rejected" }`，版本、原件或状态冲突返回 409；该接口由用户界面调用，模型交付工具不能设置用户验收字段。`POST /resources/feedback` 接收 conversationId/seq/text。Web 的“任务与成果”在展开时自动更新，保存反馈和运行结束也触发刷新。
 
 ## 设置与记忆
+
+`GET /learning/history`：鉴权后读取最近 50 次 agent 长期行为修改尝试，包含原因、来源对话及新旧内容；记录先于写入保存，不等于成功状态。技能和提示词的常规编辑入口保持不变。
+
 
 | 资源 | 接口 |
 |---|---|

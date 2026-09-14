@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ModelInput, ProviderInput, PromptSettings } from "@shared/types.ts";
@@ -10,34 +10,60 @@ import { json } from "./db.ts";
 import type { Store } from "./store.ts";
 import { sirayModels } from "../models/siray.ts";
 
+// OpenCode Zen's free tier is admitted only with a client session header; a
+// per-install id keeps the default working without pretending to be a person.
+const OPENCODE_SESSION = `uncensia-${randomUUID()}`;
 const PROVIDERS: Array<ProviderInput & { id: string }> = [
   { id: "openrouter", name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", auth: { style: "bearer" } },
+  { id: "opencode", name: "OpenCode", baseUrl: "https://opencode.ai/zen/v1", auth: { style: "bearer", headers: { "x-opencode-session": OPENCODE_SESSION } } },
   { id: "siray", name: "Siray", baseUrl: "https://api.siray.ai/v1", auth: { style: "bearer" } },
   { id: "comfy", name: "ComfyUI", baseUrl: "http://127.0.0.1:8188" },
 ];
-const CHAT_ID = "openrouter-tencent-hy4-preview";
-const IMAGE_ID = "comfy:lustify-v10";
+const CHAT_ID = "openrouter-glm-5.3-flash";
+const MUSE_ID = "opencode-muse-spark-1.3";
+// The default image/edit/video picks are hosted, so a fresh install with only a
+// Siray key can generate at once; the local Lustify model is seeded beside them.
+const IMAGE_ID = "siray:seedream-5.0-pro-t2i-spicy";
 const EDIT_ID = "siray:seedream-5.0-pro-i2i-spicy";
 const VIDEO_ID = "siray:wan-3.0-t2v-spicy";
+const COMFY_IMAGE_ID = "comfy:lustify-v10";
 const GENERATION_DEFAULTS = { enabled: true, pinned: false, reasoning: false, input: ["text"] as Array<"text" | "image">, contextWindow: 4096, maxTokens: 4096, thinkingLevel: "off" as const };
 const MODELS: ModelInput[] = [
   {
     id: CHAT_ID,
-    name: "HY4 Preview · OpenRouter",
+    name: "GLM 5.3 Flash · OpenRouter",
     providerId: "openrouter",
-    model: "tencent/hy4-preview",
+    model: "z-ai/glm-5.3-flash",
     enabled: true,
     pinned: true,
     reasoning: true,
     input: ["text"],
-    contextWindow: 1_048_576,
-    maxTokens: 64_000,
+    contextWindow: 200_000,
+    maxTokens: 65_536,
     thinkingLevel: "medium",
     apiMode: "openai-chat",
   },
   {
+    id: MUSE_ID,
+    name: "MuseSpark 1.3 · OpenCode（免费）",
+    providerId: "opencode",
+    model: "muse-spark-1.3-contributor-free",
+    enabled: true,
+    pinned: true,
+    reasoning: true,
+    input: ["text", "image"],
+    contextWindow: 200_000,
+    maxTokens: 65_536,
+    thinkingLevel: "medium",
+    thinkingLevelMap: { off: null, minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" },
+    apiMode: "openai-responses",
+    // MuseSpark on Zen is a Responses model whose session is carried in the
+    // provider header, so pi must not manage OpenAI-style session affinity.
+    compat: { sessionAffinityFormat: "openai-nosession" },
+  },
+  {
     ...GENERATION_DEFAULTS,
-    id: IMAGE_ID,
+    id: COMFY_IMAGE_ID,
     name: "Lustify V10 Krea Turbo",
     providerId: "comfy",
     model: "lustify-v10-krea-turbo",
@@ -73,13 +99,21 @@ export function seed(store: Store, config: Config, vault: SecretVault) {
       editModelId: defaults.editModelId || EDIT_ID,
       videoModelId: defaults.videoModelId || VIDEO_ID,
     });
-    const credentials = [
-      ...PROVIDERS.map(provider => [SECRET.provider(provider.id), provider.id.toUpperCase().replaceAll("-", "_") + "_API_KEY"]),
-      [SECRET.tavily, "TAVILY_API_KEY"], [SECRET.embedding, "EMBEDDING_API_KEY"],
+    // Each provider takes its key from `<ID>_API_KEY` or `<ID>_TOKEN`, whichever
+    // the environment sets, so an existing `.env` using either name is adopted.
+    const credentials: Array<[string, string[]]> = [
+      ...PROVIDERS.map((provider): [string, string[]] => {
+        const base = provider.id.toUpperCase().replaceAll("-", "_");
+        return [SECRET.provider(provider.id), [`${base}_API_KEY`, `${base}_TOKEN`]];
+      }),
+      [SECRET.tavily, ["TAVILY_API_KEY"]], [SECRET.embedding, ["EMBEDDING_API_KEY"]],
     ];
-    for (const [name, variable] of credentials) {
-      const value = process.env[variable!];
-      if (value?.trim() && !vault.has(name!)) vault.set(name!, value);
+    for (const [name, variables] of credentials) {
+      if (vault.has(name)) continue;
+      for (const variable of variables) {
+        const value = process.env[variable];
+        if (value?.trim()) { vault.set(name, value); break; }
+      }
     }
   }
   migrateSkillName(store);

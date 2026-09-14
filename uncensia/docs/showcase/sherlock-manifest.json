@@ -1,0 +1,56 @@
+{
+  "date": "2026-09-14",
+  "subject": "Sherlock Holmes & Dr. Watson (public-domain characters, Arthur Conan Doyle)",
+  "provider": "Siray",
+  "pipeline": "Generated through the same Siray Seedream 5.0 Pro Spicy models Uncensia's generation adapter drives (one text-to-image job, then two image-to-image edits from the first result). This is a documented creative example, not a benchmark or a claim that every prompt works in one pass.",
+  "outputs": [
+    {
+      "file": "sherlock-01-study.png",
+      "op": "text_to_image",
+      "model": "bytedance/seedream-5.0-pro-t2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "task_id": "doubao-image-1789316665-99132024",
+      "sha256": "d8612cfd91d751eddff83762a72ff1a5edd7fcd5c351ac9f691305d3900d37e4",
+      "parameters": {
+        "prompt": "Richly detailed cinematic illustration, moody Victorian oil-painting style. The sitting room at 221B Baker Street on a foggy London evening. Sherlock Holmes, a tall lean man with sharp aquiline features and dark hair, wearing a burgundy dressing gown, sits forward in a leather armchair holding a curved briar pipe, studying a single sheet of paper intently. Across from him, Dr. Watson, a sturdy mustached gentleman in a tweed waistcoat, leans in with concern. Between them a low table with a magnifying glass, scattered telegrams and a chemistry flask. A coal fire glows in the hearth; a violin rests on the mantel; bookshelves and a curtained window with gaslight beyond fill the background. Warm amber lamplight, deep shadows, volumetric haze, fine brushwork, painterly detail. Horizontal composition, only these two characters.",
+        "size": "1248x832",
+        "output_format": "png"
+      },
+      "sources": [],
+      "status": "succeeded"
+    },
+    {
+      "file": "sherlock-02-clue.png",
+      "op": "image_to_image",
+      "model": "bytedance/seedream-5.0-pro-i2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "task_id": "doubao-image-1789316789-27a0b350",
+      "sha256": "2cff283cdf805d6d5f51dcbd97f320eb23bb3eae31d2e027f1f7e52efbf2c909",
+      "parameters": {
+        "prompt": "Using the reference image, keep the same two characters, faces, costumes, room and moody Victorian oil-painting style, but change the moment: Sherlock Holmes (burgundy dressing gown) has risen and now holds a large brass magnifying glass up to the sheet of paper, studying it closely near the gaslit window; Dr. Watson (tweed waistcoat, mustache) stands just behind his shoulder, watching. Keep the fireplace, violin on the mantel, bookshelves and foggy London window. Same lighting and painterly detail. Only change the characters' poses and the camera framing to a slightly closer shot.",
+        "size": "1248x832",
+        "source_image": "sherlock-01-study.png"
+      },
+      "sources": ["sherlock-01-study.png"],
+      "status": "succeeded"
+    },
+    {
+      "file": "sherlock-03-street.png",
+      "op": "image_to_image",
+      "model": "bytedance/seedream-5.0-pro-i2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "task_id": "doubao-image-1789317707-fb7afcc4",
+      "sha256": "cad52209d868004d6bf950f5cfd8f481177b7140c4fe38d0723a1f9337f69e66",
+      "parameters": {
+        "prompt": "Carry the same two recognizable characters from the reference image into a new outdoor scene, keeping their faces and the moody Victorian oil-painting style. Sherlock Holmes and Dr. Watson step out from the lamplit doorway of 221B Baker Street into a fog-filled gaslit London street at night. Holmes now wears a grey deerstalker cap and a caped Inverness overcoat; Watson wears a dark overcoat and bowler hat. A black hansom cab and horse wait at the kerb, cobblestones wet with mist, a gas street-lamp glowing amber through the fog. Cinematic wide shot, deep atmospheric haze, painterly detail. Only these two characters.",
+        "size": "1248x832",
+        "source_image": "sherlock-01-study.png"
+      },
+      "sources": ["sherlock-01-study.png"],
+      "status": "succeeded"
+    }
+  ]
+}

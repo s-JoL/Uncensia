@@ -1,6 +1,6 @@
 # 架构
 
-一个 Node 进程提供 `/v1` 与 Web 静态页面。SQLite 保存应用状态，Pi JSONL 保存原生会话树，媒体和用户资源保存在数据目录。ComfyUI 与云端 API 是可选后端。
+一个 Node 24+ 进程（依赖内置 `node:sqlite`）提供 `/v1` 与 Web 静态页面。SQLite 保存应用状态，Pi JSONL 保存原生会话树，媒体和用户资源保存在数据目录。ComfyUI 与云端 API 是可选后端。
 
 ## 模块边界
 
@@ -36,101 +36,22 @@ Pi 会话树是原始历史，SQLite messages 是当前分支的展示与搜索�
 
 单用户实例，访问码首次生成并加密保存，可启用 TOTP。登录返回 Bearer token 与 HttpOnly cookie；cookie 写操作验证同源，敏感账户操作要求再次验证。密钥接口只返回是否配置，不返回原文。
 
-环境变量决定监听和目录，业务配置由设置管理。模型与默认绑定显式保存，不静默换后端。初始资源只为新安装创建；包更新按内容哈希判断用户所有权，保留编辑和删除。旧 main 数据格式在启动前明确拒绝，不能靠默认值补齐来假装迁移成功。
+环境变量决定监听和目录，业务配置由设置管理。模型与默认绑定显式保存，不静默换后端。初始资源只为新安装创建（种子的提供方与默认模型集见 `src/server/store/seed.ts`，包含对话、生图、编辑与视频的默认绑定）；包更新按内容哈希判断用户所有权，保留编辑和删除。旧 main 数据格式在启动前明确拒绝，不能靠默认值补齐来假装迁移成功。
 
 原生工具写入还可涉及配置的工作目录。不要把“应用数据位于 data”理解为 agent 只能写 data；实际能力范围由工具权限与工作目录约束。
 
-## 数据表参考
+## 数据结构与源码
 
-以下仅保留表与列的速查，完整约束以 `src/server/store/schema.sql` 为准，`audit-doc-schema.ts` 检查列名一致性。FTS 与向量派生索引不另建业务真相来源。
-```sql
-CREATE TABLE meta (
-  key, value
-)
+准确表结构见 [`schema.sql`](../src/server/store/schema.sql)，共享请求类型见 [`types.ts`](../src/shared/types.ts)。文档不重复维护整份 SQL。
 
-CREATE TABLE settings (
-  key, value, updated_at
-)
+| 目录 | 入口 |
+|---|---|
+| 服务装配 | `src/server/services.ts` |
+| HTTP 与鉴权 | `src/server/http/` |
+| 会话运行 | `src/server/agent/` |
+| 生成后端 | `src/server/generation/` |
+| 资料与检索 | `src/server/rag/`、`src/server/library.ts` |
+| Web | `src/web/` |
+| iOS | `native-ios/` |
 
-CREATE TABLE secrets (
-  name, iv, tag, ciphertext, updated_at
-)
-
-CREATE TABLE sessions (
-  token_hash, device, created_at, last_seen, expires_at
-)
-
-CREATE TABLE providers (
-  id, name, base_url, auth, enabled, sort_order, created_at, updated_at
-)
-
-CREATE TABLE models (
-  id, provider_id, name, model, enabled, pinned, agent_tool, reasoning, input,
-  context_window, max_tokens, thinking_level, thinking_level_map, api_mode,
-  kind, ops, params, system_prompt, temperature, top_p,
-  pricing, compat, sort_order, created_at, updated_at
-)
-
-CREATE TABLE mcp_servers (
-  id, title, enabled, command, url, args, env, headers, sort_order,
-  created_at, updated_at
-)
-
-CREATE TABLE conversations (
-  id, title, model_id, archived, roleplay, visual_continuity, created_at, updated_at
-)
-
-CREATE TABLE messages (
-  id, conversation_id, seq, role, content, entry_id, created_at
-)
-
-CREATE TABLE runs (
-  id, conversation_id, status, model_id, error, task_id, created_at, updated_at
-)
-
-CREATE TABLE background_tasks (
-  id, conversation_id, prompt, model_id, run_at, status, run_id, error, state,
-  created_at, updated_at
-)
-
-CREATE TABLE events (
-  seq, run_id, conversation_id, type, data, created_at
-)
-
-CREATE TABLE approvals (
-  id, run_id, conversation_id, tool_name, action, summary, detail, status,
-  created_at, updated_at
-)
-
-CREATE TABLE memories (
-  key, value, tokens, source_conversation_id, updated_at
-)
-
-CREATE TABLE files (
-  id, name, mime, bytes, disk_path, sha256, conversation_id, source,
-  embedding_status, embedding_error, page_count, width, height, created_at
-)
-
-CREATE TABLE chunks (
-  id, file_id, idx, page, text
-)
-
-CREATE TABLE embeddings (
-  chunk_id, file_id, model, dim, vector
-)
-
-CREATE TABLE image_assets (
-  image_id, mime, width, height, provider, model, parent_image_ids, created_at
-)
-
-CREATE TABLE video_assets (
-  video_id, mime, width, height, duration_ms, poster_image_id, provider, model,
-  parent_image_ids, created_at
-)
-
-CREATE TABLE jobs (
-  id, kind, op, model_id, model_name, conversation_id, status, progress, note,
-  params, sources, assets, error, provider_job_id, created_at, started_at,
-  finished_at, updated_at
-)
-```
+项目将说明、资料和会话关联起来；成果记录引用版本，用户验收与模型检查分开持久化。相关协议见 [API](05-api.md) 和 [Agent](02-agent.md)。
