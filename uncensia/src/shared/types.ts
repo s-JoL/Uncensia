@@ -100,6 +100,12 @@ export interface ProviderAuthConfig {
   header?: string;
   /** Written in front of the key, e.g. `Bearer `. Empty by default. */
   prefix?: string;
+  /**
+   * Extra static headers sent on every request beside the credential. For a
+   * gateway that also needs a routing or session header — OpenCode Zen wants
+   * `x-opencode-session` — rather than a second auth style.
+   */
+  headers?: Record<string, string> | null;
 }
 
 export interface Provider {

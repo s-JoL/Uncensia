@@ -3,6 +3,42 @@ import UIKit
 @testable import Uncensia
 
 final class TranscriptRenderingTests: XCTestCase {
+    func testInlineMediaIndexKeepsReplyBoundariesAndIgnoresCodeAndThinking() {
+        func message(_ id: String, _ role: String, _ content: JSONValue) -> ChatMessage {
+            ChatMessage(.object(["id": .string(id), "role": .string(role), "content": content]))!
+        }
+        var index = TranscriptMediaIndex()
+        let tool = message("tool", "toolResult", .string("image created"))
+        let answer = message("answer", "assistant", .array([
+            .object(["type": .string("text"), "text": .string("Before ![scene](image://img_a) after\n![clip](video://vid_b)\n`![code](image://img_code)`")]),
+            .object(["type": .string("thinking"), "thinking": .string("![private](image://img_thought)")])
+        ]))
+        index.replaceMessages([tool, answer, message("user", "user", .string("Next")), message("later", "toolResult", .string("image created"))])
+        XCTAssertEqual(index.byMessage["tool"], ["img_a", "vid_b"])
+        XCTAssertEqual(index.byMessage["later"], [])
+        XCTAssertNil(index.byMessage["user"])
+        index.replaceMessages([tool])
+        XCTAssertEqual(index.byMessage["tool"], [])
+        XCTAssertNil(index.byMessage["answer"])
+        index.replaceMessages([tool, answer])
+        XCTAssertEqual(index.byMessage["tool"], ["img_a", "vid_b"])
+    }
+    @MainActor func testStandaloneImageFallsBackUntilTheAnswerEmbedsIt() {
+        func message(_ role: String) -> ChatMessage {
+            ChatMessage(.object(["id": .string("media"), "role": .string(role), "content": .array([
+                .object(["type": .string("image_ref"), "image_id": .string("img_a")]),
+                .object(["type": .string("image_ref"), "image_id": .string("img_b")]),
+                .object(["type": .string("video_ref"), "video_id": .string("vid_c")])
+            ])]))!
+        }
+        XCTAssertEqual(MessageRow.visibleParts(message: message("toolResult"), inlineMedia: []).count, 3)
+        XCTAssertEqual(MessageRow.visibleParts(message: message("toolResult"), inlineMedia: ["img_a", "vid_c"]).count, 1)
+        XCTAssertEqual(MessageRow.visibleParts(message: message("assistant"), inlineMedia: ["img_a", "vid_c"]).count, 1)
+        XCTAssertEqual(MessageRow.visibleParts(message: message("user"), inlineMedia: ["img_a", "vid_c"]).count, 3)
+        let inspected = ChatMessage(.object(["id": .string("inspect"), "role": .string("toolResult"),
+            "content": .object(["toolName": .string("view_image"), "content": message("toolResult").content])]))!
+        XCTAssertTrue(MessageRow.visibleParts(message: inspected, inlineMedia: []).isEmpty)
+    }
     func testLongFenceKeepsShorterFenceAndMediaLiteral() {
         let blocks = MarkdownBlock.parse("````markdown\n```\n![example](image://img_code)\n```\n````\n![real](image://img_real)")
         guard case .code(let language, let code) = blocks.first?.kind else { return XCTFail("Expected fenced code") }

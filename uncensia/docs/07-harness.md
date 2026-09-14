@@ -1,6 +1,6 @@
 # SDK 宿主边界
 
-Uncensia 使用 Pi 的 AgentSession、SessionManager、DefaultResourceLoader 和 ModelRuntime。SDK 版本以 `package.json` 为准。执行流见 [Agent](02-agent.md)，本页只记录集成范围，避免把接入 SDK 说成完整兼容 Pi。
+Uncensia 使用 Pi 的 AgentSession、SessionManager、DefaultResourceLoader、ModelRuntime 和 SettingsManager（进程内、不落盘，提供压缩、重试与转向/追问策略）。SDK 版本以 `package.json` 为准。执行流见 [Agent](02-agent.md)，本页只记录集成范围，避免把接入 SDK 说成完整兼容 Pi。
 
 ## 支持的契约
 
@@ -29,11 +29,9 @@ Uncensia 使用 Pi 的 AgentSession、SessionManager、DefaultResourceLoader 和
 
 `ctx.hasUI` 只表示已有可用事件绑定，不表示任意终端交互都受支持。显式 skill 展开块按 SDK 语法及精确名称/位置识别，展示标记不是调用来源的认证证明。
 
-## 为什么仍按 run 重建
+## 生命周期
 
-每次运行需要一致地读取当前模型参数、密钥、工作目录、权限、资源及分支。工具闭包和事件接收器还携带本次 run 的身份与取消信号。直接缓存会话实例可能让撤销权限、模型更新或分支切换失效，也可能把新事件写进旧 run。
-
-未来跨 run 复用须先实现原子配置刷新、工具撤权、事件归属、分支一致性、空闲释放和错误归属；不能仅把实例放入 Map 就宣称完成。现有回归已覆盖下一轮参数更新、撤权、文本模型移除看图工具、新旧 run 事件隔离、fork/rewind 保留原树。
+会话实例按 run 重建，以读取最新模型、凭据、权限和分支，并隔离事件与取消信号。扩展若需要跨 run 状态，应写入持久会话条目。不要依赖闭包在下一次 HTTP 运行中继续存在。
 
 ## 产品能力与模型能力
 

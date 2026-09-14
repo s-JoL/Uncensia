@@ -26,20 +26,32 @@ const BEARER: ProviderAuthConfig = { style: "bearer" };
 const KEYLESS = "unused";
 const SUPPRESSED: Record<string, string | null> = { authorization: null, "x-api-key": null };
 
+/** Extra static headers on a provider record, ignoring anything not string→string. */
+function extraHeaders(record: Record<string, unknown>): Record<string, string> | undefined {
+  const value = record.headers;
+  if (!value || typeof value !== "object") return undefined;
+  const headers: Record<string, string> = {};
+  for (const [name, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof name === "string" && name.trim() && typeof entry === "string") headers[name] = entry;
+  }
+  return Object.keys(headers).length ? headers : undefined;
+}
+
 /** The style declared on a provider record, or `bearer` when it declares none. */
 export function providerAuth(provider: Provider): ProviderAuthConfig {
   const declared: unknown = provider.auth;
   if (!declared || typeof declared !== "object") return BEARER;
   const record = declared as Record<string, unknown>;
-  if (record.style === "none") return { style: "none" };
+  const headers = extraHeaders(record);
+  if (record.style === "none") return { style: "none", headers };
   if (record.style === "header") {
     const header = typeof record.header === "string" ? record.header.trim() : "";
     // A header style that names no header is a half-finished edit, not an
     // instruction to send the key nowhere.
-    if (!header) return BEARER;
-    return { style: "header", header, prefix: typeof record.prefix === "string" ? record.prefix : "" };
+    if (!header) return { ...BEARER, headers };
+    return { style: "header", header, prefix: typeof record.prefix === "string" ? record.prefix : "", headers };
   }
-  return BEARER;
+  return { ...BEARER, headers };
 }
 
 /** What pi-ai should put on the request, or nothing when the key is missing. */
@@ -47,13 +59,14 @@ export function providerCredential(
   config: ProviderAuthConfig,
   key: string | undefined,
 ): { auth: ModelAuth; source: string } | undefined {
-  if (config.style === "none") return { auth: { apiKey: KEYLESS, headers: SUPPRESSED }, source: "no authentication" };
+  const extra = config.headers ?? undefined;
+  if (config.style === "none") return { auth: { apiKey: KEYLESS, headers: { ...SUPPRESSED, ...extra } }, source: "no authentication" };
   if (!key) return undefined;
   if (config.style === "header" && config.header) {
     return {
-      auth: { apiKey: key, headers: { ...SUPPRESSED, [config.header]: `${config.prefix ?? ""}${key}` } },
+      auth: { apiKey: key, headers: { ...SUPPRESSED, ...extra, [config.header]: `${config.prefix ?? ""}${key}` } },
       source: "Uncensia settings",
     };
   }
-  return { auth: { apiKey: key }, source: "Uncensia settings" };
+  return { auth: extra ? { apiKey: key, headers: extra } : { apiKey: key }, source: "Uncensia settings" };
 }

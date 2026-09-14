@@ -67,7 +67,7 @@ async function follow(r: GenerationRequest, ctx: GenerationContext, id: string):
 
 export const sirayAdapter: GenerationAdapter = {
   id: "siray-media",
-  runs: ["image_to_image", "text_to_video", "image_to_video"],
+  runs: ["text_to_image", "image_to_image", "text_to_video", "image_to_video"],
   schema(spec, op) {
     const p = profile(spec);
     const properties = structuredClone(p.fields);

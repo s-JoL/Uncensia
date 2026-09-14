@@ -1,76 +1,181 @@
 <div align="center">
+<img src="uncensia/src/web/assets/uncensia.svg" alt="Uncensia" width="72" />
 
-<img src="uncensia/src/web/assets/uncensia.svg" alt="Uncensia" width="72" height="72" />
+# Uncensia
 
-![Uncensia — Creative freedom, on your terms](uncensia/docs/showcase/hero.svg)
+**Your own AI studio — chat, an agent that uses tools, file memory, and image/video creation — self-hosted, unrestricted, and driven by your own models.**
 
-**A self-hosted AI studio for creative freedom. NSFW-friendly. Your models, from conversation to images and video.**
+It’s the ChatGPT-app experience you already like — conversation, an agent, uploads, memory, and generation — but it runs on *your* server and *your* phone, uses *your* API keys and local GPU, and has no app-level content filter.
 
-Your models. Your prompts. Your creative boundaries.
+![Self-hosted](https://img.shields.io/badge/self--hosted-single%20user-111827)
+![Web + native iOS](https://img.shields.io/badge/clients-Web%20%2B%20native%20iOS-1f6feb)
+![Bring your own models](https://img.shields.io/badge/models-bring%20your%20own-16a34a)
+![No app-level filter](https://img.shields.io/badge/content-no%20app--level%20filter-7c3aed)
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [Quick start](#quick-start) · [Showcase](#from-an-idea-to-a-moving-scene) · [Documentation](uncensia/docs/README.en.md)
-
-![Node 24+, self-hosted, English and Chinese](uncensia/docs/showcase/badges.svg)
+[简体中文](README.zh-CN.md) · [Quick start](#quick-start) · [Creative guide](uncensia/docs/guide.en.md) · [Documentation](uncensia/docs/README.en.md) · [How these were made](uncensia/docs/showcase/README.md)
 
 </div>
 
-Uncensia brings a configurable conversational agent, image and video generation, and a media library into one creative workspace. Choose your models, write a story, establish a character, edit the image, and turn it into a shot.
+---
+
+Everything below is a **real output** from Uncensia’s own pipeline — same models, same job queue you get out of the box — with prompts, model IDs and SHA-256 hashes in [the production notes](uncensia/docs/showcase/README.md). Nothing here is a mockup, and no failed attempt is dressed up as a success.
+
+<table>
+<tr>
+<td width="25%"><img src="uncensia/docs/showcase/alice-01-tea-table.png" alt="Storybook watercolour" /></td>
+<td width="25%"><img src="uncensia/docs/showcase/sherlock-03-street.png" alt="Victorian oil painting" /></td>
+<td width="25%"><img src="uncensia/docs/showcase/02-coastal-morning.png" alt="Photoreal film still" /></td>
+<td width="25%"><img src="uncensia/docs/showcase/companion-01-cafe.png" alt="Soft anime illustration" /></td>
+</tr>
+<tr>
+<td align="center">Storybook watercolour</td>
+<td align="center">Victorian oil</td>
+<td align="center">Photoreal film</td>
+<td align="center">Soft anime</td>
+</tr>
+</table>
+
+<p align="center"><i>One product, your models, any style — every image on this page was generated in Uncensia.</i></p>
+
+## Keep one character across scene after scene
+
+A single text-to-image job establishes the scene, then two *edits of that first image* move the moment and change the setting — while Holmes and Watson stay recognisably themselves. This “visual continuity” is the hard part of illustrating anything longer than one picture, and it’s built into the conversation.
+
+<table>
+<tr>
+<td width="33%"><img src="uncensia/docs/showcase/sherlock-01-study.png" alt="221B Baker Street, text-to-image" /></td>
+<td width="33%"><img src="uncensia/docs/showcase/sherlock-02-clue.png" alt="Edit of the first image: same room, new pose" /></td>
+<td width="33%"><img src="uncensia/docs/showcase/sherlock-03-street.png" alt="Edit of the first image: the characters carried into a new scene" /></td>
+</tr>
+<tr>
+<td><b>1.</b> Text-to-image: 221B Baker Street.</td>
+<td><b>2.</b> Edit the first image — same room, Holmes rises with the magnifier.</td>
+<td><b>3.</b> Edit again — same two men, out into a foggy Baker Street.</td>
+</tr>
+</table>
+
+## Meet a companion — the same person, wherever the story goes
+
+Design a character once, then keep them across moods, outfits and settings. One portrait, then two edits of it: her face, freckles and little star necklace carry from a rainy café to a neon street to a quiet evening at home.
+
+<table>
+<tr>
+<td width="33%"><img src="uncensia/docs/showcase/companion-01-cafe.png" alt="Companion character, café" /></td>
+<td width="33%"><img src="uncensia/docs/showcase/companion-02-night.png" alt="Same character, rainy neon street" /></td>
+<td width="33%"><img src="uncensia/docs/showcase/companion-03-home.png" alt="Same character, cozy at home" /></td>
+</tr>
+<tr>
+<td>A rainy afternoon café.</td>
+<td>Same person, a neon night out.</td>
+<td>Same person, home for the evening.</td>
+</tr>
+</table>
+
+## Bring two characters into one scene
+
+Compose is more than editing one picture: hand the model **several** reference images and it builds a new scene from all of them. Here two separate portraits become one — each face kept — sitting together on an autumn bench.
+
+<table>
+<tr>
+<td width="25%"><img src="uncensia/docs/showcase/companion-01-cafe.png" alt="Reference A" /></td>
+<td width="25%"><img src="uncensia/docs/showcase/compose-b-friend.png" alt="Reference B" /></td>
+<td width="50%"><img src="uncensia/docs/showcase/compose-result.png" alt="Both characters composed into one scene" /></td>
+</tr>
+<tr>
+<td align="center">Reference A</td>
+<td align="center">Reference B</td>
+<td align="center"><b>Composed:</b> both, in one new scene.</td>
+</tr>
+</table>
+
+## Read a book, illustrate a scene, then fix what’s wrong
+
+Upload a public-domain novel, ask the assistant to locate a chapter, and illustrate it. When the first watercolor of the Mad Tea-Party came back with **two** pocket watches, one more edit — *“keep a single watch, held to the Hatter’s ear”* — corrected the prop without redrawing the scene.
+
+<table>
+<tr>
+<td width="25%"><img src="uncensia/docs/showcase/alice-01-tea-table.png" alt="Mad Tea-Party, illustrated from the book" /></td>
+<td width="25%"><img src="uncensia/docs/showcase/alice-02-pocket-watch-v1.png" alt="First try: two watches" /></td>
+<td width="25%"><img src="uncensia/docs/showcase/alice-02-pocket-watch.png" alt="After an edit: one watch" /></td>
+<td width="25%"><img src="uncensia/docs/showcase/alice-03-leaving.png" alt="Alice leaving" /></td>
+</tr>
+<tr>
+<td>Locate the scene, illustrate it.</td>
+<td>First try: an extra watch.</td>
+<td>One edit later: fixed.</td>
+<td>Carry on to the next beat.</td>
+</tr>
+</table>
+
+## Turn a still into a moving shot
+
+Generate a character (here on a local ComfyUI GPU), relocate her with an image-to-image edit, then animate the still with image-to-video — all from the same library.
+
+<p align="center">
+<img src="uncensia/docs/showcase/03-departure.gif" alt="Image-to-video: the character's portrait animated" width="640" />
+</p>
+
+> Local ComfyUI (Lustify V10) for the portrait → Siray Seedream for the coastal edit → Siray Wan for the 4-second clip. [Full parameters, sources and hashes →](uncensia/docs/showcase/README.md)
+
+---
+
+## What it is
+
+- **Self-hosted and private.** One person, one server. Your conversations, characters, files and creations live in a local SQLite database and folder you can back up. No telemetry.
+- **Unrestricted.** No app-level content filter, safety LoRA, or blocked-word list. Uncensia focuses on quality; whatever policy applies is the one your chosen provider enforces.
+- **Bring your own everything.** Chat, images, video, and web search each use *your* keys — cloud providers or a local ComfyUI. Nothing is metered by us because there is no “us” in the loop.
+- **One integrated space, not five tabs.** Chat, a real tool-using agent, file/RAG search, long-term memory, image & video generation, roleplay, and visual continuity all share a single runtime and history.
+- **Web *and* native iOS.** A React web app and a native SwiftUI iOS app talk to the same server over one wire contract — the same conversations, library and creations on your desk and in your pocket.
+
+## More than chat — a story you can keep building
+
+| What you want to do | How you continue in Uncensia |
+|---|---|
+| **Step into a book** | Upload the text, ask the assistant to find a scene, then adapt it or play a character. |
+| **Bring your own characters and world** | Save a character, your persona, world and example dialogue — or import a character-card JSON. |
+| **See what just happened** | Generate or reuse illustrations between passages, in the order the story unfolds. |
+| **Keep a look you like** | Pin subject/scene/style references and edit a specific shot without losing the rest. |
+| **Try another ending** | Edit, retry or branch the conversation; save deliverable versions and revise from feedback. |
+| **Let it work while you’re away** | Schedule a task that keeps going on the server after you close the tab. |
+| **Take it with you** | Open the same conversation in native iOS to read, chat, view images and create. |
+
+<p align="center">
+<img src="uncensia/docs/showcase/web-roleplay.zh-CN.jpg" alt="Roleplay in the web client" width="46%" />
+&nbsp;
+<img src="uncensia/docs/showcase/ios-alice-story.zh-CN.jpg" alt="An illustrated story in native iOS" width="24%" />
+</p>
+
+## A real agent, not just tool buttons
+
+The assistant can read and write files, run commands in a sandboxed workspace (destructive actions pause for your approval), search the web and your library, remember facts across conversations, call MCP tools, and generate images and video — all as first-class tools in the same turn. It can carry a task forward on a schedule while the server stays online.
+
+## Bring your own models — sensible defaults out of the box
+
+A fresh install seeds a working set; add your keys in **Settings → Services** and switch anything.
+
+| Role | Default model | Where |
+|---|---|---|
+| Chat | **GLM 5.3 Flash** | OpenRouter (your key) |
+| Chat | **MuseSpark 1.3** | OpenCode Zen (free tier) |
+| Image — generate / edit / compose | **Seedream 5.0 Pro** | Siray (your key) |
+| Video | **Wan 3.0** | Siray (your key) |
+| Image — local | **Lustify V10 Krea Turbo** | your own ComfyUI |
+
+Any OpenAI-, Anthropic-, Gemini- or ComfyUI-compatible endpoint works too; pin the few models you want one tap away.
 
 ## Why Uncensia
 
-| What you want | What Uncensia focuses on |
-|---|---|
-| **Creative freedom** | Adult and NSFW-friendly creation, with no additional application-level content filter. An inspectable, editable creative system prompt and your choice of compatible local and cloud models. |
-| **An integrated AIGC studio** | Generate through conversation or use the Web Studio directly for images, source-image edits, multi-image composition, and video, with job progress and creation provenance. |
-| **Skills for visual continuity** | Carry character, wardrobe, world state, and shot intent across a series. Distinguish source images from references, specify what changes and what stays, and inspect actual results. |
-| **A usable client** | Responsive Web UI in English and Chinese. Native iOS: planned; showcase reserved for a future release. |
+There are excellent tools next door, but each stops short of the whole:
 
-You choose the provider and model. Connected services still enforce their own content policies; the included prompt does not promise to bypass model restrictions.
+- **General chat clients** (LobeChat, Open WebUI, LibreChat, Cherry Studio) are great front-ends, but image/video is a bolt-on, they don’t do roleplay or continuity, and the mobile story is a PWA.
+- **Roleplay front-ends** (SillyTavern, RisuAI) are deep at characters but have no real tool-using agent, treat generation as an extension, and have no polished native iOS.
+- **Hosted companions** (Janitor, SpicyChat, Candy) are huge but hosted, filtered, and not yours.
 
-## Inside the real Studio
-
-![Uncensia Web Studio with a local image model and three real creations](uncensia/docs/showcase/web-studio.png)
-
-**Generate → edit → animate → reuse.** The creation mode, model parameters, source image, and references are visible in the UI. These screenshots and the examples below come from the same isolated public demo instance.
-
-[Source-image editing UI](uncensia/docs/showcase/web-edit.zh-CN.png) · [Chinese UI](uncensia/docs/showcase/web-studio.zh-CN.png)
-
-## From an idea to a moving scene
-
-**One character. Two locations. A moment in motion.** These are newly generated public demo assets produced through Uncensia’s real generation pipeline, not private conversation exports or mock results.
-
-<table>
-<tr><td width="50%"><img src="uncensia/docs/showcase/01-midnight-platform.png" alt="A woman in a yellow raincoat at a misty train station"/></td><td width="50%"><img src="uncensia/docs/showcase/02-coastal-morning.png" alt="The same character, edited into a coastal sunrise"/></td></tr>
-<tr><td><b>01 · Create a character</b><br/>Lustify V10 Krea Turbo · local ComfyUI</td><td><b>02 · Keep the character, change the scene</b><br/>Seedream 5.0 Pro · reference-based editing</td></tr>
-</table>
-
-<div align="center">
-
-![03 · Animate the station scene](uncensia/docs/showcase/03-departure.gif)
-
-**03 · Make the moment move** — Wan 3.0 · image-to-video · 4 seconds · 720p
-
-[Watch the original MP4](uncensia/docs/showcase/03-departure.mp4) · [Prompts, settings, and generation notes](uncensia/docs/showcase/README.md)
-
-</div>
-
-## Continuity takes more than repeating a prompt
-
-- **Series and storyboards:** [image-series](uncensia/skills/image-series/SKILL.md) tracks identity, wardrobe, world state, and shot changes, works toward the requested count, and checks outputs.
-- **Edits and composition:** [image-edit](uncensia/skills/image-edit/SKILL.md) and [image-compose](uncensia/skills/image-compose/SKILL.md) specify the source version, reference order, intended changes, and protected details.
-- **Still to motion:** [video](uncensia/skills/video/SKILL.md) distinguishes text-to-video from image-to-video, describes motion and timing, and reuses existing creations.
-
-These are readable, editable procedures loaded when needed. They help the agent choose the right source material and generation operation. Visual fidelity still depends on the model; frame-perfect consistency is not guaranteed.
-
-The agent foundation comes from [Pi](https://github.com/badlogic/pi-mono). Memory, knowledge retrieval, MCP, long-running work, and scheduled tasks support the creative workflow. See the [documentation](uncensia/docs/README.en.md) for those capabilities.
-
-## iOS
-
-*Planned. This space is reserved for a future client showcase; no screenshots or download yet.*
+Uncensia is the intersection none of them occupy: **a private, unrestricted, bring-your-own-model ChatGPT — with a real agent, illustrated writing and roleplay, image/video that stays visually consistent, on both web and native iOS.** It is deliberately single-user; that focus is the point.
 
 ## Quick start
 
-Install **Node.js 24 or newer**. A GPU and ComfyUI are only needed for local generation; cloud chat and media use your provider accounts.
+Install **Node.js 24+**, then:
 
 ```bash
 git clone https://github.com/s-JoL/Uncensia.git
@@ -80,50 +185,21 @@ npm run build
 npm start
 ```
 
-Open **[127.0.0.1:8090](http://127.0.0.1:8090)**. The server prints the access code in its log. In **Settings → Services**, enter your API keys. Check **Model** and **Tools and permissions** before starting work.
+Open [127.0.0.1:8090](http://127.0.0.1:8090) and sign in with the access code printed in the server log. Add your keys in **Settings → Services**, then pick your chat and generation models.
 
-If this Windows machine already has the optional bundled runtime, run this from `uncensia` before the commands above:
+- Cloud chat and media use your provider accounts and are billed by them.
+- Local generation needs a separate ComfyUI install with its model files and workflow dependencies.
+- Runtimes, weights, credentials and personal data are never in the repository.
 
-```powershell
-$env:Path = "$PWD\runtime\node;$env:Path"
-```
+[Configuration, updates, phone access and backup →](uncensia/docs/README.en.md)
 
-The runtime, local models, credentials, and personal data are not included in a clone.
+## What it isn’t
 
-### What a fresh installation contains
+- Not multi-tenant. One person owns the instance; projects organise material, they are not permission boundaries.
+- Not a content filter. There is no app-level moderation; the services you connect enforce their own policies, and you are responsible for how you use it.
+- Not a quality guarantee. Writing quality and visual consistency depend on the models you choose; edits like the watch fix above are normal.
 
-| Purpose | Default |
-|---|---|
-| Chat | **HY4 Preview**, through OpenRouter; the only preconfigured chat model |
-| Embeddings | **Qwen3 Embedding 8B**, through OpenRouter |
-| Image generation | **Lustify V10 Krea Turbo**, through local ComfyUI |
-| Image editing | **Seedream 5.0 Pro Spicy**, through Siray |
-| Video | **Wan 3.0 Spicy**: text-to-video, first/end-frame, and reference-based profiles |
-| Memory and knowledge | **Empty**; no personal memories, conversations, files, or keys |
-
-Only enabled AIGC profiles are seeded. Defaults preserve the configured behavior: memory, hybrid file retrieval, web search, Studio, and workspace read/write/shell tools are enabled. Local generation requires the workflow’s model files; cloud features require their corresponding credentials. Configure the embedding key under **Tools and permissions → Embeddings** and the web-search key there as well. The default workspace is the checkout root and can be changed in Settings.
-
-These are **first-install defaults**. Updating an existing installation keeps its chosen models, disabled entries, memories, credentials, and edited settings.
-
-### English and Chinese
-
-Use **English / 中文** in the sidebar or login screen. The first visit follows your browser language; your choice is saved on that device. Switching language reloads the interface and preserves saved conversation drafts. Save unfinished settings forms before switching. Conversation text, prompts you wrote, and uploaded content are not translated.
-
-The native iOS client includes English and Simplified Chinese resources and follows the app’s preferred language in iOS Settings. It is still under development; the released client is Web.
-
-## Connect the tools you use
-
-- **Models:** OpenAI-compatible Chat and Responses, Anthropic, and Gemini protocols. Select the exact provider and model you want; unavailable selections fail visibly.
-- **Media:** ComfyUI workflows and cloud adapters. Studio exposes the selected model’s parameters; completed creations retain their source references.
-- **MCP:** Local stdio and remote Streamable HTTP servers become agent tools.
-- **Skills:** Ordinary `SKILL.md` procedures loaded on demand. Create or revise them in Settings or through the enabled management tools.
-- **Knowledge:** Upload, search, revise, and reuse files. Memory is editable and separate from fictional story context.
-
-## Your data stays in your installation
-
-The default data directory is `uncensia/data/`: SQLite configuration, Pi JSONL conversations, files, media, prompts, skills, and encrypted credentials. Requests still go to the providers you configure.
-
-Stop the service and back up the **whole directory**, including `master.key`, before upgrades. A conversation export is not a full backup. Never run two server instances against the same data directory. [Installation, backup, and updates →](uncensia/docs/README.en.md)
+Data defaults to `uncensia/data/`. Stop the server and back up the whole directory — including `master.key` — before upgrading. A conversation export is not a full backup.
 
 ## Development
 
@@ -134,10 +210,6 @@ npm run audit
 npm run build
 ```
 
-The audits use temporary data and test backends. Real image and video generation is a separate check and may incur provider charges. Start with the [documentation](uncensia/docs/README.en.md), [product scope](uncensia/docs/00-product.md), and [design principles](uncensia/docs/09-design-principles.md).
+Start with the [product scope](uncensia/docs/00-product.md) and the [documentation index](uncensia/docs/README.en.md). iOS builds in Xcode; real-provider generation is validated separately from the automated checks.
 
-Uncensia is designed for a personal, self-hosted instance. It is not a multi-tenant hosting platform. Native iOS lives in `uncensia/native-ios` and needs macOS/Xcode validation. Older SQLite conversation formats require an offline conversion before this version can start. Model quality, identity consistency, and long-context recall depend on the selected backend.
-
-### Built on
-
-[Pi](https://github.com/badlogic/pi-mono), [React](https://react.dev/), [Hono](https://hono.dev/), [ComfyUI](https://github.com/Comfy-Org/ComfyUI), and the [Model Context Protocol](https://modelcontextprotocol.io/).
+Built on [Pi](https://github.com/earendil-works/pi), [React](https://react.dev/), [Hono](https://hono.dev/), [ComfyUI](https://github.com/Comfy-Org/ComfyUI), and [MCP](https://modelcontextprotocol.io/).

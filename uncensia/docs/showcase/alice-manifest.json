@@ -1,0 +1,78 @@
+{
+  "date": "2026-09-13",
+  "source": "https://www.gutenberg.org/ebooks/11",
+  "chapter": "VII — A Mad Tea-Party",
+  "chatModel": "deepseek/deepseek-v4-flash",
+  "provider": "Siray",
+  "outputs": [
+    {
+      "file": "alice-01-tea-table.png",
+      "model": "bytedance/seedream-5.0-pro-t2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "sha256": "f3987b31ee5aa4c2873a1ccfdc0045c5659d46c5301e1338c47b7b8f38ffcb48",
+      "parameters": {
+        "prompt": "精致的水彩童话书插画，维多利亚时代风格。花园里一棵大树下摆着一张长长的木制茶桌，桌上摆满成排的白瓷茶壶、茶杯与茶托，散落着糕点。桌边只有三位：戴黑色高礼帽（帽带上插着一张写有“10/6”字样的纸牌）的帽匠，穿马甲的长耳朵三月兔，以及蜷在茶壶与茶杯之间打盹的睡鼠——帽匠和三月兔把胳膊肘支在睡鼠身上，隔着它交谈。三人却全都挤在长桌的一角，桌面其余部分空着。爱丽丝（七岁小女孩，金色长发系黑色蝴蝶结，蓝白条纹连衣裙，白色围裙，黑色小皮鞋）从画面右侧走来，在长桌末端一把大扶手椅旁刚要坐下，神情困惑。背景是三月兔的房子：白色木格架、攀爬的玫瑰藤，烟囱是耳朵的形状，屋顶是蓬松如皮毛的茅草。午后阳光穿过树叶洒下斑驳光影。水彩质感，柔和晕染，可见淡铅笔线稿，柔和调色（草绿、天蓝、奶油白、赭黄）。横幅构图，画面中只有这四个人物。",
+        "size": "1248x832",
+        "output_format": "png"
+      },
+      "sources": [],
+      "assetId": "img_62413387870e5eed9eb1219d64fcc488",
+      "status": "succeeded"
+    },
+    {
+      "file": "alice-02-pocket-watch.png",
+      "model": "bytedance/seedream-5.0-pro-i2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "sha256": "c5d55ccf66e4e247326c10f18828886db71fc7e1e837ae3b731a8f27913cd5f2",
+      "parameters": {
+        "source_image_id": "img_1f9413d13341511ba59e7d5c462c1ac6",
+        "size": "1248x832",
+        "prompt": "编辑参考图，修正怀表数量。整个画面中只保留一只黄铜怀表：帽匠右手把这只怀表举到耳边听，他的左手空着、放在桌上。三月兔双手完全空着，手里没有怀表、没有表链、没有表盘。移除任何多余的怀表或表链。保留帽匠的高礼帽（带有\"10/6\"标签纸牌）和芥黄外套、三月兔的马甲和灰棕毛发、爱丽丝的蓝裙白围裙金发黑蝴蝶结、白瓷茶具桌布、花园背景、午后光影、水彩画风。只做上述怀表相关修改，其他一切不变。"
+      },
+      "sources": [
+        "img_1f9413d13341511ba59e7d5c462c1ac6"
+      ],
+      "assetId": "img_ba943e10d12618473011baaeb89c84f4",
+      "status": "succeeded"
+    },
+    {
+      "file": "alice-03-leaving.png",
+      "model": "bytedance/seedream-5.0-pro-i2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "sha256": "42084b19f514dd655cd4d204e878cfe1eed7114bc35f2ceeb07e8ea2b00c12bf",
+      "parameters": {
+        "prompt": "以参考图为基础，改为中景背影视角。爱丽丝转身沿林间小径走远，边走边回头，面露不悦。身后茶桌处睡鼠已瘫倒睡着，帽匠和三月兔毫不在意，正合力把睡鼠塞进一只大茶壶里。保持爱丽丝服装（蓝裙白围裙金发黑蝴蝶结）、茶桌陈设、花园背景、午后光影与水彩画风不变，只调整人物姿态与机位。",
+        "size": "1248x832",
+        "source_image_id": "img_62413387870e5eed9eb1219d64fcc488"
+      },
+      "sources": [
+        "img_62413387870e5eed9eb1219d64fcc488"
+      ],
+      "assetId": "img_74e5365c71923fa2ff3f30062f746065",
+      "status": "succeeded"
+    }
+  ],
+  "previousVersions": [
+    {
+      "file": "alice-02-pocket-watch-v1.png",
+      "model": "bytedance/seedream-5.0-pro-i2i-spicy",
+      "width": 1248,
+      "height": 832,
+      "sha256": "74fb2cf9ce07be5e56d453860302302a30b4e77b182db45d8055bec9374557d2",
+      "parameters": {
+        "prompt": "以参考图为基础，把镜头推近为近景特写。帽匠从外套口袋掏出一只黄铜怀表，皱眉盯着表盘，另一只手把表贴到耳朵听。三月兔伸手把那只怀表浸进自己的茶杯里。爱丽丝从帽匠肩后探身好奇张望。保持人物服装（帽匠的高礼帽和芥黄外套、三月兔的马甲、爱丽丝的蓝裙白围裙金发黑蝴蝶结）、茶桌白瓷茶具和桌布、花园背景、午后阳光透过树叶的光影、以及水彩画风完全不变，只改变机位与人物动作。",
+        "size": "1248x832",
+        "source_image_id": "img_62413387870e5eed9eb1219d64fcc488"
+      },
+      "sources": [
+        "img_62413387870e5eed9eb1219d64fcc488"
+      ],
+      "assetId": "img_1f9413d13341511ba59e7d5c462c1ac6",
+      "status": "succeeded",
+      "note": "Superseded: the initial image contained two watches."
+    }
+  ]
+}
