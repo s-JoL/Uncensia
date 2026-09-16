@@ -171,10 +171,16 @@ const isLocalSource = (source: string) =>
 
 function validatePackageSource(source: string) {
   const trimmed = source.trim();
-  if (!trimmed || trimmed.length > 500 || /\s/.test(trimmed)) throw new Error("请填写一个来源，例如 npm:包名、git:github.com/用户/仓库 或本机路径");
-  if (isLocalSource(trimmed) && !fs.existsSync(path.resolve(trimmed.replace(/^~/, process.env.HOME ?? process.env.USERPROFILE ?? "")))) {
-    throw new Error("本机路径不存在");
+  if (!trimmed || trimmed.length > 500) throw new Error("请填写一个来源，例如 npm:包名、git:github.com/用户/仓库 或本机路径");
+  if (isLocalSource(trimmed)) {
+    // Local paths get the filesystem check, not the whitespace rule — a folder
+    // name with spaces is a valid package source.
+    if (!fs.existsSync(path.resolve(trimmed.replace(/^~/, process.env.HOME ?? process.env.USERPROFILE ?? "")))) {
+      throw new Error("本机路径不存在");
+    }
+    return trimmed;
   }
+  if (/\s/.test(trimmed)) throw new Error("请填写一个来源，例如 npm:包名、git:github.com/用户/仓库 或本机路径");
   return trimmed;
 }
 
@@ -244,7 +250,12 @@ export function createExtension(name: string, content: string) {
   if (!NAME.test(name)) throw new Error("名称使用小写英文、数字和短横线");
   validateExtension(content);
   fs.mkdirSync(extensionsDir, { recursive: true });
-  fs.writeFileSync(path.join(extensionsDir, `${name}.ts`), content, { flag: "wx" });
+  try {
+    fs.writeFileSync(path.join(extensionsDir, `${name}.ts`), content, { flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("已存在同名扩展，请换一个名字");
+    throw error;
+  }
 }
 
 export function updateExtension(extension: AgentExtension, body: { enabled?: boolean; content?: string; revision?: string }) {

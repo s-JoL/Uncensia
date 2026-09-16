@@ -552,7 +552,9 @@ export function notesInputError(value: unknown): string | undefined {
     if (typeof note.key !== "string" || !isNoteKey(note.key)) return "note key must be 1-48 lowercase letters, digits, '-' or '_'";
     if (seen.has(note.key)) return `duplicate note key "${note.key}"`;
     seen.add(note.key);
-    if (typeof note.label !== "string" || note.label.length > NOTE_LIMITS.label) return `note label must be text up to ${NOTE_LIMITS.label} characters`;
+    // label is optional everywhere notes are written (update_conversation_notes
+    // keeps the old one when omitted); when present it is still bounded.
+    if (note.label !== undefined && (typeof note.label !== "string" || note.label.length > NOTE_LIMITS.label)) return `note label must be text up to ${NOTE_LIMITS.label} characters`;
     if (typeof note.value !== "string" || note.value.length > NOTE_LIMITS.value) return `note value must be text up to ${NOTE_LIMITS.value} characters`;
   }
 }

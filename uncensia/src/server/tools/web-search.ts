@@ -435,14 +435,20 @@ export function fetchUrlTool(options: {
       const { pages, failed } = await adapter.fetchPages(urls, ctx);
       const failures = new Map(failed.map((item) => [item.url, item.error]));
 
+      // The provider may echo a normalized URL (a dropped or added trailing
+      // slash); text and structured fields must agree on what was read, so
+      // both go through the same lookups.
+      const pageFor = (url: string) => pages.get(url) ?? pages.get(url.replace(/\/$/, "")) ?? pages.get(`${url}/`);
+      const failureFor = (url: string) => failures.get(url) ?? failures.get(url.replace(/\/$/, "")) ?? failures.get(`${url}/`);
+
       const sections = urls.map((url, index) => {
-        const body = pages.get(url) ?? pages.get(url.replace(/\/$/, "")) ?? pages.get(`${url}/`);
+        const body = pageFor(url);
         const lines = [`# Ref ${index}: ${url}`, `\nAnchor: \ue202turn${turn}ref${index}`, `URL: ${url}`];
         if (body) {
           const truncated = body.length > FETCH_PAGE_CHARS;
           lines.push(`Content${truncated ? ` (first ${FETCH_PAGE_CHARS} of ${body.length} characters)` : ""}:\n${body.slice(0, FETCH_PAGE_CHARS)}`);
         } else {
-          lines.push(`Not read: ${failures.get(url) ?? "the page returned no readable text"}`);
+          lines.push(`Not read: ${failureFor(url) ?? "the page returned no readable text"}`);
         }
         return `${lines.join("\n")}\n`;
       });
@@ -453,8 +459,8 @@ export function fetchUrlTool(options: {
           structuredContent: {
             fetch_url: {
               turn,
-              pages: urls.map((url) => ({ link: url, read: pages.has(url), error: failures.get(url) })),
-              references: urls.filter((url) => pages.has(url)).map((url) => ({ type: "ref", link: url, title: url })),
+              pages: urls.map((url) => ({ link: url, read: pageFor(url) !== undefined, error: failureFor(url) })),
+              references: urls.filter((url) => pageFor(url) !== undefined).map((url) => ({ type: "ref", link: url, title: url })),
             },
           },
         },

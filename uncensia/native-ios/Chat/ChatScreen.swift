@@ -457,7 +457,9 @@ private struct QuestionCard: View {
                         Button(uncensiaText("是")) { answer("yes") }.buttonStyle(.borderedProminent)
                     }
                     if item.kind == "input" || item.kind == "editor" {
-                        Button(uncensiaText("提交")) { answer(text) }.buttonStyle(.borderedProminent).disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        // Submit sends whatever is in the box, including "" — an empty
+                        // string is an answer, skipping is the dismissal.
+                        Button(uncensiaText("提交")) { answer(text) }.buttonStyle(.borderedProminent)
                     }
                 }
             }
