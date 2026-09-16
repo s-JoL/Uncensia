@@ -105,7 +105,8 @@ extension JSONValue {
   var displayString: String {
     switch self {
     case .string(let value): value
-    case .number(let value): value.formatted()
+    case .number(let value):
+      value.rounded() == value && abs(value) < 1e15 ? String(Int64(value)) : String(value)
     case .bool(let value): value ? uncensiaText("是") : uncensiaText("否")
     case .null: ""
     case .array(let value): value.map(\.displayString).joined(separator: ", ")

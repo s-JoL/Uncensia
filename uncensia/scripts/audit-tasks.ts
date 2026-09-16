@@ -62,6 +62,12 @@ try {
   assert.equal(services.store.dueBackgroundTasks(Date.now() + 7200000).length, 0);
   assert.equal((await call("PATCH", `/background-tasks/${scheduled.id}`, { action: "resume" })).status, 200);
   assert.equal((await call("DELETE", `/background-tasks/${scheduled.id}`)).status, 200);
+  assert.equal(services.store.getBackgroundTask(scheduled.id)!.status, "cancelled", "first DELETE cancels and keeps the task");
+  const removed = await call("DELETE", `/background-tasks/${scheduled.id}`);
+  assert.equal(removed.status, 200);
+  assert.equal(((await removed.json()) as { deleted?: boolean }).deleted, true);
+  assert.equal(services.store.getBackgroundTask(scheduled.id), undefined, "second DELETE removes the settled task");
+  assert.equal((await call("DELETE", `/background-tasks/${scheduled.id}`)).status, 404);
 
   const run = services.store.createRun(conv.id, "fixture");
   await services.runtime.start(run.id, conv.id, { message: "CREATE_TASK_FIXTURE", modelId: "fixture" });

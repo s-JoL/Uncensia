@@ -385,6 +385,11 @@ export function conversationRoutes(services: Services) {
   app.delete("/background-tasks/:id", (context) => {
     const task = store.getBackgroundTask(context.req.param("id"));
     if (!task) return fail(context, 404, "not_found", "Background task not found");
+    // A settled task has nothing left to cancel, so deleting it removes the row.
+    if (task.status === "completed" || task.status === "cancelled") {
+      store.deleteBackgroundTask(task.id);
+      return context.json({ ...task, deleted: true });
+    }
     const cancelled = store.cancelBackgroundTask(task.id);
     if (task.runId && cancelled?.status === "cancelled") runtime.stop(task.conversationId, task.runId);
     return context.json(cancelled);
