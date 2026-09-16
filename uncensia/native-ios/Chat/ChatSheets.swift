@@ -414,7 +414,7 @@ struct BranchSheet: View {
   private func label(_ item: JSONValue) -> String {
     let state = active.contains(item["id"].stringValue ?? "") ? uncensiaText("当前版本") : uncensiaText("历史版本")
     switch item["type"].stringValue {
-    case "message": return "\(item["role"].stringValue == "user" ? "你" : "助手") · \(state)"
+    case "message": return "\(roleLabel(item["role"].stringValue == "user" ? "user" : "assistant")) · \(state)"
     case "compaction": return uncensiaText("上下文摘要 · %@", String(describing: state))
     case "branch_summary": return uncensiaText("分支摘要 · %@", String(describing: state))
     default: return uncensiaText("节点 · %@", String(describing: state))

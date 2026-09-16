@@ -8,7 +8,7 @@
  * this screen; it cannot change what a lost session would have to be recovered
  * with.
  */
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { SecuritySettings } from "@shared/types.ts";
 import { SECRET } from "../../config.ts";
 import type { Services } from "../../services.ts";
@@ -21,17 +21,15 @@ export function securityRoutes(services: Services) {
   const app = new Hono();
   const { store, vault } = services;
 
-  const snapshot = (currentId: string): SecuritySettings => ({
+  const snapshot = (context: Context, currentId = currentSessionId(context)): SecuritySettings => ({
     totpEnabled: vault.has(SECRET.totp),
-    overTls: false,
+    overTls: overTls(context),
     trustProxy: process.env.UNCENSIA_TRUST_PROXY === "1",
     sessions: liveSessions(services),
     currentSessionId: currentId,
   });
 
-  app.get("/security", (context) =>
-    context.json({ ...snapshot(currentSessionId(context)), overTls: overTls(context) }),
-  );
+  app.get("/security", (context) => context.json(snapshot(context)));
 
   app.put("/security/access-code", async (context) => {
     const body = await readJson<{ value: string }>(context);
@@ -46,7 +44,7 @@ export function securityRoutes(services: Services) {
     vault.set(SECRET.accessCode, value);
     // Other devices signed in with the old code; make them prove the new one.
     store.deleteAllSessions(currentSessionId(context));
-    return context.json(snapshot(currentSessionId(context)));
+    return context.json(snapshot(context));
   });
 
   /**
@@ -71,7 +69,7 @@ export function securityRoutes(services: Services) {
     acceptTotp(services, totp.step);
     vault.set(SECRET.totp, pending);
     vault.delete(SECRET.totpPending);
-    return context.json(snapshot(currentSessionId(context)));
+    return context.json(snapshot(context));
   });
 
   app.delete("/security/totp", async (context) => {
@@ -82,7 +80,7 @@ export function securityRoutes(services: Services) {
     if (denied) return denied;
     vault.delete(SECRET.totp);
     vault.delete(SECRET.totpPending);
-    return context.json(snapshot(currentSessionId(context)));
+    return context.json(snapshot(context));
   });
 
   // Revoking is how someone else would push the owner off their own server, so
@@ -91,7 +89,7 @@ export function securityRoutes(services: Services) {
     const denied = await requireStepUp(services, context);
     if (denied) return denied;
     store.deleteSession(context.req.param("id"));
-    return context.json(snapshot(currentSessionId(context)));
+    return context.json(snapshot(context));
   });
 
   app.post("/security/sessions/revoke-others", async (context) => {
@@ -99,7 +97,7 @@ export function securityRoutes(services: Services) {
     if (denied) return denied;
     const current = currentSessionId(context);
     store.deleteAllSessions(current);
-    return context.json(snapshot(current));
+    return context.json(snapshot(context, current));
   });
 
   return app;
