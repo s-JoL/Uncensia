@@ -46,6 +46,7 @@ public final class ChatStore {
     public var isSending = false
     public var error: String?
     public var approvals: [ApprovalItem] = []
+    public var questions: [QuestionItem] = []
     public var conversationDetails: JSONValue = .null
     public var selectedModelID = ""
     public var olderCursor: Int?
@@ -85,7 +86,7 @@ public final class ChatStore {
         followGeneration = UUID(); followTask?.cancel(); followTask = nil; activeFollowID = nil
         transientIDs = []; reconciliationAfter = nil; loadingOlder = false; sendRevision = UUID(); isSending = false
         liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""
-        isRunning = false; isLoading = loading; messages = []; approvals = []; citations.reset()
+        isRunning = false; isLoading = loading; messages = []; approvals = []; questions = []; citations.reset()
         conversationDetails = .null; olderCursor = nil; revision = -1; error = nil; selectedModelID = ""; draft = ""
     }
 
@@ -106,7 +107,7 @@ public final class ChatStore {
         rememberTranscript()
         draftScope = nil; draft = ""
         let cached = snapshots[id]
-        followTask?.cancel(); activeFollowID = nil; transientIDs = []; loadingOlder = false; citations.reset(); followGeneration = UUID(); isRunning = false; liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""; messages = []; approvals = []; conversationDetails = .null; olderCursor = nil; isLoading = true; error = nil
+        followTask?.cancel(); activeFollowID = nil; transientIDs = []; loadingOlder = false; citations.reset(); followGeneration = UUID(); isRunning = false; liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""; messages = []; approvals = []; questions = []; conversationDetails = .null; olderCursor = nil; isLoading = true; error = nil
         openingID = id
         reconciliationAfter = nil
         sendRevision = UUID(); isSending = false
@@ -149,6 +150,9 @@ public final class ChatStore {
             let waiting = try await api.request("GET", "/conversations/\(id)/approvals")
             guard generation == followGeneration else { return }
             approvals = waiting["items"].arrayValue?.compactMap(ApprovalItem.init) ?? []
+            let asked = try await api.request("GET", "/conversations/\(id)/questions")
+            guard generation == followGeneration else { return }
+            questions = asked["items"].arrayValue?.compactMap(QuestionItem.init) ?? []
         } catch { if generation == followGeneration { self.error = error.localizedDescription } }
     }
 
@@ -321,6 +325,9 @@ public final class ChatStore {
             let waiting = try await api.request("GET", "/conversations/\(id)/approvals")
             guard ownsRequest() else { return }
             approvals = waiting["items"].arrayValue?.compactMap(ApprovalItem.init) ?? []
+            let asked = try await api.request("GET", "/conversations/\(id)/questions")
+            guard ownsRequest() else { return }
+            questions = asked["items"].arrayValue?.compactMap(QuestionItem.init) ?? []
         } catch {
             if ownsRequest() {
                 if interruptedFollower, activeFollowID == followedAtStart { activeFollowID = nil; isRunning = false }
@@ -356,6 +363,17 @@ public final class ChatStore {
         } catch { if generation == followGeneration { self.error = error.localizedDescription } }
     }
 
+    /// `answer == nil` dismisses: the extension gets `undefined`, never a default choice.
+    public func answer(_ question: QuestionItem, _ answer: String?, api: APIClient) async {
+        let generation = followGeneration
+        do {
+            let body: JSONValue = answer.map { .object(["answer": .string($0)]) } ?? .object(["dismiss": .bool(true)])
+            let settled = try await api.request("POST", "/questions/\(question.id)", body: body)
+            guard generation == followGeneration else { return }
+            replaceQuestion(QuestionItem(settled), id: question.id)
+        } catch { if generation == followGeneration { self.error = error.localizedDescription } }
+    }
+
     private func follow(runID: String, after: Int, id: String, api: APIClient, generation: UUID, reconcileAfter: Int? = nil) {
         guard !runID.isEmpty, generation == followGeneration else { return }
         if activeFollowID == runID { return }
@@ -366,6 +384,7 @@ public final class ChatStore {
         // Retain earlier unsettled rows until this run's canonical tail has
         // reconciled both runs. Clearing their IDs here loses the old boundary.
         activeFollowID = runID; liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""; error = nil; isRunning = true
+        questions.removeAll { !$0.isPending }
         followTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -454,10 +473,26 @@ public final class ChatStore {
         case "agent.extension_status": liveStatus = event.data["text"].stringValue ?? ""
         case "tool.approval.required", "tool.approval.resolved":
             if let approval = ApprovalItem(event.data["approval"]) { approvals.removeAll { $0.id == approval.id }; if approval.status == "pending" { approvals.append(approval) } }
+        case "question.asked", "question.settled":
+            if let question = QuestionItem(event.data["question"]) { replaceQuestion(question, id: question.id) }
+        case "conversation.notes":
+            if case .object(var details) = conversationDetails, case .array(let notes) = event.data["notes"] {
+                details["notes"] = .array(notes); conversationDetails = .object(details)
+            }
         case "run.completed": settleVisibleRun()
         case "run.cancelled": settleVisibleRun(); liveStatus = uncensiaText("已停止")
         case "run.failed": settleVisibleRun(); error = event.data["message"].stringValue ?? uncensiaText("运行失败")
         default: break
+        }
+    }
+
+    /// A settled card stays in place with its outcome, as on Web; only the
+    /// controls go away. A fresh load only shows pending ones.
+    private func replaceQuestion(_ question: QuestionItem?, id: String) {
+        if let index = questions.firstIndex(where: { $0.id == id }) {
+            if let question { questions[index] = question } else { questions.remove(at: index) }
+        } else if let question {
+            questions.append(question)
         }
     }
 

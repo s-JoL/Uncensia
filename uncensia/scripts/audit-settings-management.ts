@@ -70,6 +70,64 @@ try {
   assert.match(await run(), /UNIQUE_MANAGED_SKILL_DESCRIPTION/);
   console.log("PASS toggle changes real SDK outgoing skill catalogue without deleting instructions");
 
+  // Local extensions: created from the settings screen, switched off without deleting, and removed to a trash folder.
+  const extensionSource = "export default function (pi) {\n  pi.registerTool({ name: \"unique_fixture_tool\", label: \"fixture\", description: \"UNIQUE_EXTENSION_TOOL\", parameters: { type: \"object\", properties: {} }, async execute() { return { content: [{ type: \"text\", text: \"ok\" }] }; } });\n}\n";
+  assert.equal((await call("POST", "/extensions", { name: "Bad Name", content: extensionSource })).status, 400);
+  assert.equal((await call("POST", "/extensions", { name: "fixture-ext", content: "const x = 1;" })).status, 400);
+  assert.equal((await call("POST", "/extensions", { name: "fixture-ext", content: extensionSource })).status, 201);
+  assert.equal((await call("POST", "/extensions", { name: "fixture-ext", content: extensionSource })).status, 400);
+  type Resources = { extensions: Array<{ id: string; name: string; enabled: boolean; editable: boolean; source: string; revision: string }>; packages: Array<{ source: string; enabled: boolean; installedPath: string | null; resources: { extensions: number; skills: number; prompts: number } }>; status: { loaded: string[]; errors: unknown[] } | null };
+  const resources = async () => await (await call("GET", "/extensions")).json() as Resources;
+  const ext = (await resources()).extensions.find(row => row.name === "fixture-ext")!;
+  assert.ok(ext.editable && ext.enabled && ext.source === "local");
+  assert.match(await run(), /UNIQUE_EXTENSION_TOOL/);
+  assert.ok((await resources()).status!.loaded.some(file => file.endsWith("fixture-ext.ts")));
+  assert.equal((await call("PATCH", `/extensions/${ext.id}`, { enabled: false })).status, 200);
+  assert.doesNotMatch(await run(), /UNIQUE_EXTENSION_TOOL/);
+  assert.equal((await resources()).extensions.find(row => row.id === ext.id)!.enabled, false);
+  assert.equal((await call("PATCH", `/extensions/${ext.id}`, { content: extensionSource + "// edited\n", revision: "stale" })).status, 409);
+  assert.equal((await call("PATCH", `/extensions/${ext.id}`, { content: extensionSource + "// edited\n", revision: ext.revision })).status, 200);
+  assert.equal((await call("PATCH", `/extensions/${ext.id}`, { enabled: true })).status, 200);
+  assert.match(await run(), /UNIQUE_EXTENSION_TOOL/);
+  assert.equal((await call("DELETE", `/extensions/${ext.id}`)).status, 200);
+  assert.equal((await call("DELETE", `/extensions/${ext.id}`)).status, 404);
+  assert.ok(fs.readdirSync(path.join(dir, "agent", "extensions-trash")).some(file => file.endsWith("fixture-ext.ts")));
+  assert.doesNotMatch(await run(), /UNIQUE_EXTENSION_TOOL/);
+  console.log("PASS local extensions: validation, real SDK tool registration follows enable/disable, stale edits conflict, delete moves to trash");
+
+  // Packages: a local folder is installed through Pi's own package manager; disabling removes its resources from the next run.
+  const packageDir = path.join(dir, "fixture-package");
+  fs.mkdirSync(path.join(packageDir, "skills", "packaged"), { recursive: true });
+  fs.mkdirSync(path.join(packageDir, "extensions"), { recursive: true });
+  fs.writeFileSync(path.join(packageDir, "skills", "packaged", "SKILL.md"), "---\nname: packaged\ndescription: UNIQUE_PACKAGED_SKILL\n---\n\nPackaged body.\n");
+  fs.writeFileSync(path.join(packageDir, "extensions", "packaged.ts"), extensionSource.replace("UNIQUE_EXTENSION_TOOL", "UNIQUE_PACKAGED_TOOL"));
+  for (const route of ["/extensions/packages", "/extensions/packages/update"]) assert.equal((await call("POST", route, { source: 42 })).status, 400);
+  assert.equal((await call("PATCH", "/extensions/packages", { source: "npm:never-added", enabled: false })).status, 404);
+  assert.equal((await call("DELETE", "/extensions/packages", { source: "npm:never-added" })).status, 404);
+  assert.equal((await call("POST", "/extensions/packages", { source: path.join(dir, "missing-package") })).status, 400);
+  assert.equal((await call("POST", "/extensions/packages", { source: packageDir })).status, 201);
+  assert.equal((await call("POST", "/extensions/packages", { source: packageDir })).status, 400);
+  const installed = (await resources()).packages.find(row => row.source === packageDir)!;
+  assert.ok(installed.enabled);
+  assert.deepEqual(installed.resources, { extensions: 1, skills: 1, prompts: 0 });
+  const packaged = (await resources()).extensions.find(row => row.name === "packaged")!;
+  assert.ok(!packaged.editable && packaged.enabled && packaged.source === packageDir);
+  assert.equal((await call("PATCH", `/extensions/${packaged.id}`, { content: "export default function () {}", revision: packaged.revision })).status, 400);
+  assert.equal((await call("DELETE", `/extensions/${packaged.id}`)).status, 400);
+  let outgoing = await run();
+  assert.match(outgoing, /UNIQUE_PACKAGED_SKILL/); assert.match(outgoing, /UNIQUE_PACKAGED_TOOL/);
+  assert.equal((await call("PATCH", `/extensions/${packaged.id}`, { enabled: false })).status, 200);
+  outgoing = await run();
+  assert.match(outgoing, /UNIQUE_PACKAGED_SKILL/); assert.doesNotMatch(outgoing, /UNIQUE_PACKAGED_TOOL/);
+  assert.equal((await call("PATCH", "/extensions/packages", { source: packageDir, enabled: false })).status, 200);
+  assert.equal((await resources()).extensions.find(row => row.id === packaged.id)!.enabled, false);
+  outgoing = await run();
+  assert.doesNotMatch(outgoing, /UNIQUE_PACKAGED_SKILL/); assert.doesNotMatch(outgoing, /UNIQUE_PACKAGED_TOOL/);
+  assert.equal((await call("DELETE", "/extensions/packages", { source: packageDir })).status, 200);
+  assert.equal((await resources()).packages.length, 0);
+  assert.ok(fs.existsSync(path.join(packageDir, "skills", "packaged", "SKILL.md")));
+  console.log("PASS packages: shape and existence validation, local install through Pi, per-file and whole-package disable reach the real SDK catalogue, removal keeps local files");
+
   for (const model of ["deepseek-v4-flash-0731", "deepseek-v4-flash-vision", "gemini-3.7-flash", "glm-5.3-flash", "glm-5.3", "kimi-k3"]) {
     const suggestion = classifyModel(model, "fixture");
     assert.ok(suggestion.contextWindow >= 1_000_000, model);

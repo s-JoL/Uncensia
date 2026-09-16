@@ -8,6 +8,7 @@
  *
  *   node --import tsx scripts/audit-skills.ts
  */
+import { deepStrictEqual } from "node:assert";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -69,6 +70,16 @@ writeSkill(
   "Continue the fictional exchange in character.",
 );
 writeSkill(
+  "bond-keeper",
+  "name: bond-keeper\ndescription: Keep one saved relationship note current.\ncontexts: [notes:relationship, notes:Not Valid]",
+  "Read the relationship note, then reply.",
+);
+writeSkill(
+  "chronicle",
+  "name: chronicle\ndescription: Use every saved note.\ncontexts: [notes]",
+  "Read all notes, then reply.",
+);
+writeSkill(
   "internal",
   "name: internal\ndescription: Bookkeeping the model should never pick on its own.\ndisable-model-invocation: true\ncontexts: [roleplay, visual-continuity]",
   "Not for the model.",
@@ -82,6 +93,8 @@ const skills = await loadSkillLibrary(sandbox);
 await check("skills load from disk, and a broken one is skipped rather than fatal", () => {
   const names = skills.map((skill) => skill.name).sort();
   assert(names.includes("poster") && names.includes("retouch") && names.includes("persona-helper"), `loaded ${JSON.stringify(names)}`);
+  deepStrictEqual(skills.find(skill => skill.name === "bond-keeper")?.contexts, ["notes:relationship"], "named note context was not parsed or an invalid one survived");
+  deepStrictEqual(skills.find(skill => skill.name === "chronicle")?.contexts, ["notes"], "all-notes context was not parsed");
   assert(!names.includes("broken"), "a skill without frontmatter was loaded as if it were valid");
   return `loaded ${JSON.stringify(names)}`;
 });
@@ -98,7 +111,7 @@ await check("the prompt gets one line per skill, not the procedures", () => {
   assert(catalogue.includes("Lay out a poster"), "the description never made it into the prompt");
   assert(!catalogue.includes("第一步：先量尺寸"), "the whole procedure was pasted into the prompt");
   assert(catalogue.split("<location>").length - 1 === skills.filter(skill => !skill.disableModelInvocation).length, "the Pi catalogue omitted exact readable locations");
-  return `${catalogue.length} chars for 3 skills, body is ${LONG_BODY.length} chars`;
+  return `${catalogue.length} chars for ${skills.length} skills, body is ${LONG_BODY.length} chars`;
 });
 
 await check("an empty library adds nothing to the prompt", async () => {
@@ -145,6 +158,26 @@ await check("skill metadata controls context for actual disk reads, including or
   assert(!JSON.stringify(notes).includes("Mira speaks") && !JSON.stringify(notes.details ?? {}).includes('"skill"'), "ordinary file activated a skill");
 });
 
+await check("saved notes reach only the skills that declare them, by name or as a whole", async () => {
+  const saved = [
+    { key: "relationship", label: "Where we stand", value: "Mira trusts the reporter now." },
+    { key: "scene", label: "", value: "Back room of the clock shop." },
+    { key: "empty", label: "Unused", value: "   " },
+  ];
+  const reader = readerFor(skills, { roleplay: { enabled: true, character: "Mira speaks softly.", persona: "", world: "", scene: "", style: "" }, notes: saved });
+  const text = async (name: string) => JSON.stringify(await readSkill(reader, skills, name));
+  const persona = await text("persona-helper");
+  assert(!persona.includes("trusts the reporter") && !persona.includes("clock shop"), "notes leaked into a skill that only declared roleplay");
+  const one = await text("bond-keeper");
+  assert(one.includes("# Conversation note: relationship") && one.includes("trusts the reporter"), "named note was not attached");
+  assert(!one.includes("clock shop") && !one.includes("Mira speaks"), "a named-note skill received other notes or undeclared roleplay context");
+  const all = await text("chronicle");
+  assert(all.includes("trusts the reporter") && all.includes("clock shop") && all.includes("(key: scene)"), "all-notes skill lost a saved note");
+  assert(!all.includes("Unused"), "a blank note was presented as saved state");
+  const none = JSON.stringify(await readSkill(readerFor(skills, { notes: [] }), skills, "bond-keeper"));
+  assert(none.includes('No note \\"relationship\\" is saved yet'), "an absent named note did not say so");
+});
+
 const shippedRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "skills");
 
 await check("the shipped optional capabilities are standard on-demand skills", async () => {
@@ -158,6 +191,8 @@ await check("the shipped optional capabilities are standard on-demand skills", a
     "image-series",
     "video",
     "roleplay",
+    "companion",
+    "fiction-writing",
     "improve-uncensia",
   ]) {
     assert(names.includes(name), `missing shipped skill ${name}: ${JSON.stringify(names)}`);
@@ -168,7 +203,13 @@ await check("the shipped optional capabilities are standard on-demand skills", a
   const shippedTool = readerFor(shipped);
   const roleplaySkill = shipped.find((skill) => skill.name === "roleplay");
   const imageSkill = shipped.find((skill) => skill.name === "image-generate");
-  assert(roleplaySkill?.contexts.includes("roleplay"), "roleplay does not declare its runtime context");
+  assert(roleplaySkill?.contexts.includes("roleplay") && roleplaySkill.contexts.includes("notes"), "roleplay does not declare its runtime contexts");
+  const companionSkill = shipped.find((skill) => skill.name === "companion");
+  deepStrictEqual(companionSkill?.contexts, ["roleplay", "notes:relationship", "notes:today"], "companion does not declare the notes it keeps");
+  for (const name of ["companion", "roleplay", "fiction-writing"]) {
+    const text = JSON.stringify(await readSkill(readerFor(shipped), shipped, name));
+    assert(text.includes("update_conversation_notes"), `${name} never tells the model how to keep its state current`);
+  }
   assert(imageSkill?.contexts.includes("visual-continuity"), "image skill does not declare visual continuity");
   const still = await readSkill(shippedTool, shipped, "image-generate");
   const stillText = still.content.map((part) => ("text" in part ? part.text : "")).join("");

@@ -31,6 +31,7 @@ export class Db {
     for (const [table, column, definition] of [
       ["background_tasks", "state", "TEXT NOT NULL DEFAULT '{}'"],
       ["runs", "task_id", "TEXT"],
+      ["conversations", "notes", "TEXT NOT NULL DEFAULT '[]'"],
     ]) {
       if (!this.handle.prepare(`PRAGMA table_info(${table})`).all().some(row => row.name === column)) {
         this.handle.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);

@@ -154,6 +154,7 @@ struct ConversationContextSheet: View {
   @Environment(\.dismiss) private var dismiss
   @State private var role = RoleplayDraft()
   @State private var visual = VisualDraft()
+  @State private var notes: [NoteDraft] = []
   @State private var source = ""
   @State private var preview: CardPreview?
   @State private var importError: String?
@@ -231,6 +232,7 @@ struct ConversationContextSheet: View {
             }
           }
         }
+        notesSection
       }.navigationTitle(uncensiaText("对话设定")).toolbar {
         ToolbarItem(placement: .cancellationAction) { Button(uncensiaText("取消")) { dismiss() } }
         ToolbarItem(placement: .confirmationAction) {
@@ -239,6 +241,7 @@ struct ConversationContextSheet: View {
       }.onAppear {
         role = RoleplayDraft(details["roleplay"])
         visual = VisualDraft(details["visualContinuity"])
+        notes = (details["notes"].arrayValue ?? []).map(NoteDraft.init)
         projectID = details["projectId"].stringValue ?? ""
         Task { await loadProjects() }
       }.fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
@@ -252,6 +255,27 @@ struct ConversationContextSheet: View {
   }
   private func field(_ title: String, _ text: Binding<String>) -> some View {
     Section(title) { TextField(title, text: text, axis: .vertical).lineLimit(2...12) }
+  }
+  private var notesSection: some View {
+    Section {
+      ForEach($notes) { $note in
+        VStack(alignment: .leading, spacing: 6) {
+          HStack {
+            TextField(uncensiaText("名字，如 relationship"), text: $note.key)
+              .textInputAutocapitalization(.never).autocorrectionDisabled().font(.footnote.monospaced())
+            TextField(uncensiaText("给自己看的标题"), text: $note.label).font(.footnote)
+            Button(uncensiaText("移除"), role: .destructive) { notes.removeAll { $0.id == note.id } }
+              .font(.footnote).buttonStyle(.borderless)
+          }
+          TextField(uncensiaText("写下需要一直记住的当前状态……"), text: $note.value, axis: .vertical).lineLimit(2...12)
+        }
+      }
+      Button(uncensiaText("新增笔记")) { notes.append(NoteDraft()) }.disabled(notes.count >= NoteDraft.maxCount)
+    } header: {
+      Text(uncensiaText("对话笔记"))
+    } footer: {
+      Text(uncensiaText("只属于这段对话的备忘：关系进展、大纲、时间线等。技能会按名字读取，助手也会随剧情更新，你随时可以改。"))
+    }
   }
   private var cardImport: some View {
     Section {
@@ -315,6 +339,15 @@ struct ConversationContextSheet: View {
   }
   private func save() async {
     guard let id, let api else { return }
+    let kept = notes.map(\.trimmed).filter { !$0.isBlank }
+    if kept.contains(where: { !$0.hasValidKey }) {
+      error = uncensiaText("笔记名只能用小写字母、数字、连字符或下划线")
+      return
+    }
+    if Set(kept.map(\.key)).count != kept.count {
+      error = uncensiaText("笔记名不能重复")
+      return
+    }
     saving = true
     defer { saving = false }
     do {
@@ -323,6 +356,7 @@ struct ConversationContextSheet: View {
         body: .object([
           "roleplay": role.json, "visualContinuity": visual.json,
           "projectId": projectID.isEmpty ? .null : .string(projectID),
+          "notes": .array(kept.map(\.json)),
         ]))
       store.conversationDetails = saved
       error = nil
@@ -444,6 +478,29 @@ private struct SearchHitRow: Identifiable {
     "\(value["conversationId"].stringValue ?? ""):\(value["seq"].intValue ?? -1)"
   }
 }
+/// One conversation note as the server stores it (`ConversationNote`).
+/// Keys follow the server rule so a skill's `notes:<key>` context can find it.
+struct NoteDraft: Identifiable, Equatable {
+  static let maxCount = 24
+  let id = UUID()
+  var key = "", label = "", value = ""
+  init() {}
+  init(_ x: JSONValue) {
+    key = x["key"].stringValue ?? ""
+    label = x["label"].stringValue ?? ""
+    value = x["value"].stringValue ?? ""
+  }
+  var trimmed: NoteDraft {
+    var copy = self
+    copy.key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+    copy.label = label.trimmingCharacters(in: .whitespacesAndNewlines)
+    return copy
+  }
+  var isBlank: Bool { key.isEmpty && label.isEmpty && value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+  var hasValidKey: Bool { key.wholeMatch(of: /[a-z0-9][a-z0-9_-]{0,47}/) != nil }
+  var json: JSONValue { .object(["key": .string(key), "label": .string(label), "value": .string(value)]) }
+}
+
 struct VisualRef: Identifiable, Equatable {
   let imageID: String, role: String, label: String
   var id: String { "\(role):\(imageID)" }

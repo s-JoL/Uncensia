@@ -561,7 +561,7 @@ private final class HistoryProtocol: URLProtocol, @unchecked Sendable {
             json = "{\"runId\":\"old-run\",\"seq\":0}"
         } else if url.path.hasSuffix("/messages") {
             json = "{\"items\":[{\"id\":\"message-\(id)\",\"seq\":1,\"role\":\"assistant\",\"content\":\"History\"}],\"nextCursor\":null}"
-        } else if url.path.hasSuffix("/approvals") {
+        } else if url.path.hasSuffix("/approvals") || url.path.hasSuffix("/questions") {
             json = "{\"items\":[]}"
         } else if url.path.hasSuffix("/conversations") {
             json = "{\"items\":[{\"id\":\"a\",\"title\":\"A\",\"modelId\":\"model-a\"}],\"nextCursor\":\"next\"}"

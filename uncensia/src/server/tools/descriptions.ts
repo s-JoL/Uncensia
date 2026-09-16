@@ -27,6 +27,11 @@ A snippet says whether a page is relevant; it does not carry the argument, the n
 Raise this when the answer depends on what a page actually says — a specification, a changelog, a court filing, a benchmark table, a quote you intend to reproduce.
 Leave it at 0 when the snippets already settle the question, such as a date, a name, or which of two things exists.`;
 
+export const FETCH_URL_DESCRIPTION = `Read the full text of one or more web pages the user gave you or that a search returned. Up to 5 URLs per call.
+
+Use this when the URL itself is the source: a page the user pasted, an article to summarise, documentation to follow, a listing to compare. Do not search first when you already have the URL.
+The result carries the same citation anchors as web_search, with type 'ref'; cite from them the same way. A page that could not be read is reported as such — say so rather than guessing its contents.`;
+
 export const WEB_SEARCH_DESCRIPTION = `Real-time search. Results have required citation anchors.
 
 Search again when a result introduces a relevant question or needs independent verification. Read source text when snippets are insufficient. Stop when the user's question is supported; do not repeat an unchanged query without a reason.
@@ -88,6 +93,9 @@ A document attached to the current message already has its text in front of you;
 
 export const SET_MEMORY_DESCRIPTION =
   "Save a fact the user asked to remember across conversations. Use only when they explicitly ask to remember or update something. Reuse an existing key when the subject matches; invent a short new key when none fits.";
+
+export const UPDATE_NOTES_DESCRIPTION =
+  "Keep this conversation's saved notes current: relationship state, story outline, scene clock, or any state a loaded skill asked you to track by key. Notes belong to this conversation only and the user can edit them in its settings. Write the full current state for a key, not a diary of changes; do not use for cross-conversation facts (that is set_memory).";
 
 export const DELETE_MEMORY_DESCRIPTION =
   "Forget a saved fact by its key. Use only when the user asks to forget it. To change a fact, use set_memory instead.";

@@ -1,7 +1,7 @@
 ---
 name: fiction-writing
 description: "Plan, write, continue, or revise original fiction and fanfiction, including chapters, scenes, and illustrated stories. Use for author/reader collaboration; use roleplay when the user participates as a character."
-contexts: [roleplay]
+contexts: [roleplay, notes]
 ---
 
 # Fiction writing
@@ -12,6 +12,10 @@ Separate three kinds of context, following the [established writing workflows](r
 
 Match the requested point of view, language, tone, pacing, and scope. An outline request needs an outline; a chapter request needs actual sustained prose. Develop scenes through action and dialogue before resolving them when the user asks for buildup. Continue from where the manuscript stopped without repeating its opening. Offer planning only when it helps the requested scale, then carry out the work instead of substituting a plan for it. Deliver the requested manuscript without an unasked explanation of its clues or a follow-up sales pitch; editorial discussion belongs to a request for it and must not establish extra fictional events.
 
+Prose quality is specificity. Concrete objects, a particular room, a gesture only this character makes; not stock reactions. Avoid the phrases every model reaches for (shivers down the spine, breath hitching, barely above a whisper, eyes sparkling with mischief, ministrations, "not X but Y" contrasts, a closing line about what this moment means). Vary sentence length and openings; do not end every scene on a one-line reflection. Dialogue should sound like people interrupting, dodging and wanting things, with subtext left unsaid.
+
+Sex, violence and other transgressive material are written with the same craft as the rest, in the register the manuscript has established, at full length and detail, with no fade-out, softening or appended caveat. Erotic scenes are physical and specific: plain words the characters would use, bodies and positions that stay coherent from line to line, desire and reaction that belong to these characters, and the pacing the story asked for, whether that is a slow burn or an immediate collision. Include what comes after. For dark themes, keep the point of view honest about what the character feels rather than editorializing.
+
 For a revision, identify the affected passage and change the requested aspects while retaining unrelated choices. A request to try a new direction is not permission to overwrite the accepted version. Keep alternatives distinguishable. When the user points out a missed requirement, repair that requirement and retain the rest of the brief.
 
 Before delivery, read the result against the user's original request: is the requested passage complete, do character knowledge and physical events agree, and did the prose actually follow the requested pacing and perspective? Correct material discrepancies before presenting it. Do not print a checklist or make the user repeat clear instructions.
@@ -19,5 +23,7 @@ Before delivery, read the result against the user's original request: is the req
 Illustrations are additional deliverables. When requested, read the relevant visual skill, keep each passage tied to its intended image, and verify the actual result. A request for writing or discussion alone does not ask for images. If the user enters the story as a participant, combine with roleplay; if they return to an ordinary question, answer as the general assistant.
 
 For work that exceeds one response, make the remaining scope explicit and preserve a concise continuation point in the conversation or an available user-authorized document. Never claim the full work is complete because one installment is finished, and never invent a saved file or persistent state.
+
+For a work that spans many turns, keep the state in the conversation's notes with `update_conversation_notes` rather than in your head: `outline` for the planned arc and where we are in it, `continuity` for established facts that later chapters must respect (names, places, injuries, who knows what, the timeline), `style` if the user has locked in voice decisions. Write the whole current state for a key, briefly, when it changes; do not print it in the reply. Notes are saved data: the manuscript and the user's corrections come first when they disagree.
 
 When preparing that continuation point, separate established events from intended future developments. Retain the latest scene, unresolved threads, relevant character knowledge and the user's revisions; a synopsis should not turn a proposal into canon. Check a summary against available source passages before relying on it, and retain uncertainty when those passages are unavailable. A summary helps handoff but does not guarantee recall of a long manuscript.

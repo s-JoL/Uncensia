@@ -43,9 +43,156 @@ struct MCPSettingsView: View {
           }
         }.buttonStyle(.plain)
       }
+      PiResourcesSections(store: store, appModel: appModel)
     }.sheet(isPresented: $adding) { MCPEditor(store: store, app: appModel, server: nil) }.sheet(
       item: $editing
     ) { MCPEditor(store: store, app: appModel, server: $0) }
+  }
+}
+
+/// Pi packages and extensions. An extension is code the assistant runs at
+/// start-up, so installing asks for confirmation and names the source.
+private struct PiResourcesSections: View {
+  let store: SettingsStore
+  let appModel: AppModel
+  @State private var source = ""
+  @State private var confirmingInstall = false
+  @State private var removing: JSONValue?
+  @State private var editing: JSONValue?
+  @State private var adding = false
+  var body: some View {
+    Section {
+      Text(uncensiaText("扩展是随助手一起运行的代码，可以添加工具、命令和事件处理；包是从 npm、Git 或本地目录安装的一组扩展、技能和提示词。改动在下一次运行生效。")).font(.caption).foregroundStyle(.secondary)
+      TextField(uncensiaText("npm:pi-skills 或 https://github.com/user/repo"), text: $source).textInputAutocapitalization(.never).autocorrectionDisabled()
+      Button(uncensiaText("安装"), image: "lucide-plus") { confirmingInstall = true }.disabled(source.trimmingCharacters(in: .whitespaces).isEmpty)
+      Text(uncensiaText("第三方包的代码会以助手的权限运行，只安装你信任的来源。")).font(.caption).foregroundStyle(.orange)
+      ForEach((store.resources["diagnostics"].arrayValue ?? []).compactMap(\.stringValue), id: \.self) { Text($0).font(.caption).foregroundStyle(.orange) }
+      if let status = store.resources["status"].objectValue {
+        let errors = status["errors"]?.arrayValue ?? []
+        Text(uncensiaText("上次加载：成功 %@ 个，失败 %@ 个", String((status["loaded"]?.arrayValue ?? []).count), String(errors.count))).font(.caption).foregroundStyle(.secondary)
+        ForEach(errors, id: \.["path"].displayString) { Text("\($0["path"].displayString): \($0["error"].displayString)").font(.caption).foregroundStyle(.red) }
+      }
+    } header: { Text(uncensiaText("扩展与包")) }
+    .confirmationDialog(uncensiaText("这个包里的代码会在助手启动时直接运行，权限与助手本身相同。确认你信任它的来源：%@", source.trimmingCharacters(in: .whitespaces)), isPresented: $confirmingInstall, titleVisibility: .visible) {
+      Button(uncensiaText("安装")) { install() }
+      Button(uncensiaText("取消"), role: .cancel) {}
+    }
+    let packages = store.resources["packages"].arrayValue ?? []
+    if !packages.isEmpty {
+      Section(uncensiaText("已安装的包")) {
+        ForEach(packages, id: \.["source"].displayString) { package in
+          VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: Binding(get: { package["enabled"].boolValue ?? true }, set: { enabled in
+              withAPI(appModel, store: store) { api in
+                _ = try await api.request("PATCH", "/extensions/packages", body: .object(["source": package["source"], "enabled": .bool(enabled)]))
+                try await store.refreshResources(api)
+              }
+            })) { Text(package["source"].displayString).font(.headline).lineLimit(2) }
+            let counts = package["resources"]
+            Text(uncensiaText("%@ 个扩展 · %@ 个技能 · %@ 个提示词", counts["extensions"].displayString, counts["skills"].displayString, counts["prompts"].displayString)).font(.caption).foregroundStyle(.secondary)
+            if package["installedPath"].stringValue == nil { Text(uncensiaText("尚未安装到本地")).font(.caption).foregroundStyle(.red) }
+            HStack {
+              Button(uncensiaText("更新")) {
+                withAPI(appModel, store: store) { api in
+                  _ = try await api.request("POST", "/extensions/packages/update", body: .object(["source": package["source"]]))
+                  try await store.refreshResources(api)
+                }
+              }
+              Spacer()
+              Button(uncensiaText("移除"), role: .destructive) { removing = package }
+            }.font(.caption).buttonStyle(.borderless)
+          }
+        }
+      }
+      .confirmationDialog(uncensiaText("移除这个包？它提供的扩展、技能和提示词将不再加载。"), isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+        Button(uncensiaText("移除"), role: .destructive) {
+          guard let package = removing else { return }
+          withAPI(appModel, store: store) { api in
+            _ = try await api.request("DELETE", "/extensions/packages", body: .object(["source": package["source"]]))
+            try await store.refreshResources(api)
+          }
+        }
+        Button(uncensiaText("取消"), role: .cancel) {}
+      }
+    }
+    Section {
+      Button(uncensiaText("新建扩展"), image: "lucide-plus") { adding = true }
+      let extensions = store.resources["extensions"].arrayValue ?? []
+      if extensions.isEmpty { Text(uncensiaText("还没有扩展。可以新建一个本地扩展，或安装一个包。")).font(.caption).foregroundStyle(.secondary) }
+      ForEach(extensions, id: \.stableID) { extensionItem in
+        VStack(alignment: .leading, spacing: 6) {
+          Toggle(isOn: Binding(get: { extensionItem["enabled"].boolValue ?? true }, set: { enabled in
+            withAPI(appModel, store: store) { api in
+              _ = try await api.request("PATCH", "/extensions/\(encodedPath(extensionItem["id"].displayString))", body: .object(["enabled": .bool(enabled)]))
+              try await store.refreshResources(api)
+            }
+          })) { Text(extensionItem["name"].displayString).font(.headline) }
+          Text(extensionItem["editable"].boolValue == true ? uncensiaText("本地扩展，可编辑") : uncensiaText("来自包 %@，正文只读", extensionItem["source"].displayString)).font(.caption).foregroundStyle(.secondary)
+          HStack { Spacer(); Button(uncensiaText("查看")) { editing = extensionItem } }.font(.caption).buttonStyle(.borderless)
+        }
+      }
+    } header: { Text(uncensiaText("扩展")) }
+    .sheet(isPresented: $adding) { ExtensionEditor(store: store, app: appModel, extensionItem: nil) }
+    .sheet(item: $editing) { ExtensionEditor(store: store, app: appModel, extensionItem: $0) }
+  }
+  private func install() {
+    let trimmed = source.trimmingCharacters(in: .whitespaces)
+    withAPI(appModel, store: store) { api in
+      _ = try await api.request("POST", "/extensions/packages", body: .object(["source": .string(trimmed)]))
+      try await store.refreshResources(api)
+      source = ""
+    }
+  }
+}
+
+private struct ExtensionEditor: View {
+  let store: SettingsStore
+  let app: AppModel
+  let extensionItem: JSONValue?
+  @Environment(\.dismiss) var dismiss
+  @State var name = "my-extension"
+  @State var content = "export default function (pi) {\n  pi.registerTool({\n    name: \"hello\",\n    label: \"hello\",\n    description: \"Say hello.\",\n    parameters: { type: \"object\", properties: {} },\n    async execute() {\n      return { content: [{ type: \"text\", text: \"Hello from an Uncensia extension.\" }] };\n    },\n  });\n}\n"
+  @State private var confirmingDelete = false
+  private var editable: Bool { extensionItem == nil || extensionItem?["editable"].boolValue == true }
+  var body: some View {
+    NavigationStack {
+      VStack(alignment: .leading, spacing: 8) {
+        if extensionItem == nil { TextField(uncensiaText("扩展名称"), text: $name).textInputAutocapitalization(.never).autocorrectionDisabled().textFieldStyle(.roundedBorder) }
+        TextEditor(text: $content).font(.system(.body, design: .monospaced)).disabled(!editable)
+        if editable { Text(uncensiaText("保存后这段代码会在助手下一次启动时运行。")).font(.caption).foregroundStyle(.orange) }
+        if let path = extensionItem?["filePath"].stringValue { Text(path).font(.caption2).foregroundStyle(.secondary) }
+      }.padding()
+      .navigationTitle(extensionItem?["name"].displayString ?? uncensiaText("新建扩展")).toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button(uncensiaText("关闭")) { dismiss() } }
+        if editable {
+          ToolbarItem(placement: .confirmationAction) { Button(uncensiaText("保存")) { save() } }
+          if extensionItem != nil { ToolbarItem(placement: .destructiveAction) { Button(uncensiaText("删除"), role: .destructive) { confirmingDelete = true } } }
+        }
+      }
+      .confirmationDialog(uncensiaText("删除这个扩展？文件会移到回收目录，不会立刻销毁。"), isPresented: $confirmingDelete, titleVisibility: .visible) {
+        Button(uncensiaText("删除"), role: .destructive) { remove() }
+        Button(uncensiaText("取消"), role: .cancel) {}
+      }
+    }.onAppear { if let extensionItem { content = extensionItem["content"].displayString } }
+  }
+  func save() {
+    withAPI(app, store: store) { api in
+      if let extensionItem {
+        _ = try await api.request("PATCH", "/extensions/\(encodedPath(extensionItem["id"].displayString))", body: .object(["content": .string(content), "revision": extensionItem["revision"]]))
+      } else {
+        _ = try await api.request("POST", "/extensions", body: .object(["name": .string(name.trimmingCharacters(in: .whitespaces)), "content": .string(content)]))
+      }
+      try await store.refreshResources(api)
+      dismiss()
+    }
+  }
+  func remove() {
+    guard let extensionItem else { return }
+    withAPI(app, store: store) { api in
+      _ = try await api.request("DELETE", "/extensions/\(encodedPath(extensionItem["id"].displayString))")
+      try await store.refreshResources(api)
+      dismiss()
+    }
   }
 }
 

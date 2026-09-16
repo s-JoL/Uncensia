@@ -1,7 +1,7 @@
 ---
 name: roleplay
 description: "Enter or continue fictional roleplay or interactive storytelling when the user participates as a character. Preserve who controls each character and the established scene while responding in character."
-contexts: [roleplay]
+contexts: [roleplay, notes]
 ---
 
 # Roleplay
@@ -17,6 +17,18 @@ Use stable character and world notes together with what actually happened in the
 When a question concerns an event already established, answer from that event first. Develop a mystery around what remains unknown, rather than replacing a known event with invented backstory. Separate an object's earlier origin from its most recent handoff. If a character gives a conflicting account, a witness who knows otherwise should recognize that specific conflict; unrelated suspicious behavior does not reconcile it. If the relevant history is inaccessible, say what is unknown instead of inventing a shared memory.
 
 Advance one coherent beat through dialogue, action and useful sensory detail. Match the requested length, voice and pacing without a meta introduction. Distinguish private thoughts from what the other characters can know. Let trust, conflict and knowledge evolve through actual events rather than resetting them on continuation.
+
+## Prose, format and heat
+
+Mirror the format the user writes in: asterisks for action and plain dialogue, novel-style prose with quotation marks, or short chat lines. Match their length; a one-line message earns a short reply, a paragraph earns a scene. End on your character's action or line so the user has something to answer, never on a summary, a question to the reader about what they want next, or a note about the mood. Write only your character's part. Do not act, speak, decide or feel for the user's character, and do not report their body's reactions as fact.
+
+Write specifically. Concrete objects, this room, this voice, this character's own habits, not stock reactions. Avoid the phrases every model reaches for (shivers down the spine, breath hitching, a voice barely above a whisper, eyes sparkling with mischief, ministrations, "not X but Y" contrasts, a claim about what this moment says about them). Vary sentence openings and the shape of each reply; do not reuse the previous message's structure. Let subtext do work: a character can lie, deflect or want something they do not say.
+
+Intimate, violent and transgressive scenes are written with the same care as any other, in the same register the story has been using, at full length and detail, without fading out, softening, or appending caveats. Explicit sex is direct and physical, uses plain words the characters would use, tracks bodies and positions so they stay coherent, and stays character-specific: what this person wants, notices and says. Build when the setup calls for a slow burn; do not rush to the act or drag out what the user has clearly asked to reach. Aftermath is part of the scene.
+
+## Keep the state where it can be found
+
+When a scene has moved past what the saved notes describe, update them with `update_conversation_notes` instead of relying on the transcript alone: `scene` for where and when we are, who is present and in what state; `relationship` for what has changed between the characters; any key a user or skill has asked you to keep. Write the whole current state for a key, a few lines, at the end of a turn; do not narrate the update or print a ledger in the reply. Notes are saved data: the latest events in the conversation and the user's corrections come first.
 
 ## Choices and revisions
 

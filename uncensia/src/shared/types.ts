@@ -211,6 +211,47 @@ export interface ManagedSkill {
   revision: string;
 }
 
+/**
+ * A Pi extension file the installation loads at the start of every run. Unlike
+ * a skill, an extension is code that runs with the server's permissions, so the
+ * UI names it as such and never presents it as a document.
+ */
+export interface AgentExtension {
+  id: string;
+  name: string;
+  filePath: string;
+  /** From the installation's own `extensions/` folder, so the editor may write it. */
+  editable: boolean;
+  enabled: boolean;
+  /** Which package supplied it, or `local` for a top-level file. */
+  source: string;
+  content: string;
+  revision: string;
+}
+
+/** A Pi package (npm, git or local folder) whose extensions, skills and prompts are loaded. */
+export interface AgentPackage {
+  source: string;
+  enabled: boolean;
+  installedPath: string | null;
+  resources: { extensions: number; skills: number; prompts: number };
+  addedAt: number;
+}
+
+/** What the most recent run found when it loaded extensions. */
+export interface AgentResourceStatus {
+  at: number;
+  loaded: string[];
+  errors: Array<{ path: string; error: string }>;
+}
+
+export interface AgentResources {
+  extensions: AgentExtension[];
+  packages: AgentPackage[];
+  diagnostics: string[];
+  status: AgentResourceStatus | null;
+}
+
 export interface DiscoveredModel {
   model: string;
   /** True when a configured model already points at this remote id. */
@@ -486,6 +527,55 @@ export const EMPTY_VISUAL_CONTINUITY_CONTEXT: VisualContinuityContext = {
   lastPrompt: "",
 };
 
+/** One free-form, per-conversation note. Notes are data a skill can ask for by
+ * key (`contexts: [notes:relationship]`) and the assistant can maintain with
+ * `update_conversation_notes`; they add no persona and restrict no tool. */
+export interface ConversationNote {
+  /** Stable lowercase slug used by skills and the update tool. */
+  key: string;
+  /** Short human title shown in settings. */
+  label: string;
+  value: string;
+}
+
+export const NOTE_LIMITS = { count: 24, key: 48, label: 80, value: 12_000 } as const;
+export const isNoteKey = (key: string) => /^[a-z0-9][a-z0-9_-]{0,47}$/.test(key);
+
+/** Validate a full notes list before a write; stored rows are normalized on read. */
+export function notesInputError(value: unknown): string | undefined {
+  if (!Array.isArray(value)) return "notes must be a list";
+  if (value.length > NOTE_LIMITS.count) return `At most ${NOTE_LIMITS.count} notes per conversation`;
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return "each note must be an object";
+    const note = item as Record<string, unknown>;
+    if (typeof note.key !== "string" || !isNoteKey(note.key)) return "note key must be 1-48 lowercase letters, digits, '-' or '_'";
+    if (seen.has(note.key)) return `duplicate note key "${note.key}"`;
+    seen.add(note.key);
+    // label is optional everywhere notes are written (update_conversation_notes
+    // keeps the old one when omitted); when present it is still bounded.
+    if (note.label !== undefined && (typeof note.label !== "string" || note.label.length > NOTE_LIMITS.label)) return `note label must be text up to ${NOTE_LIMITS.label} characters`;
+    if (typeof note.value !== "string" || note.value.length > NOTE_LIMITS.value) return `note value must be text up to ${NOTE_LIMITS.value} characters`;
+  }
+}
+
+export function normalizedNotes(value: unknown): ConversationNote[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const notes: ConversationNote[] = [];
+  for (const item of value) {
+    const note = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    if (typeof note.key !== "string" || !isNoteKey(note.key) || seen.has(note.key)) continue;
+    seen.add(note.key);
+    notes.push({
+      key: note.key,
+      label: typeof note.label === "string" ? note.label.slice(0, NOTE_LIMITS.label) : "",
+      value: typeof note.value === "string" ? note.value.slice(0, NOTE_LIMITS.value) : "",
+    });
+  }
+  return notes.slice(0, NOTE_LIMITS.count);
+}
+
 export interface ConversationSummary {
   projectId?: string | null;
   id: string;
@@ -493,6 +583,7 @@ export interface ConversationSummary {
   modelId: string;
   roleplay: RoleplayContext;
   visualContinuity: VisualContinuityContext;
+  notes: ConversationNote[];
   createdAt: number;
   updatedAt: number;
   messageCount: number;
@@ -597,6 +688,34 @@ export interface Approval {
   /** Action-specific facts the card lists: paths, file counts, byte totals. */
   detail: Record<string, unknown>;
   status: ApprovalStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type QuestionKind = "select" | "confirm" | "input" | "editor";
+export type QuestionStatus = "pending" | "answered" | "dismissed" | "expired";
+
+/**
+ * A structured question an extension asked the person through Pi's dialog API
+ * (`ui.select`, `ui.confirm`, `ui.input`, `ui.editor`). It is not an approval:
+ * nothing destructive is gated on it, and the answer is data the extension
+ * reads, so it has its own row, card and endpoint.
+ */
+export interface Question {
+  id: string;
+  runId: string;
+  conversationId: string;
+  kind: QuestionKind;
+  title: string;
+  /** Body text for `confirm`; unused by the other kinds. */
+  message: string;
+  /** Choices for `select`; empty otherwise. */
+  options: string[];
+  /** Hint for `input`, starting text for `editor`. */
+  placeholder: string;
+  status: QuestionStatus;
+  /** The chosen option, typed text, or `yes`/`no` for confirm. Null until answered. */
+  answer: string | null;
   createdAt: number;
   updatedAt: number;
 }
