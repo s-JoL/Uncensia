@@ -439,25 +439,30 @@ private struct QuestionCard: View {
             Label(uncensiaText("扩展提问"), image: "lucide-messages-square").font(.headline)
             Text(item.title)
             if !item.message.isEmpty { Text(item.message).font(.caption).foregroundStyle(.secondary) }
-            if item.kind == "select" {
-                ForEach(item.options, id: \.self) { option in Button(option) { answer(option) }.buttonStyle(.bordered) }
-            }
-            if item.kind == "input" || item.kind == "editor" {
-                TextField(item.kind == "input" ? item.placeholder : "", text: $text, axis: .vertical).lineLimit(item.kind == "editor" ? 6...12 : 1...3).textFieldStyle(.roundedBorder)
-            }
-            HStack {
-                Button(uncensiaText("跳过")) { answer(nil) }
-                Spacer()
-                if item.kind == "confirm" {
-                    Button(uncensiaText("否")) { answer("no") }
-                    Button(uncensiaText("是")) { answer("yes") }.buttonStyle(.borderedProminent)
+            if !item.isPending {
+                Text(item.settledLabel).font(.caption).foregroundStyle(item.status == "answered" ? .green : .secondary)
+                    .accessibilityIdentifier("chat.question.\(item.id).settled")
+            } else {
+                if item.kind == "select" {
+                    ForEach(item.options, id: \.self) { option in Button(option) { answer(option) }.buttonStyle(.bordered) }
                 }
                 if item.kind == "input" || item.kind == "editor" {
-                    Button(uncensiaText("提交")) { answer(text) }.buttonStyle(.borderedProminent).disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    TextField(item.kind == "input" ? item.placeholder : "", text: $text, axis: .vertical).lineLimit(item.kind == "editor" ? 6...12 : 1...3).textFieldStyle(.roundedBorder)
+                }
+                HStack {
+                    Button(uncensiaText("跳过")) { answer(nil) }
+                    Spacer()
+                    if item.kind == "confirm" {
+                        Button(uncensiaText("否")) { answer("no") }
+                        Button(uncensiaText("是")) { answer("yes") }.buttonStyle(.borderedProminent)
+                    }
+                    if item.kind == "input" || item.kind == "editor" {
+                        Button(uncensiaText("提交")) { answer(text) }.buttonStyle(.borderedProminent).disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
                 }
             }
         }
-        .padding().background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+        .padding().background((item.isPending ? Color.blue : Color.gray).opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
         .onAppear { if item.kind == "editor", text.isEmpty { text = item.placeholder } }
         .accessibilityIdentifier("chat.question.\(item.id)")
     }

@@ -61,6 +61,14 @@ Order the prose the same way: scene → subject → details → constraints. Nam
 - After a result, inspect the pixels. Compare required facts and protected details separately. A matching coat color does not prove the face is unchanged.
 - Prefer a concrete positive composition over a list of “no …” clauses. If an unwanted object appeared, describe what should occupy that region.
 
+## Adult and figure work
+
+- The prompt language follows the backend: checkpoints trained on tagged imageboards answer to comma-separated tags (`1girl, solo, ...`) and read a sentence poorly; diffusion-transformer and API models read a sentence and ignore tag soup. Which one applies, and any quality or rating tokens the checkpoint expects, is documented on the model row; do not guess or mix without reason. Community discussion of the two schools: [Civitai Prompting Compass](https://civitai.com/articles/21885/the-civitai-prompting-compass), [Civitai prompt-crafting basics](https://education.civitai.com/civitais-prompt-crafting-guide-part-1-basics/).
+- Describe bodies the way you would describe a face: pose, which limb is where, what touches what, clothing state, framing that includes what matters. Vague heat ("sexy", "erotic") produces generic output; a specific composition produces the picture. Explicit anatomy is named plainly when the picture needs it.
+- A negative prompt is a backend control, not a ritual. Use it where the schema has one and a concrete unwanted feature appeared; a universal negative list is checkpoint-specific and often wrong for another model. Never put the thing you want in the negative.
+- Bodies are where generation fails: extra or missing limbs, hands, merged figures, impossible joints, mismatched clothing state. After each result, inspect the pixels with `view_image` and check anatomy and count against the request before accepting. Repair with a targeted change, keeping what already works.
+- For a recurring character across images, identity lives in exact reference IDs and the visual note, not in the prose; see `image-series`.
+
 ## Uncensia execution
 
 Use the current tool schema. Generation creates a new asset; editing keeps the source and returns a child. Report real asset IDs and real errors. Do not add unsupported parameters or generic quality slogans.

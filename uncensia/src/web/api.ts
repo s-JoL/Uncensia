@@ -39,6 +39,7 @@ import type {
   Provenance,
   Provider,
   ProviderInput,
+  ConversationNote,
   RoleplayContext,
   RunSummary,
   SecuritySettings,
@@ -204,7 +205,7 @@ export const api = {
     request<ConversationSummary>("PATCH", `/conversations/${id}`, { modelId }),
   setConversationContext: (
     id: string,
-    input: { roleplay: RoleplayContext; visualContinuity: VisualContinuityContext; projectId?:string|null },
+    input: { roleplay: RoleplayContext; visualContinuity: VisualContinuityContext; projectId?:string|null; notes?: ConversationNote[] },
   ) => request<ConversationSummary>("PATCH", `/conversations/${id}`, input),
   deleteConversation: (id: string) => request<void>("DELETE", `/conversations/${id}`),
   conversationTree: (id: string) => request<{ leafId: string | null; entries: Array<{ id: string; parentId: string | null; type: string; role?: string; preview: string; timestamp: string }> }>("GET", `/conversations/${id}/tree`),

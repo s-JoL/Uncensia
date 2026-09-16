@@ -35,6 +35,7 @@ import { fileSearchTool } from "../tools/file-search.ts";
 import { generationTools, uploadedImageContext } from "../tools/generation.ts";
 import { generationStatusTool } from "../tools/generation-status.ts";
 import { memoryTools } from "../tools/memory.ts";
+import { notesTools } from "../tools/notes.ts";
 import { taskTools } from "../tools/tasks.ts";
 import { learningTools } from "../tools/learning.ts";
 import {
@@ -42,6 +43,7 @@ import {
   enrichDiscoveredSkills,
   transformExpandedSkillMessages,
   withSkillContext,
+  type SkillRuntimeContext,
   type UncensiaSkill,
 } from "../tools/skills.ts";
 import { viewImageTool } from "../tools/vision.ts";
@@ -309,7 +311,14 @@ export class Runtime {
     // Populated from Pi's effective resources, not a second directory scan.
     let skills: UncensiaSkill[] = [];
     const visualContinuity = conversation.visualContinuity;
-    const skillContext = { roleplay: conversation.roleplay, visualContinuity };
+    const store = this.store;
+    const skillContext: SkillRuntimeContext = {
+      roleplay: conversation.roleplay,
+      visualContinuity,
+      // Read live so a note the assistant saves earlier in this run reaches a
+      // skill it loads later in the same run.
+      get notes() { return store.getConversation(conversationId)?.notes ?? []; },
+    };
 
     const contextInput = {
       project: currentProject,
@@ -370,6 +379,7 @@ export class Runtime {
     tools.push(...mcpTools);
     tools.push(generationStatusTool(this.store, conversationId));
     tools.push(...memoryTools(this.store, capabilities.memory, conversationId, () => this.config.capabilities().memory));
+    tools.push(...notesTools(this.store, conversationId, notes => this.emit(runId, conversationId, "conversation.notes", { notes })));
     tools.push(...taskTools(this.store, conversationId, spec.id, runId, input.taskId, target => { this.stop(conversationId, target); }));
 
     let modelCallIndex = 0;

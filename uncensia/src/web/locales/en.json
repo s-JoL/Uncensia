@@ -703,6 +703,8 @@
   "恢复默认": "Restore defaults",
   "系统提示": "System prompts",
   "全局提示在前，工具提示在后。": "Global instructions come first, followed by tool instructions.",
+  "全局提示在前，工具提示在后。具体怎么写、怎么出图在技能里；某一段对话的人设和进度在对话设定里。": "Global instructions come first, followed by tool instructions. How to write or make images lives in skills; one conversation's characters and progress live in its settings.",
+  "它是底色：立场、身份、对内容的态度。不要把某个角色或某类写法写死在这里，那会影响所有对话。": "This is the baseline: stance, identity, attitude to content. Don't pin one character or one style of writing here; it would affect every conversation.",
   "全局提示": "Global prompt",
   "工具提示（支持 {0} 与 {1} 占位符）": "Tool prompt (supports {0} and {1} placeholders)",
   "出图、改图、视频的写法在技能里按场景加载，不整段写在这里。恢复默认会换成短路由版。": "Image, editing, and video procedures load from relevant skills. Do not paste them all here. Restoring defaults uses concise routing instructions.",
@@ -952,5 +954,16 @@
   "跳过": "Skip",
   "否": "No",
   "是": "Yes",
-  "提交": "Submit"
+  "提交": "Submit",
+  "对话笔记": "Conversation notes",
+  "只属于这段对话的备忘：关系进展、大纲、时间线等。技能会按名字读取，助手也会随剧情更新，你随时可以改。": "Reminders that belong to this conversation only: where the relationship stands, the outline, the timeline. Skills read them by name, the assistant keeps them current as the story moves, and you can edit them any time.",
+  "新增笔记": "Add note",
+  "笔记名": "Note name",
+  "名字，如 relationship": "Name, e.g. relationship",
+  "笔记标题": "Note title",
+  "给自己看的标题": "A title for yourself",
+  "笔记内容": "Note content",
+  "写下需要一直记住的当前状态……": "Write down the current state to keep in mind…",
+  "笔记名只能用小写字母、数字、连字符或下划线": "Note names can only use lowercase letters, digits, hyphens or underscores",
+  "笔记名不能重复": "Note names must be unique"
 }

@@ -41,10 +41,22 @@ public struct ApprovalItem: Identifiable, Sendable, Equatable {
 
 /// A dialog an extension opened through Pi's `ui.select` / `ui.confirm` / `ui.input`. Not an approval: nothing destructive is waiting, the extension just needs a word from the reader.
 public struct QuestionItem: Identifiable, Sendable, Equatable {
-    public let id: String; public let kind: String; public let title: String; public let message: String; public let options: [String]; public let placeholder: String; public let status: String
+    public let id: String; public let kind: String; public let title: String; public let message: String; public let options: [String]; public let placeholder: String; public let status: String; public let answer: String?
     public init?(_ json: JSONValue) {
         guard let id = json["id"].stringValue else { return nil }
         self.id = id; kind = json["kind"].stringValue ?? "input"; title = json["title"].stringValue ?? ""; message = json["message"].stringValue ?? ""
         options = json["options"].arrayValue?.compactMap(\.stringValue) ?? []; placeholder = json["placeholder"].stringValue ?? ""; status = json["status"].stringValue ?? "pending"
+        answer = json["answer"].stringValue
+    }
+    public var isPending: Bool { status == "pending" }
+    /// Web keeps a settled card in place with its outcome; the same copy here.
+    public var settledLabel: String {
+        switch status {
+        case "answered":
+            if kind == "confirm" { return answer == "yes" ? uncensiaText("已确认") : uncensiaText("已否决") }
+            return uncensiaText("已回答：%@", answer ?? "")
+        case "expired": return uncensiaText("已超时，扩展未收到回答")
+        default: return uncensiaText("已跳过，扩展未收到回答")
+        }
     }
 }

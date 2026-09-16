@@ -608,3 +608,16 @@
 "删除这个扩展？文件会移到回收目录，不会立刻销毁。" = "Delete this extension? The file moves to a trash folder and is not destroyed right away.";
 "扩展提问" = "Extension asks";
 "跳过" = "Skip";
+"对话笔记" = "Conversation notes";
+"只属于这段对话的备忘：关系进展、大纲、时间线等。技能会按名字读取，助手也会随剧情更新，你随时可以改。" = "Reminders that belong to this conversation only: where the relationship stands, the outline, the timeline. Skills read them by name, the assistant keeps them current as the story moves, and you can edit them any time.";
+"新增笔记" = "Add note";
+"名字，如 relationship" = "Name, e.g. relationship";
+"给自己看的标题" = "A title for yourself";
+"写下需要一直记住的当前状态……" = "Write down the current state to keep in mind…";
+"笔记名只能用小写字母、数字、连字符或下划线" = "Note names can only use lowercase letters, digits, hyphens or underscores";
+"笔记名不能重复" = "Note names must be unique";
+"已确认" = "Confirmed";
+"已否决" = "Declined";
+"已回答：%@" = "Answered: %@";
+"已超时，扩展未收到回答" = "Timed out. The extension received no answer.";
+"已跳过，扩展未收到回答" = "Skipped. The extension received no answer.";

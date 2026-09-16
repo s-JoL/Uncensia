@@ -368,9 +368,9 @@ public final class ChatStore {
         let generation = followGeneration
         do {
             let body: JSONValue = answer.map { .object(["answer": .string($0)]) } ?? .object(["dismiss": .bool(true)])
-            _ = try await api.request("POST", "/questions/\(question.id)", body: body)
+            let settled = try await api.request("POST", "/questions/\(question.id)", body: body)
             guard generation == followGeneration else { return }
-            questions.removeAll { $0.id == question.id }
+            replaceQuestion(QuestionItem(settled), id: question.id)
         } catch { if generation == followGeneration { self.error = error.localizedDescription } }
     }
 
@@ -384,6 +384,7 @@ public final class ChatStore {
         // Retain earlier unsettled rows until this run's canonical tail has
         // reconciled both runs. Clearing their IDs here loses the old boundary.
         activeFollowID = runID; liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""; error = nil; isRunning = true
+        questions.removeAll { !$0.isPending }
         followTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -473,11 +474,25 @@ public final class ChatStore {
         case "tool.approval.required", "tool.approval.resolved":
             if let approval = ApprovalItem(event.data["approval"]) { approvals.removeAll { $0.id == approval.id }; if approval.status == "pending" { approvals.append(approval) } }
         case "question.asked", "question.settled":
-            if let question = QuestionItem(event.data["question"]) { questions.removeAll { $0.id == question.id }; if question.status == "pending" { questions.append(question) } }
+            if let question = QuestionItem(event.data["question"]) { replaceQuestion(question, id: question.id) }
+        case "conversation.notes":
+            if case .object(var details) = conversationDetails, case .array(let notes) = event.data["notes"] {
+                details["notes"] = .array(notes); conversationDetails = .object(details)
+            }
         case "run.completed": settleVisibleRun()
         case "run.cancelled": settleVisibleRun(); liveStatus = uncensiaText("已停止")
         case "run.failed": settleVisibleRun(); error = event.data["message"].stringValue ?? uncensiaText("运行失败")
         default: break
+        }
+    }
+
+    /// A settled card stays in place with its outcome, as on Web; only the
+    /// controls go away. A fresh load only shows pending ones.
+    private func replaceQuestion(_ question: QuestionItem?, id: String) {
+        if let index = questions.firstIndex(where: { $0.id == id }) {
+            if let question { questions[index] = question } else { questions.remove(at: index) }
+        } else if let question {
+            questions.append(question)
         }
     }
 

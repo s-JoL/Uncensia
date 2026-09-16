@@ -24,6 +24,7 @@ import type {
   Approval,
   BackgroundTask,
   Bootstrap,
+  ConversationNote,
   FileRecord,
   Question,
   RoleplayContext,
@@ -36,6 +37,8 @@ import {
   EMPTY_VISUAL_CONTINUITY_CONTEXT,
   isChatKind,
   IMAGE_REFERENCE_ROLES,
+  isNoteKey,
+  NOTE_LIMITS,
 } from "@shared/types.ts";
 import type { ImageReferenceRole } from "@shared/types.ts";
 import type { Project } from "@shared/projects.ts";
@@ -66,6 +69,7 @@ import {
   cn,
   Field,
   formatBytes,
+  Input,
   JobCard,
   Lightbox,
   Modal,
@@ -124,6 +128,7 @@ export function Chat({
     ...EMPTY_VISUAL_CONTINUITY_CONTEXT,
     references: [],
   });
+  const [notes, setNotes] = useState<ConversationNote[]>([]);
   const [savingContext, setSavingContext] = useState(false);
   const [showTasks, setShowTasks] = useState(false);
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
@@ -229,6 +234,7 @@ export function Chat({
               setTitle(String(data.title ?? ""));
               void onConversationChanged();
             }
+            if (type === "conversation.notes" && Array.isArray(data.notes)) setNotes(data.notes as ConversationNote[]);
             if (type === "run.failed") toast(String(data.message ?? uiText("运行失败")), true);
             if (type === "agent.extension_notify" && typeof data.message === "string") {
               toast(`${data.level === "warning" ? uiText("提醒：") : ""}${data.message}`, data.level === "error");
@@ -284,6 +290,7 @@ export function Chat({
       setRoleplay({ ...EMPTY_ROLEPLAY_CONTEXT });
       setProjectId(null);
       setVisualContinuity({ ...EMPTY_VISUAL_CONTINUITY_CONTEXT, references: [] });
+      setNotes([]);
       return;
     }
     if (seedingRef.current) return;
@@ -300,6 +307,7 @@ export function Chat({
         setRoleplay(summary.roleplay);
         setProjectId(summary.projectId ?? null);
         setVisualContinuity(summary.visualContinuity);
+        setNotes(summary.notes);
         if (summary.activeRun) {
           void follow(
             conversationId,
@@ -348,6 +356,7 @@ export function Chat({
           setRoleplay(summary.roleplay);
           setProjectId(summary.projectId ?? null);
           setVisualContinuity(summary.visualContinuity);
+          setNotes(summary.notes);
           if (summary.activeRun) {
             void follow(
               conversationId,
@@ -636,10 +645,21 @@ export function Chat({
     }
     setSavingContext(true);
     try {
-      const saved = await api.setConversationContext(conversationId, { roleplay, visualContinuity, projectId });
+      const kept = notes.map(note => ({ ...note, key: note.key.trim(), label: note.label.trim() })).filter(note => note.key || note.label || note.value.trim());
+      const broken = kept.find(note => !isNoteKey(note.key));
+      if (broken) {
+        toast(uiText("笔记名只能用小写字母、数字、连字符或下划线"), true);
+        return;
+      }
+      if (new Set(kept.map(note => note.key)).size !== kept.length) {
+        toast(uiText("笔记名不能重复"), true);
+        return;
+      }
+      const saved = await api.setConversationContext(conversationId, { roleplay, visualContinuity, projectId, notes: kept });
       setProjectId(saved.projectId ?? null);
       setRoleplay(saved.roleplay);
       setVisualContinuity(saved.visualContinuity);
+      setNotes(saved.notes);
       setPicking(false);
       toast(uiText("对话设定已保存"));
       await onConversationChanged();
@@ -1118,6 +1138,51 @@ export function Chat({
               ) : null}
             </>
           ) : null}
+
+          <div className="border-t pt-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">{uiText("对话笔记")}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{uiText("只属于这段对话的备忘：关系进展、大纲、时间线等。技能会按名字读取，助手也会随剧情更新，你随时可以改。")}</p>
+              </div>
+              <Button size="sm" variant="secondary" disabled={notes.length >= NOTE_LIMITS.count} onClick={() => setNotes(current => [...current, { key: "", label: "", value: "" }])}>{uiText("新增笔记")}</Button>
+            </div>
+            {notes.length ? (
+              <div className="mt-3 flex flex-col gap-3">
+                {notes.map((note, index) => (
+                  <div key={index} className="flex flex-col gap-2 rounded-lg border p-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Input
+                        aria-label={uiText("笔记名")}
+                        className="w-40 font-mono text-xs"
+                        placeholder={uiText("名字，如 relationship")}
+                        value={note.key}
+                        maxLength={NOTE_LIMITS.key}
+                        onChange={event => setNotes(current => current.map((item, i) => i === index ? { ...item, key: event.target.value.toLowerCase() } : item))}
+                      />
+                      <Input
+                        aria-label={uiText("笔记标题")}
+                        className="min-w-0 flex-1"
+                        placeholder={uiText("给自己看的标题")}
+                        value={note.label}
+                        maxLength={NOTE_LIMITS.label}
+                        onChange={event => setNotes(current => current.map((item, i) => i === index ? { ...item, label: event.target.value } : item))}
+                      />
+                      <Button size="sm" variant="ghost" onClick={() => setNotes(current => current.filter((_, i) => i !== index))}>{uiText("移除")}</Button>
+                    </div>
+                    <Textarea
+                      aria-label={uiText("笔记内容")}
+                      rows={4}
+                      value={note.value}
+                      maxLength={NOTE_LIMITS.value}
+                      placeholder={uiText("写下需要一直记住的当前状态……")}
+                      onChange={event => setNotes(current => current.map((item, i) => i === index ? { ...item, value: event.target.value } : item))}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
 
         </div>
       </Modal>
