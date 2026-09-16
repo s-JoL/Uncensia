@@ -2,12 +2,20 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import { parseFrontmatter, parseSkillBlock, stripFrontmatter, type Skill } from "@earendil-works/pi-coding-agent";
-import type { RoleplayContext, VisualContinuityContext } from "@shared/types.ts";
+import type { ConversationNote, RoleplayContext, VisualContinuityContext } from "@shared/types.ts";
+import { isNoteKey } from "@shared/types.ts";
 import { paths } from "../env.ts";
-import { formatRoleplayContext, formatVisualContinuityContext } from "../prompts/context.ts";
+import { formatNotesContext, formatRoleplayContext, formatVisualContinuityContext } from "../prompts/context.ts";
 
-const SKILL_CONTEXTS = ["roleplay", "visual-continuity"] as const;
-export type SkillContextName = (typeof SKILL_CONTEXTS)[number];
+const SKILL_CONTEXTS = ["roleplay", "visual-continuity", "notes"] as const;
+/** `notes` attaches every saved conversation note; `notes:<key>` attaches one
+ * by key, so a skill can name the state it maintains without a code change. */
+export type SkillContextName = (typeof SKILL_CONTEXTS)[number] | `notes:${string}`;
+
+function isSkillContextName(value: string): value is SkillContextName {
+  if ((SKILL_CONTEXTS as readonly string[]).includes(value)) return true;
+  return value.startsWith("notes:") && isNoteKey(value.slice("notes:".length));
+}
 
 export interface UncensiaSkill extends Skill {
   content: string;
@@ -38,9 +46,9 @@ function declaredContexts(content: string, filePath: string): SkillContextName[]
         ? []
         : [frontmatter.contexts];
     const declared = values.filter((value): value is string => typeof value === "string");
-    const unknown = declared.filter((value) => !SKILL_CONTEXTS.includes(value as SkillContextName));
+    const unknown = declared.filter((value) => !isSkillContextName(value));
     if (unknown.length) console.warn(`[skills] unknown contexts in ${filePath}: ${unknown.join(", ")}`);
-    return [...new Set(declared.filter((value): value is SkillContextName => SKILL_CONTEXTS.includes(value as SkillContextName)))];
+    return [...new Set(declared.filter(isSkillContextName))];
   } catch (error) {
     console.warn(`[skills] could not read contexts in ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
     return [];
@@ -61,19 +69,29 @@ export async function enrichDiscoveredSkills(skills: Skill[]): Promise<UncensiaS
 export interface SkillRuntimeContext {
   roleplay?: RoleplayContext;
   visualContinuity?: VisualContinuityContext;
+  notes?: ConversationNote[];
 }
 
-const CONTEXT_PROVIDERS: Record<SkillContextName, (context: SkillRuntimeContext) => string> = {
+const CONTEXT_PROVIDERS: Record<(typeof SKILL_CONTEXTS)[number], (context: SkillRuntimeContext) => string> = {
   roleplay: (context) =>
     formatRoleplayContext(context.roleplay) ||
     "# Saved roleplay context\n\nNo saved roleplay context is enabled. Use only the current request and conversation.",
   "visual-continuity": (context) =>
     formatVisualContinuityContext(context.visualContinuity) ||
     "# Visual continuity state\n\nThe reader has not enabled saved visual continuity for this conversation. Use only exact image ids present in the request or transcript.",
+  notes: (context) => formatNotesContext(context.notes ?? []),
 };
 
+function provideContext(name: SkillContextName, context: SkillRuntimeContext) {
+  if (name.startsWith("notes:")) {
+    const key = name.slice("notes:".length);
+    return formatNotesContext((context.notes ?? []).filter((note) => note.key === key), key);
+  }
+  return CONTEXT_PROVIDERS[name as (typeof SKILL_CONTEXTS)[number]](context);
+}
+
 function runtimeContextFor(skill: UncensiaSkill, context: SkillRuntimeContext) {
-  return skill.contexts.map((name) => CONTEXT_PROVIDERS[name](context)).join("\n\n");
+  return skill.contexts.map((name) => provideContext(name, context)).join("\n\n");
 }
 
 /** Pi's native read is the skill entry point. Attach only the state declared by

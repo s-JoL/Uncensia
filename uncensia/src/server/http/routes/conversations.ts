@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { StoredEvent } from "@shared/types.ts";
-import { IMAGE_REFERENCE_ROLES, type ImageAttachmentReference } from "@shared/types.ts";
-import type { RoleplayContext, VisualContinuityContext } from "@shared/types.ts";
+import { IMAGE_REFERENCE_ROLES, notesInputError, type ImageAttachmentReference } from "@shared/types.ts";
+import type { ConversationNote, RoleplayContext, VisualContinuityContext } from "@shared/types.ts";
 import { rewindConversation, projectTranscript } from "../../agent/projection.ts";
 import { searchConversations } from "../../agent/search.ts";
 import type { Services } from "../../services.ts";
@@ -91,6 +91,7 @@ export function conversationRoutes(services: Services) {
       modelId: string;
       roleplay: RoleplayContext;
       visualContinuity: VisualContinuityContext;
+      notes: ConversationNote[];
     }>(context);
     if (body.projectId !== undefined) {
       if (body.projectId !== store.getConversation(id)?.projectId && (runtime.isActive(id) || store.activeRun(id))) return fail(context,409,"run_active","Stop the active run before moving this conversation");
@@ -99,6 +100,10 @@ export function conversationRoutes(services: Services) {
     if (body.roleplay !== undefined) {
       const error = roleplayInputError(body.roleplay);
       if (error) return fail(context, 400, "invalid_roleplay", error);
+    }
+    if (body.notes !== undefined) {
+      const error = notesInputError(body.notes);
+      if (error) return fail(context, 400, "invalid_notes", error);
     }
     if (body.visualContinuity !== undefined) {
       try {
@@ -117,6 +122,7 @@ export function conversationRoutes(services: Services) {
     if (typeof body.title === "string" && body.title.trim()) store.setConversationTitle(id, body.title.trim());
     if (body.projectId !== undefined && body.projectId !== store.getConversation(id)?.projectId) store.setConversationProject(id,body.projectId);
     if (body.roleplay !== undefined) store.setConversationRoleplay(id, body.roleplay);
+    if (body.notes !== undefined) store.setConversationNotes(id, body.notes);
     if (body.visualContinuity !== undefined) {
       store.setConversationVisualContinuity(id, body.visualContinuity);
     }
@@ -325,6 +331,7 @@ export function conversationRoutes(services: Services) {
       await services.sessions.fork(id, target.id, body.entryId);
       store.setConversationRoleplay(target.id, source.roleplay);
       store.setConversationVisualContinuity(target.id, source.visualContinuity);
+      store.setConversationNotes(target.id, source.notes);
       await projectTranscript(store, services.sessions, target.id);
       return context.json(store.getConversation(target.id), 201);
     } catch (error) { store.deleteConversation(target.id); await services.sessions.forget(target.id); throw error; }

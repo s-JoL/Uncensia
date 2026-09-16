@@ -22,7 +22,9 @@ Gemini 原生协议的请求参数由 `models/params.ts` 处理；用户保存�
 
 只将摘要列入模型目录，正文按需读取。`disable-model-invocation` 声明的技能仅显式调用；已有 `/skill:name` 仍走 SDK 展开。技能可携带支持文件；当前 Web 添加入口编辑标准 SKILL.md，不是完整的插件安装、依赖管理或热重载中心。
 
-`contexts` 是 Uncensia 提供的可选状态声明：`roleplay` 与 `visual-continuity`。头部解析复用 Pi，代码只按声明附加已保存数据。上下文生命周期见 [Agent](02-agent.md)。
+`contexts` 是 Uncensia 提供的可选状态声明：`roleplay`、`visual-continuity`、`notes`（全部对话笔记）与 `notes:<key>`（单条）。头部解析复用 Pi，代码只按声明附加已保存数据。上下文生命周期见 [Agent](02-agent.md)。
+
+对话笔记（`conversations.notes`）是按名字保存的对话级状态：关系进展、场景时钟、大纲、连续性事实等，最多 24 条，键名 `[a-z0-9][a-z0-9_-]{0,47}`，正文 12000 字以内。用户在 Web/iOS 的对话设定里编辑；模型通过 `update_conversation_notes` 以整值覆盖方式更新某一键，变更以 `conversation.notes` 事件推送给在线客户端；分支复制笔记。笔记只在声明了对应 `contexts` 的技能加载后进入模型上下文，是数据而非指令，不影响工具权限。因此新增一类"要持续记住的状态"只需在技能里声明键名，无需改后端。
 
 ## 文件、检索与记忆
 

@@ -52,9 +52,9 @@ export function PromptsSection({ reload }: { reload: () => Promise<void> }) {
 
   return (
     <>
-      <Section title={uiText("系统提示")} hint={uiText("全局提示在前，工具提示在后。")}>
+      <Section title={uiText("系统提示")} hint={uiText("全局提示在前，工具提示在后。具体怎么写、怎么出图在技能里；某一段对话的人设和进度在对话设定里。")}>
         <SectionBody>
-          <Field label={uiText("全局提示")}>
+          <Field label={uiText("全局提示")} hint={uiText("它是底色：立场、身份、对内容的态度。不要把某个角色或某类写法写死在这里，那会影响所有对话。")}>
             <Textarea
               rows={12}
               value={prompts.globalPrompt}

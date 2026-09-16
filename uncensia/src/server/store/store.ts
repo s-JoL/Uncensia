@@ -44,6 +44,8 @@ import {
   EMPTY_ROLEPLAY_CONTEXT,
   EMPTY_VISUAL_CONTINUITY_CONTEXT,
   needsApiKey,
+  normalizedNotes,
+  notesInputError,
 } from "@shared/types.ts";
 import { providerAuth } from "../models/auth.ts";
 import { bool, Db, json } from "./db.ts";
@@ -454,6 +456,7 @@ export class Store {
       visualContinuity: visualContinuitySchema.parse(
         json(row.visual_continuity, EMPTY_VISUAL_CONTINUITY_CONTEXT),
       ),
+      notes: normalizedNotes(json(row.notes, [])),
       archived: bool(row.archived),
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at),
@@ -478,6 +481,7 @@ export class Store {
       visualContinuity: visualContinuitySchema.parse(
         json(row.visual_continuity, EMPTY_VISUAL_CONTINUITY_CONTEXT),
       ),
+      notes: normalizedNotes(json(row.notes, [])),
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at),
       messageCount: Number(row.message_count),
@@ -1510,6 +1514,19 @@ export class Store {
       id,
     );
     return this.getConversation(id);
+  }
+
+  setConversationNotes(id: string, input: unknown) {
+    const error = notesInputError(input);
+    if (error) throw Object.assign(new Error(error), { code: "invalid_request" });
+    const notes = normalizedNotes(input);
+    this.db.run(
+      "UPDATE conversations SET notes = ?, updated_at = ? WHERE id = ?",
+      JSON.stringify(notes),
+      Date.now(),
+      id,
+    );
+    return notes;
   }
 
   parseVisualContinuity(input: unknown) {

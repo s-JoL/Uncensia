@@ -94,6 +94,9 @@ A document attached to the current message already has its text in front of you;
 export const SET_MEMORY_DESCRIPTION =
   "Save a fact the user asked to remember across conversations. Use only when they explicitly ask to remember or update something. Reuse an existing key when the subject matches; invent a short new key when none fits.";
 
+export const UPDATE_NOTES_DESCRIPTION =
+  "Keep this conversation's saved notes current: relationship state, story outline, scene clock, or any state a loaded skill asked you to track by key. Notes belong to this conversation only and the user can edit them in its settings. Write the full current state for a key, not a diary of changes; do not use for cross-conversation facts (that is set_memory).";
+
 export const DELETE_MEMORY_DESCRIPTION =
   "Forget a saved fact by its key. Use only when the user asks to forget it. To change a fact, use set_memory instead.";
 

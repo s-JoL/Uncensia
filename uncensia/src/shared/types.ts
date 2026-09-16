@@ -527,6 +527,53 @@ export const EMPTY_VISUAL_CONTINUITY_CONTEXT: VisualContinuityContext = {
   lastPrompt: "",
 };
 
+/** One free-form, per-conversation note. Notes are data a skill can ask for by
+ * key (`contexts: [notes:relationship]`) and the assistant can maintain with
+ * `update_conversation_notes`; they add no persona and restrict no tool. */
+export interface ConversationNote {
+  /** Stable lowercase slug used by skills and the update tool. */
+  key: string;
+  /** Short human title shown in settings. */
+  label: string;
+  value: string;
+}
+
+export const NOTE_LIMITS = { count: 24, key: 48, label: 80, value: 12_000 } as const;
+export const isNoteKey = (key: string) => /^[a-z0-9][a-z0-9_-]{0,47}$/.test(key);
+
+/** Validate a full notes list before a write; stored rows are normalized on read. */
+export function notesInputError(value: unknown): string | undefined {
+  if (!Array.isArray(value)) return "notes must be a list";
+  if (value.length > NOTE_LIMITS.count) return `At most ${NOTE_LIMITS.count} notes per conversation`;
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return "each note must be an object";
+    const note = item as Record<string, unknown>;
+    if (typeof note.key !== "string" || !isNoteKey(note.key)) return "note key must be 1-48 lowercase letters, digits, '-' or '_'";
+    if (seen.has(note.key)) return `duplicate note key "${note.key}"`;
+    seen.add(note.key);
+    if (typeof note.label !== "string" || note.label.length > NOTE_LIMITS.label) return `note label must be text up to ${NOTE_LIMITS.label} characters`;
+    if (typeof note.value !== "string" || note.value.length > NOTE_LIMITS.value) return `note value must be text up to ${NOTE_LIMITS.value} characters`;
+  }
+}
+
+export function normalizedNotes(value: unknown): ConversationNote[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const notes: ConversationNote[] = [];
+  for (const item of value) {
+    const note = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    if (typeof note.key !== "string" || !isNoteKey(note.key) || seen.has(note.key)) continue;
+    seen.add(note.key);
+    notes.push({
+      key: note.key,
+      label: typeof note.label === "string" ? note.label.slice(0, NOTE_LIMITS.label) : "",
+      value: typeof note.value === "string" ? note.value.slice(0, NOTE_LIMITS.value) : "",
+    });
+  }
+  return notes.slice(0, NOTE_LIMITS.count);
+}
+
 export interface ConversationSummary {
   projectId?: string | null;
   id: string;
@@ -534,6 +581,7 @@ export interface ConversationSummary {
   modelId: string;
   roleplay: RoleplayContext;
   visualContinuity: VisualContinuityContext;
+  notes: ConversationNote[];
   createdAt: number;
   updatedAt: number;
   messageCount: number;
