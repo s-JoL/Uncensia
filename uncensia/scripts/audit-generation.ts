@@ -1056,6 +1056,14 @@ await check("discovery suggests a kind, and everything else follows from it", ()
   assert(claudeNative.apiMode === "anthropic-messages", `anthropic host got ${claudeNative.apiMode}`);
   const claudeViaGateway = classifyModel("claude-opus-4-6", "p", "https://api.example.com/v1");
   assert(claudeViaGateway.apiMode === "openai-chat", `aggregator claude got ${claudeViaGateway.apiMode}`);
+  const zen = "https://opencode.ai/zen/v1";
+  const muse = classifyModel("muse-spark-1.3-contributor-free", "opencode", zen);
+  assert(muse.apiMode === "openai-responses", `zen muse got ${muse.apiMode}`);
+  assert(muse.reasoning && muse.input.includes("image"), "zen muse should reason and accept images");
+  const zenClaude = classifyModel("claude-sonnet-4-6", "opencode", zen);
+  assert(zenClaude.apiMode === "anthropic-messages", `zen claude got ${zenClaude.apiMode}`);
+  const zenKimi = classifyModel("kimi-k3", "opencode", zen);
+  assert(zenKimi.apiMode === "openai-chat", `zen kimi got ${zenKimi.apiMode}`);
   return "kind, ops, protocol and input all follow from the id";
 });
 
