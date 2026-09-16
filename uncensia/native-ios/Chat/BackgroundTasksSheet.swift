@@ -222,7 +222,9 @@ struct BackgroundTaskCard: View {
       if ["paused", "failed"].contains(status), !capped {
         Button(uncensiaText("继续")) { control("resume") }.disabled(currentRunActive)
       }
-      if !["completed", "cancelled"].contains(status) {
+      if ["completed", "cancelled"].contains(status) {
+        Button(uncensiaText("删除"), role: .destructive) { cancel() }
+      } else {
         Button(uncensiaText("取消任务"), role: .destructive) { cancel() }
       }
       Button(history == nil ? uncensiaText("执行记录") : uncensiaText("收起")) { toggleHistory() }

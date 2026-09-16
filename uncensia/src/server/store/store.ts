@@ -1634,6 +1634,14 @@ export class Store {
     return this.getBackgroundTask(id);
   }
 
+  /** Removes a settled task. Its runs stay with the conversation. */
+  deleteBackgroundTask(id: string) {
+    return this.db.run(
+      "DELETE FROM background_tasks WHERE id = ? AND status IN ('completed', 'cancelled')",
+      id,
+    ).changes > 0;
+  }
+
   claimBackgroundTask(id: string) {
     return this.db.transaction(() => {
       const task = this.getBackgroundTask(id);
