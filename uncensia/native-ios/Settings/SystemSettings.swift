@@ -225,22 +225,24 @@ struct MemorySettingsView: View {
       }
       Section(uncensiaText("记忆")) {
         ForEach(store.memory["items"].arrayValue ?? [], id: \.stableID) { item in
-          Button {
-            editingKey = item["key"].displayString
-            key = editingKey ?? ""
-            value = item["value"].displayString
-          } label: {
-            VStack(alignment: .leading) {
-              Text(item["key"].displayString).font(.headline)
-              Text(item["value"].displayString).lineLimit(3)
-              if let source = item["sourceConversationId"].stringValue {
-                Button(uncensiaText("打开来源对话")) {
-                  appModel.selectedConversationID = source
-                  appModel.selectedTab = "chat"
-                }.font(.caption)
+          VStack(alignment: .leading) {
+            Button {
+              editingKey = item["key"].displayString
+              key = editingKey ?? ""
+              value = item["value"].displayString
+            } label: {
+              VStack(alignment: .leading) {
+                Text(item["key"].displayString).font(.headline)
+                Text(item["value"].displayString).lineLimit(3)
               }
+            }.buttonStyle(.plain)
+            if let source = item["sourceConversationId"].stringValue {
+              Button(uncensiaText("打开来源对话")) {
+                appModel.selectedConversationID = source
+                appModel.selectedTab = "chat"
+              }.font(.caption).buttonStyle(.borderless)
             }
-          }.buttonStyle(.plain)
+          }
         }
       }
       Section(uncensiaText("添加")) {
