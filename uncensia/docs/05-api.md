@@ -52,7 +52,7 @@ Bearer 与同源 cookie 均可用。Cookie 写请求检查来源；访问码、T
 | GET | `/background-tasks` | 全部对话的后台任务，含进度和当前 run |
 | GET/POST | `/conversations/:id/background-tasks` | 列表 / 创建 `{ prompt, runAt?, modelId?, mode?, intervalMs?, maxRuns? }`；mode 为 once / continuous / interval |
 | PATCH | `/background-tasks/:id` | `{ action: "pause" \| "resume" }`；暂停不打断当前轮，恢复受状态和轮数上限约束 |
-| DELETE | `/background-tasks/:id` | 取消后续执行并请求停止对应 run，保留结果 |
+| DELETE | `/background-tasks/:id` | 进行中的任务：取消后续执行并请求停止对应 run，保留结果；已完成 / 已取消的任务：删除记录（返回 `{ ...task, deleted: true }`），执行记录仍留在对话中 |
 | GET | `/background-tasks/:id/runs` | 最近 100 条实际执行记录 |
 
 ## 生成、文件与媒体

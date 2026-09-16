@@ -115,10 +115,10 @@ function TaskCard({ task, refresh }: { task: BackgroundTask; refresh: () => Prom
   const { state } = task;
   const isActive = activeRun(task);
   const capped = state.maxRuns !== null && state.completedRuns >= state.maxRuns;
-  const act = async (action: "pause" | "resume" | "cancel") => {
+  const act = async (action: "pause" | "resume" | "cancel" | "delete") => {
     setBusy(true);
     try {
-      if (action === "cancel") await api.cancelBackgroundTask(task.id);
+      if (action === "cancel" || action === "delete") await api.cancelBackgroundTask(task.id);
       else await api.controlBackgroundTask(task.id, action);
       await refresh();
     } catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
@@ -139,7 +139,8 @@ function TaskCard({ task, refresh }: { task: BackgroundTask; refresh: () => Prom
       <a className="px-2 text-sm text-primary underline" href={`/c/${task.conversationId}`}>{uiText("查看对话与结果")}</a>
       {["pending", "running"].includes(task.status) ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act("pause")}>{isActive ? uiText("本轮后暂停") : uiText("暂停")}</Button> : null}
       {["paused", "failed"].includes(task.status) && !capped ? <Button size="sm" variant="outline" disabled={busy || !!isActive} onClick={() => void act("resume")}>{uiText("继续")}</Button> : null}
-      {!["completed", "cancelled"].includes(task.status) ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void act("cancel")}>{uiText("取消任务")}</Button> : null}
+      {!["completed", "cancelled"].includes(task.status) ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void act("cancel")}>{uiText("取消任务")}</Button>
+        : <Button size="sm" variant="ghost" disabled={busy} onClick={() => void act("delete")}>{uiText("删除")}</Button>}
       <Button size="sm" variant="ghost" onClick={() => { if (history) setHistory(null); else void api.taskRuns(task.id).then(data => setHistory(data.items)).catch(e => toast(String(e), true)); }}>{uiText("执行记录")}</Button>
     </div>
     {history ? <div className="space-y-1 border-t pt-3 text-xs text-muted-foreground">{history.length ? history.map(run => <p key={run.id}>{new Date(run.createdAt).toLocaleString(language())} · {({ queued: uiText("排队"), running: uiText("执行中"), completed: uiText("完成"), failed: uiText("失败"), cancelled: uiText("已停止") })[run.status]}{run.error ? ` · ${run.error}` : ""}</p>) : uiText("还没有开始执行")}</div> : null}
