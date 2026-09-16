@@ -23,6 +23,7 @@ final class SettingsStore {
   var memory: JSONValue = .object([:])
   var tasks: [JSONValue] = []
   var security: JSONValue = .object([:])
+  var learningHistory: [JSONValue] = []
 
   func load(using app: AppModel) async {
     guard let api = app.api else { return }
@@ -40,9 +41,10 @@ final class SettingsStore {
       async let memory = api.request("GET", "/memory")
       async let tasks = api.request("GET", "/background-tasks")
       async let security = api.request("GET", "/security")
+      async let learning = api.request("GET", "/learning/history")
       let values = try await (
         providers, models, mcp, skills, capabilities, prompts, promptDefaults, memory, tasks,
-        security, resources
+        security, resources, learning
       )
       self.providers = values.0.arrayValue ?? []
       applyModels(values.1)
@@ -57,6 +59,7 @@ final class SettingsStore {
       self.tasks = values.8["items"].arrayValue ?? []
       self.security = values.9
       self.resources = values.10
+      self.learningHistory = values.11["items"].arrayValue ?? []
     } catch { fail(error) }
   }
 
@@ -79,6 +82,9 @@ final class SettingsStore {
     let v = try await api.request("GET", "/skills")
     skills = v["items"].arrayValue ?? []
     skillDiagnostics = (v["diagnostics"].arrayValue ?? []).compactMap(\.stringValue)
+  }
+  func refreshLearning(_ api: APIClient) async throws {
+    learningHistory = try await api.request("GET", "/learning/history")["items"].arrayValue ?? []
   }
   func refreshTasks(_ api: APIClient) async throws {
     tasks = try await api.request("GET", "/background-tasks")["items"].arrayValue ?? []

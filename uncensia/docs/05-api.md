@@ -54,6 +54,9 @@ Bearer 与同源 cookie 均可用。Cookie 写请求检查来源；访问码、T
 | PATCH | `/background-tasks/:id` | `{ action: "pause" \| "resume" }`；暂停不打断当前轮，恢复受状态和轮数上限约束 |
 | DELETE | `/background-tasks/:id` | 进行中的任务：取消后续执行并请求停止对应 run，保留结果；已完成 / 已取消的任务：删除记录（返回 `{ ...task, deleted: true }`），执行记录仍留在对话中 |
 | GET | `/background-tasks/:id/runs` | 最近 100 条实际执行记录 |
+| GET | `/questions` | 全局待回答的扩展提问 |
+| GET | `/conversations/:id/questions` | 对话待回答的扩展提问，status=all 查看全部 |
+| POST | `/questions/:id` | `{ answer }` 或 `{ dismiss: true }`；select 须为选项之一，confirm 为 yes/no；重复提交返回已定状态 |
 
 ## 生成、文件与媒体
 
@@ -97,6 +100,8 @@ Bearer 与同源 cookie 均可用。Cookie 写请求检查来源；访问码、T
 | 模型参考 | GET `/model-reference?model=...`；未知型号返回 reference: null |
 | 默认模型 | PUT `/models/default`、`/models/generation-defaults` |
 | 技能 | GET/POST `/skills`；PATCH `/skills/:id` |
+| 扩展 | GET/POST `/extensions`；PATCH/DELETE `/extensions/:id` |
+| 扩展包 | POST `/extensions/packages` 安装 `{ source }`（npm、Git 或本地目录）；POST `/extensions/packages/update`；PATCH/DELETE `/extensions/packages` `{ source, enabled? }` |
 | 能力 | GET/PATCH `/capabilities`；PUT/DELETE `/capabilities/secrets/:name` |
 | 提示词 | GET `/prompts`、`/prompts/defaults`；PUT `/prompts` |
 | MCP | GET/POST `/mcp/servers`；PATCH/DELETE `/mcp/servers/:id`；POST `/mcp/reconnect` |
