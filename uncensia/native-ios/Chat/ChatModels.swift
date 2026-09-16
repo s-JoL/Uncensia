@@ -38,3 +38,13 @@ public struct ApprovalItem: Identifiable, Sendable, Equatable {
     public let id: String; public let summary: String; public let action: String; public let status: String
     public init?(_ json: JSONValue) { guard let id = json["id"].stringValue else { return nil }; self.id = id; summary = json["summary"].stringValue ?? uncensiaText("等待确认"); action = json["action"].stringValue ?? ""; status = json["status"].stringValue ?? "pending" }
 }
+
+/// A dialog an extension opened through Pi's `ui.select` / `ui.confirm` / `ui.input`. Not an approval: nothing destructive is waiting, the extension just needs a word from the reader.
+public struct QuestionItem: Identifiable, Sendable, Equatable {
+    public let id: String; public let kind: String; public let title: String; public let message: String; public let options: [String]; public let placeholder: String; public let status: String
+    public init?(_ json: JSONValue) {
+        guard let id = json["id"].stringValue else { return nil }
+        self.id = id; kind = json["kind"].stringValue ?? "input"; title = json["title"].stringValue ?? ""; message = json["message"].stringValue ?? ""
+        options = json["options"].arrayValue?.compactMap(\.stringValue) ?? []; placeholder = json["placeholder"].stringValue ?? ""; status = json["status"].stringValue ?? "pending"
+    }
+}

@@ -6,7 +6,9 @@
 import type { ConversationEvidence, DeliverableRecord, DeliverableComparison } from "@shared/evidence.ts";
 import type { Project } from "@shared/projects.ts";
 import type {
+  AgentResources,
   Approval,
+  Question,
   ImageAttachmentReference,
   BackgroundTask,
   TaskSchedule,
@@ -138,6 +140,14 @@ export const api = {
   learningHistory: () => request<{ items: LearningChange[] }>("GET", "/learning/history"),
   createSkill: (content: string) => request("POST", "/skills", { content }),
   updateSkill: (id: string, input: { content?: string; revision?: string; enabled?: boolean }) => request("PATCH", `/skills/${id}`, input),
+  extensions: () => request<AgentResources>("GET", "/extensions"),
+  createExtension: (name: string, content: string) => request("POST", "/extensions", { name, content }),
+  updateExtension: (id: string, input: { content?: string; revision?: string; enabled?: boolean }) => request("PATCH", `/extensions/${id}`, input),
+  deleteExtension: (id: string) => request("DELETE", `/extensions/${id}`),
+  installPackage: (source: string) => request<{ ok: true; log: string[] }>("POST", "/extensions/packages", { source }),
+  updatePackage: (source: string) => request<{ ok: true; log: string[] }>("POST", "/extensions/packages/update", { source }),
+  setPackageEnabled: (source: string, enabled: boolean) => request("PATCH", "/extensions/packages", { source, enabled }),
+  removePackage: (source: string) => request("DELETE", "/extensions/packages", { source }),
   allBackgroundTasks: () => request<{ items: BackgroundTask[] }>("GET", "/background-tasks"),
   loginChallenge: () => request<{ totpRequired: boolean; lockedFor: number }>("GET", "/auth/challenge"),
   login: (accessCode: string, totp = "") =>
@@ -229,6 +239,8 @@ export const api = {
   approvals: (conversationId: string) =>
     request<{ items: Approval[] }>("GET", `/conversations/${conversationId}/approvals`),
   decideApproval: (id: string, approved: boolean) => request<Approval>("POST", `/approvals/${id}`, { approved }),
+  questions: (conversationId: string) => request<{ items: Question[] }>("GET", `/conversations/${conversationId}/questions`),
+  answerQuestion: (id: string, body: { answer: string } | { dismiss: true }) => request<Question>("POST", `/questions/${id}`, body),
 
   providers: () => request<Provider[]>("GET", "/providers"),
   createProvider: (input: ProviderInput) => request<Provider>("POST", "/providers", input),

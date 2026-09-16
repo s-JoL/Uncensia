@@ -48,7 +48,7 @@ HTTP 和 agent 写入共用数据库中的原子预算检查，以保存时的�
 
 ## 搜索、工作目录与 MCP
 
-联网搜索使用 `web_search`：Tavily 需要密钥，SearXNG 使用自托管地址；Tavily 可读取页面正文，SearXNG 只返回搜索摘要。默认只取摘要，`read_pages`（0–5）才逐页抓正文；图片结果是候选 URL，查看或复用前需先 `acquire_resource` 入库。未配置提供方时回退默认 Tavily，配置了不存在的提供方则明确报错。
+联网搜索使用 `web_search`：Tavily 需要密钥，SearXNG 使用自托管地址；Tavily 可读取页面正文，SearXNG 只返回搜索摘要。默认只取摘要，`read_pages`（0–5）才逐页抓正文；图片结果是候选 URL，查看或复用前需先 `acquire_resource` 入库。未配置提供方时回退默认 Tavily，配置了不存在的提供方则明确报错。`fetch_url` 按地址直接读取最多 5 个页面正文（同一提供方、同一密钥），引用锚点类型为 `ref`；读不到的页面逐条报告原因，不会退回搜索摘要，SearXNG 等不支持抓取的提供方会明确拒绝。
 
 | 工作目录权限 | 可用工具 |
 |---|---|

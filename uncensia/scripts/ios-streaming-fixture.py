@@ -295,7 +295,7 @@ class Handler(BaseHTTPRequestHandler):
         parts = path.strip("/").split("/")
         if len(parts) >= 2 and parts[0] == "conversations":
             conversation = parts[1]
-            if path.endswith("/approvals"):
+            if path.endswith("/approvals") or path.endswith("/questions"):
                 return self.reply({"items": []})
             if path.endswith("/messages"):
                 if "before" in query:

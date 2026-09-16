@@ -237,6 +237,7 @@ private struct TranscriptView: View {
                 }.disabled(loadingOlder) }
                 ForEach(store.messages) { message in transcriptMessage(message) }
                 ForEach(store.approvals) { approval in ApprovalCard(item: approval, store: store, api: api) }
+                ForEach(store.questions) { question in QuestionCard(item: question, store: store, api: api) }
                 if store.isRunning || !store.liveText.isEmpty { LiveTranscriptRow(store: store, api: api).id("live") }
                 Color.clear.frame(height: 1).id("bottom")
             }.scrollTargetLayout().padding(.horizontal, 20).padding(.vertical, 20)
@@ -426,6 +427,41 @@ private struct ApprovalCard: View {
     let item: ApprovalItem; let store: ChatStore; let api: APIClient?
     var body: some View { VStack(alignment: .leading, spacing: 10) { Label(uncensiaText("需要确认"), image: "lucide-shield-alert").font(.headline); Text(item.summary); Text(item.action).font(.caption).foregroundStyle(.secondary); HStack { Button(uncensiaText("拒绝"), role: .destructive) { decide(false) }; Button(uncensiaText("允许")) { decide(true) }.buttonStyle(.borderedProminent) } }.padding().background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 16)) }
     private func decide(_ value: Bool) { guard let api else { return }; Task { await store.decide(item, approved: value, api: api) } }
+}
+
+/// An extension's dialog. Skipping sends `undefined` to the extension, so a tap
+/// away never reads as consent.
+private struct QuestionCard: View {
+    let item: QuestionItem; let store: ChatStore; let api: APIClient?
+    @State private var text = ""
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(uncensiaText("扩展提问"), image: "lucide-messages-square").font(.headline)
+            Text(item.title)
+            if !item.message.isEmpty { Text(item.message).font(.caption).foregroundStyle(.secondary) }
+            if item.kind == "select" {
+                ForEach(item.options, id: \.self) { option in Button(option) { answer(option) }.buttonStyle(.bordered) }
+            }
+            if item.kind == "input" || item.kind == "editor" {
+                TextField(item.kind == "input" ? item.placeholder : "", text: $text, axis: .vertical).lineLimit(item.kind == "editor" ? 6...12 : 1...3).textFieldStyle(.roundedBorder)
+            }
+            HStack {
+                Button(uncensiaText("跳过")) { answer(nil) }
+                Spacer()
+                if item.kind == "confirm" {
+                    Button(uncensiaText("否")) { answer("no") }
+                    Button(uncensiaText("是")) { answer("yes") }.buttonStyle(.borderedProminent)
+                }
+                if item.kind == "input" || item.kind == "editor" {
+                    Button(uncensiaText("提交")) { answer(text) }.buttonStyle(.borderedProminent).disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .padding().background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+        .onAppear { if item.kind == "editor", text.isEmpty { text = item.placeholder } }
+        .accessibilityIdentifier("chat.question.\(item.id)")
+    }
+    private func answer(_ value: String?) { guard let api else { return }; Task { await store.answer(item, value, api: api) } }
 }
 
 private struct ComposerView: View {

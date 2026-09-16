@@ -15,6 +15,16 @@ import { slug } from "../../ids.ts";
 import { discoverModels } from "../../models/catalogue.ts";
 import { modelReference } from "../../models/reference.ts";
 import { managedSkills, createSkill, updateSkill } from "../../tools/skill-management.ts";
+import {
+  agentResources,
+  createExtension,
+  deleteExtension,
+  installPackage,
+  removePackage,
+  setPackageEnabled,
+  updateExtension,
+  updatePackage,
+} from "../../tools/extension-management.ts";
 import { learningHistory } from "../../tools/learning.ts";
 import { providerAuth } from "../../models/auth.ts";
 import { DEFAULT_GLOBAL_PROMPT, DEFAULT_TOOL_PROMPT } from "../../prompts/defaults.ts";
@@ -33,6 +43,96 @@ export function settingsRoutes(services: Services) {
   const app = new Hono();
   const { store, config, vault, registry, mcp } = services;
   app.get("/learning/history", context => context.json({ items: learningHistory() }));
+
+  const workspace = () => config.capabilities().coding.workspace;
+  const statusOf = (error: unknown) => ((error as { status?: number }).status === 404 ? 404 : (error as { status?: number }).status === 409 ? 409 : 400);
+  const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+  app.get("/extensions", async context => context.json(await agentResources(workspace())));
+
+  app.post("/extensions", async context => {
+    const body = await readJson<{ name?: string; content?: string }>(context);
+    if (typeof body.name !== "string" || typeof body.content !== "string") return fail(context, 400, "invalid", "name and content are required");
+    try {
+      createExtension(body.name, body.content);
+      return context.json({ ok: true }, 201);
+    } catch (error) {
+      return fail(context, 400, "invalid", message(error));
+    }
+  });
+
+  // Package routes are registered before `/extensions/:id` so "packages" is
+  // never read as an extension id. Installing runs npm or git and then, on
+  // the next run, the package's code. The client shows that warning; the
+  // server only checks the request shape.
+  app.post("/extensions/packages", async context => {
+    const body = await readJson<{ source?: string }>(context);
+    if (typeof body.source !== "string") return fail(context, 400, "invalid", "source is required");
+    try {
+      const log = await installPackage(workspace(), body.source);
+      return context.json({ ok: true, log }, 201);
+    } catch (error) {
+      return fail(context, 400, "install_failed", message(error));
+    }
+  });
+
+  app.post("/extensions/packages/update", async context => {
+    const body = await readJson<{ source?: string }>(context);
+    if (typeof body.source !== "string") return fail(context, 400, "invalid", "source is required");
+    try {
+      return context.json({ ok: true, log: await updatePackage(workspace(), body.source) });
+    } catch (error) {
+      return fail(context, statusOf(error), "update_failed", message(error));
+    }
+  });
+
+  app.patch("/extensions/packages", async context => {
+    const body = await readJson<{ source?: string; enabled?: boolean }>(context);
+    if (typeof body.source !== "string" || typeof body.enabled !== "boolean") return fail(context, 400, "invalid", "source and enabled are required");
+    try {
+      setPackageEnabled(body.source, body.enabled);
+      return context.json({ ok: true });
+    } catch (error) {
+      return fail(context, statusOf(error), "invalid", message(error));
+    }
+  });
+
+  app.delete("/extensions/packages", async context => {
+    const body = await readJson<{ source?: string }>(context);
+    if (typeof body.source !== "string") return fail(context, 400, "invalid", "source is required");
+    try {
+      await removePackage(workspace(), body.source);
+      return context.json({ ok: true });
+    } catch (error) {
+      return fail(context, statusOf(error), "invalid", message(error));
+    }
+  });
+
+  app.patch("/extensions/:id", async context => {
+    const extension = (await agentResources(workspace())).extensions.find(item => item.id === context.req.param("id"));
+    if (!extension) return fail(context, 404, "not_found", "Extension not found");
+    const body = await readJson<{ content?: string; revision?: string; enabled?: boolean }>(context);
+    if ((body.content !== undefined && typeof body.content !== "string") || (body.enabled !== undefined && typeof body.enabled !== "boolean")) {
+      return fail(context, 400, "invalid", "Invalid extension settings");
+    }
+    try {
+      updateExtension(extension, body);
+      return context.json({ ok: true });
+    } catch (error) {
+      return fail(context, statusOf(error), "invalid", message(error));
+    }
+  });
+
+  app.delete("/extensions/:id", async context => {
+    const extension = (await agentResources(workspace())).extensions.find(item => item.id === context.req.param("id"));
+    if (!extension) return fail(context, 404, "not_found", "Extension not found");
+    try {
+      deleteExtension(extension);
+      return context.json({ ok: true });
+    } catch (error) {
+      return fail(context, 400, "invalid", message(error));
+    }
+  });
 
   app.get("/skills", context => context.json(managedSkills(config.capabilities().coding.workspace)));
   app.post("/skills", async context => {

@@ -491,8 +491,8 @@ private struct MarkdownProseLine: View, Equatable {
     for block in message.text.replacingOccurrences(of: "\nFile:", with: "\n#File:").components(separatedBy: "\n#") {
       let lines = block.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
       guard let anchor = lines.first(where: { $0.lowercased().hasPrefix("anchor:") }),
-        let match = anchor.range(of: #"(?:\\ue202|\uE202)turn\d+(?:file|search|news|image|video)\d+"#, options: [.regularExpression, .caseInsensitive]),
-        let keyRange = String(anchor[match]).range(of: #"turn\d+(?:file|search|news|image|video)\d+"#, options: [.regularExpression, .caseInsensitive]) else { continue }
+        let match = anchor.range(of: #"(?:\\ue202|\uE202)turn\d+(?:file|search|news|image|video|ref)\d+"#, options: [.regularExpression, .caseInsensitive]),
+        let keyRange = String(anchor[match]).range(of: #"turn\d+(?:file|search|news|image|video|ref)\d+"#, options: [.regularExpression, .caseInsensitive]) else { continue }
       let marked = String(anchor[match])
       let key = String(marked[keyRange]).lowercased()
       let fileID = lines.first(where: { $0.hasPrefix("file_id: ") }).map { String($0.dropFirst(9)) }
@@ -509,7 +509,7 @@ private struct MarkdownProseLine: View, Equatable {
     var output = text
     guard
       let regex = try? NSRegularExpression(
-        pattern: #"(?:\\ue202|\uE202)(turn\d+(?:file|search|news|image|video)\d+)"#,
+        pattern: #"(?:\\ue202|\uE202)(turn\d+(?:file|search|news|image|video|ref)\d+)"#,
         options: [.caseInsensitive])
     else { return text }
     for match in regex.matches(in: output, range: NSRange(output.startIndex..., in: output))
