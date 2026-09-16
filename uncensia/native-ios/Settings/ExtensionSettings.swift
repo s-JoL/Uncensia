@@ -263,13 +263,15 @@ private struct MCPEditor: View {
   func parsed(_ text: String) -> JSONValue {
     .object(
       Dictionary(
-        uniqueKeysWithValues: text.split(separator: "\n").compactMap { line in
+        text.split(separator: "\n").compactMap { line -> (String, JSONValue)? in
           guard let i = line.firstIndex(of: "=") else { return nil }
+          let key = String(line[..<i]).trimmingCharacters(in: .whitespaces)
+          guard !key.isEmpty else { return nil }
           return (
-            String(line[..<i]).trimmingCharacters(in: .whitespaces),
+            key,
             .string(String(line[line.index(after: i)...]).trimmingCharacters(in: .whitespaces))
           )
-        }))
+        }, uniquingKeysWith: { _, last in last }))
   }
   func save() {
     withAPI(app, store: store) { api in
