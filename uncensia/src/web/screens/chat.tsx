@@ -1551,7 +1551,7 @@ function QuestionView({ question }: { question: Question }) {
               onKeyDown={(event) => {
                 if (question.kind === "input" && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();
-                  if (text.trim()) void submit({ answer: text });
+                  void submit({ answer: text });
                 }
               }}
             />
@@ -1571,7 +1571,7 @@ function QuestionView({ question }: { question: Question }) {
               </>
             ) : null}
             {question.kind === "input" || question.kind === "editor" ? (
-              <Button variant="primary" size="sm" disabled={busy || !text.trim()} onClick={() => void submit({ answer: text })}>
+              <Button variant="primary" size="sm" disabled={busy} onClick={() => void submit({ answer: text })}>
                 {uiText("提交")}
               </Button>
             ) : null}
