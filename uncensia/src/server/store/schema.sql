@@ -274,6 +274,24 @@ CREATE TABLE IF NOT EXISTS approvals (
 CREATE INDEX IF NOT EXISTS approvals_pending ON approvals(status, created_at);
 CREATE INDEX IF NOT EXISTS approvals_conversation ON approvals(conversation_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS questions (
+  id              TEXT PRIMARY KEY,
+  run_id          TEXT NOT NULL,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL,
+  title           TEXT NOT NULL,
+  message         TEXT NOT NULL DEFAULT '',
+  options         TEXT NOT NULL DEFAULT '[]',
+  placeholder     TEXT NOT NULL DEFAULT '',
+  status          TEXT NOT NULL DEFAULT 'pending',
+  answer          TEXT,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS questions_pending ON questions(status, created_at);
+CREATE INDEX IF NOT EXISTS questions_conversation ON questions(conversation_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS memories (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,

@@ -3,6 +3,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { nextCitationId } from "./citation-id.ts";
 import {
   COUNTRY_DESCRIPTION,
+  FETCH_URL_DESCRIPTION,
   INTENT_DESCRIPTION,
   QUERY_DESCRIPTION,
   READ_PAGES_DESCRIPTION,
@@ -61,6 +62,16 @@ export interface WebSearchAdapter {
    * offers snippets, which is what it offered before any of this existed.
    */
   extract?(urls: string[], ctx: WebSearchContext): Promise<Map<string, string>>;
+  /**
+   * The same endpoint asked for on its own by `fetch_url`, where the page *is*
+   * the answer and a failure must be reported, not swallowed into an empty map.
+   */
+  fetchPages?(urls: string[], ctx: WebSearchContext): Promise<FetchedPages>;
+}
+
+export interface FetchedPages {
+  pages: Map<string, string>;
+  failed: Array<{ url: string; error: string }>;
 }
 
 const hostname = (url: string) => {
@@ -144,22 +155,38 @@ const tavilyAdapter: WebSearchAdapter = {
    */
   async extract(urls, ctx) {
     if (!urls.length) return new Map();
-    const response = await fetch(TAVILY_EXTRACT_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${ctx.apiKey}` },
-      body: JSON.stringify({ urls, extract_depth: "basic" }),
-      signal: ctx.signal,
-    });
-    if (!response.ok) return new Map();
-    const data = (await response.json()) as { results?: Array<Record<string, unknown>> };
-    const pages = new Map<string, string>();
-    for (const item of data.results ?? []) {
-      const body = String(item.raw_content ?? "").trim();
-      if (item.url && body) pages.set(String(item.url), body);
+    try {
+      return (await tavilyExtract(urls, ctx)).pages;
+    } catch (error) {
+      if (ctx.signal?.aborted) throw error;
+      return new Map();
     }
-    return pages;
   },
+  fetchPages: tavilyExtract,
 };
+
+async function tavilyExtract(urls: string[], ctx: WebSearchContext): Promise<FetchedPages> {
+  const response = await fetch(TAVILY_EXTRACT_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${ctx.apiKey}` },
+    body: JSON.stringify({ urls, extract_depth: "basic" }),
+    signal: ctx.signal,
+  });
+  if (!response.ok) throw new Error(`Tavily extract failed: HTTP ${response.status}`);
+  const data = (await response.json()) as {
+    results?: Array<Record<string, unknown>>;
+    failed_results?: Array<Record<string, unknown>>;
+  };
+  const pages = new Map<string, string>();
+  for (const item of data.results ?? []) {
+    const body = String(item.raw_content ?? "").trim();
+    if (item.url && body) pages.set(String(item.url), body);
+  }
+  const failed = (data.failed_results ?? [])
+    .filter((item) => item.url)
+    .map((item) => ({ url: String(item.url), error: String(item.error ?? "no content returned") }));
+  return { pages, failed };
+}
 
 const searxngAdapter: WebSearchAdapter = {
   id: "searxng",
@@ -338,6 +365,96 @@ export function webSearchTool(options: {
               images: (imageData?.images ?? []).slice(0, 6),
               videos: [],
               references,
+            },
+          },
+        },
+      };
+    },
+  };
+}
+
+/** Enough for an article or a documentation page; past this the model asks for the section it needs. */
+const FETCH_PAGE_CHARS = 40_000;
+
+function parseUrl(value: string) {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Reads pages by address through the same backend as `web_search`. The
+ * configured provider is the only one asked: if it cannot fetch pages the tool
+ * says so, rather than quietly searching for the URL and returning snippets
+ * as if they were the page.
+ */
+export function fetchUrlTool(options: {
+  getApiKey: () => string | undefined;
+  provider?: string;
+  baseUrl?: string;
+}): AgentTool {
+  const provider = options.provider || DEFAULT_PROVIDER;
+  return {
+    name: "fetch_url",
+    label: "fetch_url",
+    description: FETCH_URL_DESCRIPTION,
+    parameters: Type.Unsafe({
+      type: "object",
+      properties: {
+        urls: {
+          type: "array",
+          items: { type: "string" },
+          minItems: 1,
+          maxItems: 5,
+          description: "Absolute http(s) URLs to read, in the order they should be reported.",
+        },
+      },
+      required: ["urls"],
+    }),
+    execute: async (_callId, params, signal) => {
+      const args = params as { urls?: unknown };
+      const requested = Array.isArray(args.urls) ? args.urls.filter((item): item is string => typeof item === "string") : [];
+      if (!requested.length) throw new Error("urls must list at least one http(s) URL");
+      const invalid = requested.filter((item) => !parseUrl(item));
+      if (invalid.length) throw new Error(`Not http(s) URLs: ${invalid.join(", ")}`);
+      const urls = [...new Set(requested.slice(0, 5).map((item) => parseUrl(item)!))];
+
+      const adapter = ADAPTERS.get(provider);
+      if (!adapter) throw new Error(`Unknown web search provider: ${provider}`);
+      if (!adapter.fetchPages) {
+        throw new Error(`The configured web provider (${adapter.id}) cannot read pages by URL. No page was fetched; switch the web search provider to one with page extraction (Tavily) or ask the user for the text.`);
+      }
+      const apiKey = options.getApiKey();
+      if (adapter.requiresKey && !apiKey) throw new Error(`Reading pages is selected but the ${adapter.id} API key is not configured`);
+
+      const turn = nextCitationId();
+      const ctx: WebSearchContext = { apiKey: apiKey ?? "", baseUrl: options.baseUrl ?? "", signal };
+      const { pages, failed } = await adapter.fetchPages(urls, ctx);
+      const failures = new Map(failed.map((item) => [item.url, item.error]));
+
+      const sections = urls.map((url, index) => {
+        const body = pages.get(url) ?? pages.get(url.replace(/\/$/, "")) ?? pages.get(`${url}/`);
+        const lines = [`# Ref ${index}: ${url}`, `\nAnchor: \ue202turn${turn}ref${index}`, `URL: ${url}`];
+        if (body) {
+          const truncated = body.length > FETCH_PAGE_CHARS;
+          lines.push(`Content${truncated ? ` (first ${FETCH_PAGE_CHARS} of ${body.length} characters)` : ""}:\n${body.slice(0, FETCH_PAGE_CHARS)}`);
+        } else {
+          lines.push(`Not read: ${failures.get(url) ?? "the page returned no readable text"}`);
+        }
+        return `${lines.join("\n")}\n`;
+      });
+
+      return {
+        content: [{ type: "text", text: `\n=== Pages, Turn ${turn} ===\n\n${sections.join("\n")}` }],
+        details: {
+          structuredContent: {
+            fetch_url: {
+              turn,
+              pages: urls.map((url) => ({ link: url, read: pages.has(url), error: failures.get(url) })),
+              references: urls.filter((url) => pages.has(url)).map((url) => ({ type: "ref", link: url, title: url })),
             },
           },
         },

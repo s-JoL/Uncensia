@@ -25,6 +25,7 @@ import type {
   BackgroundTask,
   Bootstrap,
   FileRecord,
+  Question,
   RoleplayContext,
   StoredMessage,
   VisualContinuityContext,
@@ -205,6 +206,14 @@ export function Chat({
         .then(({ items }) => {
           if (liveTurnRef.current !== turn || !items.length) return;
           turn.seedApprovals(items.filter((item) => item.runId === runId));
+          setLive(turn.snapshot());
+        })
+        .catch(() => undefined);
+      void api
+        .questions(id)
+        .then(({ items }) => {
+          if (liveTurnRef.current !== turn || !items.length) return;
+          turn.seedQuestions(items.filter((item) => item.runId === runId));
           setLive(turn.snapshot());
         })
         .catch(() => undefined);
@@ -1267,6 +1276,9 @@ const TurnView = memo(function TurnView({
         if (part.kind === "approval") {
           return <ApprovalView key={part.approval.id} approval={part.approval} />;
         }
+        if (part.kind === "question") {
+          return <QuestionView key={part.question.id} question={part.question} />;
+        }
         // Cancelling here would fail the tool call that is waiting on the job,
         // so the card watches without offering a way out of the turn.
         if (part.kind === "job") {
@@ -1407,6 +1419,105 @@ const DETAIL_LABELS: Record<string, string> = {
   workspace: uiText("工作区"),
   reason: uiText("原因"),
 };
+
+/**
+ * An extension's dialog, in the transcript like an approval and for the same
+ * reason. Answering repaints through the run's `question.settled` event; the
+ * card only disables itself while the request is out.
+ */
+function QuestionView({ question }: { question: Question }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [text, setText] = useState(question.kind === "editor" ? question.placeholder : "");
+  const pending = question.status === "pending";
+
+  const submit = async (body: { answer: string } | { dismiss: true }) => {
+    setBusy(true);
+    try {
+      await api.answerQuestion(question.id, body);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const settledLabel =
+    question.status === "answered"
+      ? question.kind === "confirm"
+        ? question.answer === "yes"
+          ? uiText("已确认")
+          : uiText("已否决")
+        : uiText("已回答：{0}", [question.answer ?? ""])
+      : question.status === "expired"
+        ? uiText("已超时，扩展未收到回答")
+        : uiText("已跳过，扩展未收到回答");
+
+  return (
+    <div
+      className={cn("flex flex-col gap-3 rounded-lg border p-3", pending ? "border-primary/40 bg-primary/5" : "bg-muted/40")}
+      data-question={question.id}
+      data-status={question.status}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={pending ? "accent" : "neutral"}>{uiText("扩展提问")}</Badge>
+        <span className="text-sm font-medium">{question.title}</span>
+      </div>
+      {question.message ? <p className="whitespace-pre-wrap text-sm text-muted-foreground">{question.message}</p> : null}
+
+      {pending ? (
+        <div className="flex flex-col gap-2">
+          {question.kind === "select" ? (
+            <div className="flex flex-wrap gap-2">
+              {question.options.map((option) => (
+                <Button key={option} size="sm" disabled={busy} onClick={() => void submit({ answer: option })}>
+                  {option}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          {question.kind === "input" || question.kind === "editor" ? (
+            <Textarea
+              aria-label={question.title}
+              value={text}
+              placeholder={question.kind === "input" ? question.placeholder : undefined}
+              rows={question.kind === "editor" ? 6 : 2}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (question.kind === "input" && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  if (text.trim()) void submit({ answer: text });
+                }
+              }}
+            />
+          ) : null}
+          <div className="flex items-center justify-end gap-2">
+            <Button size="sm" disabled={busy} onClick={() => void submit({ dismiss: true })}>
+              {uiText("跳过")}
+            </Button>
+            {question.kind === "confirm" ? (
+              <>
+                <Button size="sm" disabled={busy} onClick={() => void submit({ answer: "no" })}>
+                  {uiText("否")}
+                </Button>
+                <Button variant="primary" size="sm" disabled={busy} onClick={() => void submit({ answer: "yes" })}>
+                  {uiText("是")}
+                </Button>
+              </>
+            ) : null}
+            {question.kind === "input" || question.kind === "editor" ? (
+              <Button variant="primary" size="sm" disabled={busy || !text.trim()} onClick={() => void submit({ answer: text })}>
+                {uiText("提交")}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <span className={cn("text-xs", question.status === "answered" ? "text-success" : "text-muted-foreground")}>{settledLabel}</span>
+      )}
+    </div>
+  );
+}
 
 /**
  * The question itself. It is deliberately not a modal: the reader needs the

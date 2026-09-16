@@ -27,6 +27,11 @@ A snippet says whether a page is relevant; it does not carry the argument, the n
 Raise this when the answer depends on what a page actually says — a specification, a changelog, a court filing, a benchmark table, a quote you intend to reproduce.
 Leave it at 0 when the snippets already settle the question, such as a date, a name, or which of two things exists.`;
 
+export const FETCH_URL_DESCRIPTION = `Read the full text of one or more web pages the user gave you or that a search returned. Up to 5 URLs per call.
+
+Use this when the URL itself is the source: a page the user pasted, an article to summarise, documentation to follow, a listing to compare. Do not search first when you already have the URL.
+The result carries the same citation anchors as web_search, with type 'ref'; cite from them the same way. A page that could not be read is reported as such — say so rather than guessing its contents.`;
+
 export const WEB_SEARCH_DESCRIPTION = `Real-time search. Results have required citation anchors.
 
 Search again when a result introduces a relevant question or needs independent verification. Read source text when snippets are insufficient. Stop when the user's question is supported; do not repeat an unchanged query without a reason.

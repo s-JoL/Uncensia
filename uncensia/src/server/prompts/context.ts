@@ -12,7 +12,7 @@ export const MEMORY_INSTRUCTIONS =
 export const MEMORY_TOOL_USAGE_GUARD = `Only use the \`set_memory\` and \`delete_memory\` tools when the user explicitly asks you to remember, update, or forget something (e.g. "remember that...", "don't forget...", "forget..."). Never store information merely because the user mentioned it in conversation.`;
 
 export const WEB_SEARCH_CONTEXT = `# \`web_search\`:
-Search when requested or when current information is needed. Ground factual claims in the returned sources. Preserve the tool's citation anchors, placing them after the supported statement, for example \\ue202turn0search0. Use only anchors actually returned by the tool; never invent citations. Read source pages when snippets do not support the answer. Use the conversation date/time when recency matters.`;
+Search when requested or when current information is needed. Ground factual claims in the returned sources. Preserve the tool's citation anchors, placing them after the supported statement, for example \\ue202turn0search0. Use only anchors actually returned by the tool; never invent citations. Read source pages when snippets do not support the answer. When the user gives a URL, read it with \`fetch_url\` instead of searching for it; its anchors look like \\ue202turn0ref0. Use the conversation date/time when recency matters.`;
 
 export interface MemoryRow {
   key: string;

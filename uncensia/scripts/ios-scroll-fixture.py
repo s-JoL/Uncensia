@@ -119,7 +119,7 @@ class Handler(BaseHTTPRequestHandler):
             with gate.condition:
                 prefix = gate.prefix
             self.reply({'items': [{'id': f'message-{i}', 'seq': i, 'role': 'assistant', 'content': f'Read marker {i}\n\n![Delayed image](image://{prefix}{i})\n\nEnd marker {i}'} for i in range(start, end)], 'nextCursor': start if start else None})
-        elif path.endswith('/approvals'):
+        elif path.endswith('/approvals') or path.endswith('/questions'):
             self.reply({'items': []})
         else:
             self.reply(summary)

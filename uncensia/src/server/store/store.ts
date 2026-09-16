@@ -28,6 +28,9 @@ import type {
   Provider,
   ProviderAuthConfig,
   ProviderInput,
+  Question,
+  QuestionKind,
+  QuestionStatus,
   RunStatus,
   RunSummary,
   RoleplayContext,
@@ -882,6 +885,72 @@ export class Store {
   expireOrphanApprovals() {
     const result = this.db.run(
       "UPDATE approvals SET status = 'expired', updated_at = ?" +
+        " WHERE status = 'pending' AND run_id NOT IN (SELECT id FROM runs WHERE status IN ('queued','running'))",
+      Date.now(),
+    );
+    return Number(result.changes);
+  }
+
+  // --------------------------------------------------------------- questions
+
+  /** Records a dialog an extension opened; only the answer endpoint or the run's end settle it. */
+  askQuestion(input: Omit<Question, "id" | "status" | "answer" | "createdAt" | "updatedAt">): Question {
+    const id = newId("qst");
+    const now = Date.now();
+    this.db.run(
+      "INSERT INTO questions(id, run_id, conversation_id, kind, title, message, options, placeholder, status, answer, created_at, updated_at)" +
+        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?)",
+      id,
+      input.runId,
+      input.conversationId,
+      input.kind,
+      input.title,
+      input.message,
+      JSON.stringify(input.options),
+      input.placeholder,
+      now,
+      now,
+    );
+    return this.getQuestion(id)!;
+  }
+
+  getQuestion(id: string): Question | undefined {
+    const row = this.db.get("SELECT * FROM questions WHERE id = ?", id);
+    return row ? toQuestion(row) : undefined;
+  }
+
+  /** Settles a pending question. Returns undefined when it was already settled, so a repeated submit changes nothing. */
+  answerQuestion(id: string, status: Exclude<QuestionStatus, "pending">, answer: string | null): Question | undefined {
+    const result = this.db.run(
+      "UPDATE questions SET status = ?, answer = ?, updated_at = ? WHERE id = ? AND status = 'pending'",
+      status,
+      answer,
+      Date.now(),
+      id,
+    );
+    return Number(result.changes) ? this.getQuestion(id) : undefined;
+  }
+
+  pendingQuestions(conversationId?: string): Question[] {
+    const rows = conversationId
+      ? this.db.all(
+          "SELECT * FROM questions WHERE status = 'pending' AND conversation_id = ? ORDER BY created_at",
+          conversationId,
+        )
+      : this.db.all("SELECT * FROM questions WHERE status = 'pending' ORDER BY created_at");
+    return rows.map(toQuestion);
+  }
+
+  conversationQuestions(conversationId: string, limit = 100): Question[] {
+    return this.db
+      .all("SELECT * FROM questions WHERE conversation_id = ? ORDER BY created_at DESC LIMIT ?", conversationId, limit)
+      .map(toQuestion);
+  }
+
+  /** Like approvals: a question whose run died with the process has nobody left to read the answer. */
+  expireOrphanQuestions() {
+    const result = this.db.run(
+      "UPDATE questions SET status = 'expired', updated_at = ?" +
         " WHERE status = 'pending' AND run_id NOT IN (SELECT id FROM runs WHERE status IN ('queued','running'))",
       Date.now(),
     );
@@ -2090,6 +2159,23 @@ function toApproval(row: Record<string, unknown>): Approval {
     summary: String(row.summary),
     detail: json<Record<string, unknown>>(row.detail, {}),
     status: String(row.status) as ApprovalStatus,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+function toQuestion(row: Record<string, unknown>): Question {
+  return {
+    id: String(row.id),
+    runId: String(row.run_id),
+    conversationId: String(row.conversation_id),
+    kind: String(row.kind) as QuestionKind,
+    title: String(row.title),
+    message: String(row.message ?? ""),
+    options: json<string[]>(row.options, []),
+    placeholder: String(row.placeholder ?? ""),
+    status: String(row.status) as QuestionStatus,
+    answer: row.answer == null ? null : String(row.answer),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
   };

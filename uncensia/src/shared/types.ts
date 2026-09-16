@@ -211,6 +211,47 @@ export interface ManagedSkill {
   revision: string;
 }
 
+/**
+ * A Pi extension file the installation loads at the start of every run. Unlike
+ * a skill, an extension is code that runs with the server's permissions, so the
+ * UI names it as such and never presents it as a document.
+ */
+export interface AgentExtension {
+  id: string;
+  name: string;
+  filePath: string;
+  /** From the installation's own `extensions/` folder, so the editor may write it. */
+  editable: boolean;
+  enabled: boolean;
+  /** Which package supplied it, or `local` for a top-level file. */
+  source: string;
+  content: string;
+  revision: string;
+}
+
+/** A Pi package (npm, git or local folder) whose extensions, skills and prompts are loaded. */
+export interface AgentPackage {
+  source: string;
+  enabled: boolean;
+  installedPath: string | null;
+  resources: { extensions: number; skills: number; prompts: number };
+  addedAt: number;
+}
+
+/** What the most recent run found when it loaded extensions. */
+export interface AgentResourceStatus {
+  at: number;
+  loaded: string[];
+  errors: Array<{ path: string; error: string }>;
+}
+
+export interface AgentResources {
+  extensions: AgentExtension[];
+  packages: AgentPackage[];
+  diagnostics: string[];
+  status: AgentResourceStatus | null;
+}
+
 export interface DiscoveredModel {
   model: string;
   /** True when a configured model already points at this remote id. */
@@ -597,6 +638,34 @@ export interface Approval {
   /** Action-specific facts the card lists: paths, file counts, byte totals. */
   detail: Record<string, unknown>;
   status: ApprovalStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type QuestionKind = "select" | "confirm" | "input" | "editor";
+export type QuestionStatus = "pending" | "answered" | "dismissed" | "expired";
+
+/**
+ * A structured question an extension asked the person through Pi's dialog API
+ * (`ui.select`, `ui.confirm`, `ui.input`, `ui.editor`). It is not an approval:
+ * nothing destructive is gated on it, and the answer is data the extension
+ * reads, so it has its own row, card and endpoint.
+ */
+export interface Question {
+  id: string;
+  runId: string;
+  conversationId: string;
+  kind: QuestionKind;
+  title: string;
+  /** Body text for `confirm`; unused by the other kinds. */
+  message: string;
+  /** Choices for `select`; empty otherwise. */
+  options: string[];
+  /** Hint for `input`, starting text for `editor`. */
+  placeholder: string;
+  status: QuestionStatus;
+  /** The chosen option, typed text, or `yes`/`no` for confirm. Null until answered. */
+  answer: string | null;
   createdAt: number;
   updatedAt: number;
 }

@@ -46,6 +46,7 @@ public final class ChatStore {
     public var isSending = false
     public var error: String?
     public var approvals: [ApprovalItem] = []
+    public var questions: [QuestionItem] = []
     public var conversationDetails: JSONValue = .null
     public var selectedModelID = ""
     public var olderCursor: Int?
@@ -85,7 +86,7 @@ public final class ChatStore {
         followGeneration = UUID(); followTask?.cancel(); followTask = nil; activeFollowID = nil
         transientIDs = []; reconciliationAfter = nil; loadingOlder = false; sendRevision = UUID(); isSending = false
         liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""
-        isRunning = false; isLoading = loading; messages = []; approvals = []; citations.reset()
+        isRunning = false; isLoading = loading; messages = []; approvals = []; questions = []; citations.reset()
         conversationDetails = .null; olderCursor = nil; revision = -1; error = nil; selectedModelID = ""; draft = ""
     }
 
@@ -106,7 +107,7 @@ public final class ChatStore {
         rememberTranscript()
         draftScope = nil; draft = ""
         let cached = snapshots[id]
-        followTask?.cancel(); activeFollowID = nil; transientIDs = []; loadingOlder = false; citations.reset(); followGeneration = UUID(); isRunning = false; liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""; messages = []; approvals = []; conversationDetails = .null; olderCursor = nil; isLoading = true; error = nil
+        followTask?.cancel(); activeFollowID = nil; transientIDs = []; loadingOlder = false; citations.reset(); followGeneration = UUID(); isRunning = false; liveText = ""; liveThinking = ""; liveTools = []; liveStatus = ""; messages = []; approvals = []; questions = []; conversationDetails = .null; olderCursor = nil; isLoading = true; error = nil
         openingID = id
         reconciliationAfter = nil
         sendRevision = UUID(); isSending = false
@@ -149,6 +150,9 @@ public final class ChatStore {
             let waiting = try await api.request("GET", "/conversations/\(id)/approvals")
             guard generation == followGeneration else { return }
             approvals = waiting["items"].arrayValue?.compactMap(ApprovalItem.init) ?? []
+            let asked = try await api.request("GET", "/conversations/\(id)/questions")
+            guard generation == followGeneration else { return }
+            questions = asked["items"].arrayValue?.compactMap(QuestionItem.init) ?? []
         } catch { if generation == followGeneration { self.error = error.localizedDescription } }
     }
 
@@ -321,6 +325,9 @@ public final class ChatStore {
             let waiting = try await api.request("GET", "/conversations/\(id)/approvals")
             guard ownsRequest() else { return }
             approvals = waiting["items"].arrayValue?.compactMap(ApprovalItem.init) ?? []
+            let asked = try await api.request("GET", "/conversations/\(id)/questions")
+            guard ownsRequest() else { return }
+            questions = asked["items"].arrayValue?.compactMap(QuestionItem.init) ?? []
         } catch {
             if ownsRequest() {
                 if interruptedFollower, activeFollowID == followedAtStart { activeFollowID = nil; isRunning = false }
@@ -353,6 +360,17 @@ public final class ChatStore {
             _ = try await api.request("POST", "/approvals/\(approval.id)", body: .object(["approved": .bool(approved)]))
             guard generation == followGeneration else { return }
             approvals.removeAll { $0.id == approval.id }
+        } catch { if generation == followGeneration { self.error = error.localizedDescription } }
+    }
+
+    /// `answer == nil` dismisses: the extension gets `undefined`, never a default choice.
+    public func answer(_ question: QuestionItem, _ answer: String?, api: APIClient) async {
+        let generation = followGeneration
+        do {
+            let body: JSONValue = answer.map { .object(["answer": .string($0)]) } ?? .object(["dismiss": .bool(true)])
+            _ = try await api.request("POST", "/questions/\(question.id)", body: body)
+            guard generation == followGeneration else { return }
+            questions.removeAll { $0.id == question.id }
         } catch { if generation == followGeneration { self.error = error.localizedDescription } }
     }
 
@@ -454,6 +472,8 @@ public final class ChatStore {
         case "agent.extension_status": liveStatus = event.data["text"].stringValue ?? ""
         case "tool.approval.required", "tool.approval.resolved":
             if let approval = ApprovalItem(event.data["approval"]) { approvals.removeAll { $0.id == approval.id }; if approval.status == "pending" { approvals.append(approval) } }
+        case "question.asked", "question.settled":
+            if let question = QuestionItem(event.data["question"]) { questions.removeAll { $0.id == question.id }; if question.status == "pending" { questions.append(question) } }
         case "run.completed": settleVisibleRun()
         case "run.cancelled": settleVisibleRun(); liveStatus = uncensiaText("已停止")
         case "run.failed": settleVisibleRun(); error = event.data["message"].stringValue ?? uncensiaText("运行失败")

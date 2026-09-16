@@ -44,6 +44,7 @@ export function createServices(
   // Ordered after failStaleRuns, which is what makes those runs non-active and
   // so makes their unanswered approval requests recognisably orphaned.
   store.expireOrphanApprovals();
+  store.expireOrphanQuestions();
   store.purgeExpiredSessions();
   // Nothing can be mid-stream across a restart, so stale deltas are dead weight.
   store.pruneSettledTransientEvents(0);

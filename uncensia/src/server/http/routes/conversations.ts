@@ -445,6 +445,41 @@ export function conversationRoutes(services: Services) {
     return context.json(settled ?? store.getApproval(id));
   });
 
+  app.get("/conversations/:id/questions", (context) => {
+    const id = context.req.param("id");
+    if (!store.getConversation(id)) return fail(context, 404, "not_found", "Conversation not found");
+    return context.json({
+      items: context.req.query("status") === "all" ? store.conversationQuestions(id) : store.pendingQuestions(id),
+    });
+  });
+
+  app.get("/questions", (context) => context.json({ items: store.pendingQuestions() }));
+
+  /**
+   * Answers an extension's dialog. `answer` is the chosen option, the typed
+   * text, or `yes`/`no` for a confirm; `dismiss` closes it without an answer.
+   * A second submit is told the settled state rather than refused.
+   */
+  app.post("/questions/:id", async (context) => {
+    const id = context.req.param("id");
+    const existing = store.getQuestion(id);
+    if (!existing) return fail(context, 404, "not_found", "Question not found");
+
+    const body = await readJson<{ answer?: unknown; dismiss?: unknown }>(context);
+    let settled;
+    if (body.dismiss === true) {
+      settled = store.answerQuestion(id, "dismissed", null);
+    } else {
+      if (typeof body.answer !== "string") return fail(context, 400, "invalid", "answer must be a string, or dismiss must be true");
+      if (existing.kind === "select" && !existing.options.includes(body.answer)) return fail(context, 400, "invalid", "answer must be one of the options");
+      if (existing.kind === "confirm" && body.answer !== "yes" && body.answer !== "no") return fail(context, 400, "invalid", "answer must be yes or no");
+      if (body.answer.length > 100_000) return fail(context, 400, "invalid", "answer is too long");
+      settled = store.answerQuestion(id, "answered", body.answer);
+    }
+    runtime.questions.notify(id);
+    return context.json(settled ?? store.getQuestion(id));
+  });
+
   app.get("/runs/:id/events", async (context) => {
     const runId = context.req.param("id");
     const run = store.getRun(runId);
