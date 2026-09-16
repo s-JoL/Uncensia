@@ -20,6 +20,8 @@ bash scripts/native-ios.sh test
 
 测试默认使用 iPhone 17 Pro 模拟器，可通过 `UNCENSIA_IOS_DESTINATION` 改变目标。测试夹具与真实服务测试有各自启用条件；跳过的测试不算验证通过。
 
+夹具与真实服务测试默认跳过。先启动隔离后端（`UNCENSIA_IOS_FIXTURE_DIR=<空目录> node --import tsx scripts/ios-ci-fixture.ts`，默认端口 18090、访问码 IOS-CI-ACCEPTANCE），再以环境变量启用对应测试，例如 `UNCENSIA_IOS_FIXTURE=1 UNCENSIA_SERVER_URL=http://127.0.0.1:18090 UNCENSIA_ACCESS_CODE=IOS-CI-ACCEPTANCE bash scripts/native-ios.sh test`。脚本把 `UNCENSIA_*` 环境变量转成 xcodebuild 构建设置，scheme 再注入测试进程；直接在 Xcode 中运行时需自行在 scheme 的 Test Arguments 里添加同名变量。
+
 ## 连接服务器
 
 在登录页填写手机可达的服务器地址和访问码；启用 TOTP 时再输入验证码。电脑上的服务必须运行，并能被手机访问。真机的 `127.0.0.1` 指向手机，不指向开发电脑。远程访问配置见 [运行维护](12-operations.md)。

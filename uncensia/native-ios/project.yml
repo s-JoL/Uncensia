@@ -77,3 +77,26 @@ schemes:
         UncensiaUITests: [test]
     test:
       targets: [UncensiaTests, UncensiaUITests]
+      # Opt-in fixture gates expand from xcodebuild build settings, e.g.
+      # `UNCENSIA_IOS_FIXTURE=1 bash scripts/native-ios.sh test`.
+      environmentVariables:
+        - variable: UNCENSIA_IOS_FIXTURE
+          value: $(UNCENSIA_IOS_FIXTURE)
+        - variable: UNCENSIA_STREAMING_FIXTURE
+          value: $(UNCENSIA_STREAMING_FIXTURE)
+        - variable: UNCENSIA_TASK_FIXTURE
+          value: $(UNCENSIA_TASK_FIXTURE)
+        - variable: UNCENSIA_PROJECT_FIXTURE
+          value: $(UNCENSIA_PROJECT_FIXTURE)
+        - variable: UNCENSIA_SCROLL_FIXTURE
+          value: $(UNCENSIA_SCROLL_FIXTURE)
+        - variable: UNCENSIA_DEVICE_COMPARISON
+          value: $(UNCENSIA_DEVICE_COMPARISON)
+        - variable: UNCENSIA_SERVER_URL
+          value: $(UNCENSIA_SERVER_URL)
+        - variable: UNCENSIA_ACCESS_CODE
+          value: $(UNCENSIA_ACCESS_CODE)
+        - variable: UNCENSIA_TEST_CONVERSATION_ID
+          value: $(UNCENSIA_TEST_CONVERSATION_ID)
+        - variable: UNCENSIA_TEST_MESSAGE_ID
+          value: $(UNCENSIA_TEST_MESSAGE_ID)

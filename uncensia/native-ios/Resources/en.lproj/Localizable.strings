@@ -621,3 +621,10 @@
 "已回答：%@" = "Answered: %@";
 "已超时，扩展未收到回答" = "Timed out. The extension received no answer.";
 "已跳过，扩展未收到回答" = "Skipped. The extension received no answer.";
+"助手改进记录" = "Assistant change history";
+"刷新记录" = "Refresh history";
+"尚无记录。在工具与权限中允许修改技能后，可以让助手把已验证的经验整理成技能。" = "No records yet. Enable skill changes under Tools and permissions to let the assistant turn verified lessons into skills.";
+"最近 50 次修改尝试，保留原因和修改前内容。可将旧内容复制回编辑器，或让助手恢复；是否生效以实际工具结果为准。" = "The latest 50 change attempts, with reasons and original content. Copy old content back to the editor or ask the assistant to restore it. Actual tool results determine whether a change was applied.";
+"修改前" = "Before";
+"修改后" = "After";
+"新建" = "New";

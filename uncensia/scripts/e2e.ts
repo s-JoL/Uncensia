@@ -447,7 +447,19 @@ assert(token, `login failed: ${JSON.stringify(login.body)}`);
 // Credentials normally live in the vault already; the environment is only an
 // override for a fresh machine. Whatever the source, report what the server
 // ended up with, since a missing key turns later checks into false failures.
-if (process.env.COMETAPI_KEY) await call("PUT", "/providers/cometapi/key", { value: process.env.COMETAPI_KEY });
+if (process.env.COMETAPI_KEY) {
+  const providers = await call<Array<{ id: string }>>("GET", "/providers");
+  if (!providers.body.some((p) => p.id === "cometapi")) {
+    const created = await call("POST", "/providers", {
+      id: "cometapi",
+      name: "CometAPI",
+      baseUrl: "https://api.cometapi.com/v1",
+    });
+    assert(created.status === 201, `cometapi provider create failed: ${created.status}`);
+  }
+  const upload = await call("PUT", "/providers/cometapi/key", { value: process.env.COMETAPI_KEY });
+  assert(upload.status < 300, `cometapi key upload failed: ${upload.status}`);
+}
 if (process.env.TAVILY_API_KEY) {
   await call("PUT", "/capabilities/secrets/tavily", { value: process.env.TAVILY_API_KEY });
 }
@@ -581,8 +593,9 @@ await check("secrets never leave the server", async () => {
   for (const provider of reply.body) {
     assert(!("apiKey" in provider), `${provider.id} response carries an apiKey field`);
   }
-  const comet = reply.body.find((item) => item.id === "cometapi");
-  assert(comet, "cometapi provider missing");
+  if (process.env.COMETAPI_KEY) {
+    assert(reply.body.some((item) => item.id === "cometapi"), "cometapi provider missing after key upload");
+  }
 
   const capabilities = await call("GET", "/capabilities");
   const capabilityJson = JSON.stringify(capabilities.body);
