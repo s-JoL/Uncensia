@@ -349,9 +349,45 @@ struct SkillsSettingsView: View {
           }.font(.caption)
         }
       }
+      Section {
+        Button(uncensiaText("刷新记录"), image: "lucide-refresh-cw") {
+          withAPI(appModel, store: store) { api in try await store.refreshLearning(api) }
+        }
+        if store.learningHistory.isEmpty {
+          Text(uncensiaText("尚无记录。在工具与权限中允许修改技能后，可以让助手把已验证的经验整理成技能。")).font(.caption).foregroundStyle(.secondary)
+        }
+        ForEach(store.learningHistory) { change in
+          DisclosureGroup {
+            VStack(alignment: .leading, spacing: 8) {
+              Text(change["target"].displayString).font(.caption).foregroundStyle(.secondary)
+              Text(uncensiaText("修改前")).font(.caption)
+              Text(change["before"].stringValue ?? uncensiaText("新建")).font(.system(.caption, design: .monospaced)).lineLimit(12)
+              Text(uncensiaText("修改后")).font(.caption)
+              Text(change["after"].displayString).font(.system(.caption, design: .monospaced)).lineLimit(12)
+            }
+          } label: {
+            VStack(alignment: .leading, spacing: 2) {
+              Text(learningChangeTitle(change)).font(.subheadline).lineLimit(2)
+              Text(change["reason"].displayString).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+            }
+          }
+        }
+      } header: { Text(uncensiaText("助手改进记录")) } footer: { Text(uncensiaText("最近 50 次修改尝试，保留原因和修改前内容。可将旧内容复制回编辑器，或让助手恢复；是否生效以实际工具结果为准。")) }
     }.sheet(isPresented: $adding) { SkillEditor(store: store, app: appModel, skill: nil) }.sheet(
       item: $editing
     ) { SkillEditor(store: store, app: appModel, skill: $0) }
+  }
+  private func learningChangeTitle(_ change: JSONValue) -> String {
+    let kind = change["kind"].stringValue == "prompt" ? uncensiaText("提示词") : uncensiaText("技能")
+    guard let iso = change["at"].stringValue else { return kind }
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let date = formatter.date(from: iso) ?? {
+      formatter.formatOptions = [.withInternetDateTime]
+      return formatter.date(from: iso)
+    }()
+    guard let date else { return "\(iso) · \(kind)" }
+    return "\(date.formatted(date: .abbreviated, time: .shortened)) · \(kind)"
   }
 }
 private struct SkillEditor: View {

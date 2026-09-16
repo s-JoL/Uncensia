@@ -11,8 +11,10 @@ import { paths } from "../src/server/env.ts";
 import { Db } from "../src/server/store/db.ts";
 import { Store } from "../src/server/store/store.ts";
 
-const providerId = process.argv[2] ?? "cometapi";
-const wireModel = process.argv[3] ?? "glm-5.3-flash";
+const [providerId, wireModel] = [process.argv[2], process.argv[3]];
+if (!providerId || !wireModel) {
+  throw new Error("usage: node --import tsx scripts/audit-bisect.ts <providerId> <wireModel>");
+}
 
 const store = new Store(new Db(paths.db));
 const vault = new SecretVault(store, loadMasterKey(paths.masterKey));

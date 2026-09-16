@@ -89,7 +89,7 @@ if (!services.store.getSetting("liveLabInitialized", false)) {
     const defaults = source.prepare("SELECT value FROM settings WHERE key='generationDefaults'").get();
     if (defaults) services.store.setSetting("generationDefaults", JSON.parse(String(defaults.value)));
     // Explicit vision-model test selection: no automatic fallback from the user's text default.
-    services.store.setSetting("defaultModelId", process.env.UNCENSIA_LAB_CHAT_MODEL ?? "cometapi-deepseek-v4-flash-vision");
+    services.store.setSetting("defaultModelId", process.env.UNCENSIA_LAB_CHAT_MODEL ?? "openrouter-glm-5.3-flash");
     services.config.savePrompts({ titleEnabled: false });
     const capabilities = services.config.capabilities();
     services.config.saveCapabilities({
