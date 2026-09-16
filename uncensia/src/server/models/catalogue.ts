@@ -38,9 +38,9 @@ const IMAGE =
 /** Takes an image *in*: editing for an image model, a first frame for a video one. */
 const IMAGE_IN =
   /edit|kontext|inpaint|instruct|nano-?banana|gpt-image|seedream|seededit|qwen-image|hidream|grok-imagine|imagen|recraft|ideogram|i2v|image-?to-?video|kling|seedance|hailuo|wan/i;
-const REASONING = /^o[1-9]|reason|think|-r1\b|qwq|opus-?4|sonnet-?4|sonnet-?3\.7|gemini-[\d.]+-pro|grok-4/i;
+const REASONING = /^o[1-9]|reason|think|-r1\b|qwq|opus-?4|sonnet-?4|sonnet-?3\.7|gemini-[\d.]+-pro|grok-4|muse-spark/i;
 const VISION =
-  /gpt-4o|gpt-4\.1|gpt-5|claude-3|claude-4|opus-?4|sonnet-?4|haiku-?4|gemini|grok-4|llava|-vl|vision|pixtral|internvl|molmo|omni/i;
+  /gpt-4o|gpt-4\.1|gpt-5|claude-3|claude-4|opus-?4|sonnet-?4|haiku-?4|gemini|grok-4|llava|-vl|vision|pixtral|internvl|molmo|omni|muse-spark/i;
 const SEEDREAM = /seedream/i;
 const WAN3 = /^wan3(?:[._-]?0)?$/i;
 
@@ -102,12 +102,22 @@ function read(model: string, listed?: ListedHint): Classification {
  * OpenAI's `/images/generations`, and calling that path is a 404 dressed up as
  * a failed render.
  */
+function isOpenCodeZen(baseUrl: string) {
+  return /opencode\.ai\/zen/i.test(baseUrl);
+}
+
 function modeFor(kind: ModelKind, model: string, baseUrl: string): ApiMode {
   const venice = /venice\.ai/i.test(baseUrl);
   if (kind === "video") return venice ? "venice-videos" : "openai-videos";
   if (kind === "image") return venice ? "venice-images" : "openai-images";
   if (/gemini/i.test(model)) return "google-generative";
   if (/anthropic\.com/i.test(baseUrl)) return "anthropic-messages";
+  // Zen serves several protocols from one host. Muse/GPT/Grok are Responses-only;
+  // sending those ids to /chat/completions comes back as a generic 500.
+  if (isOpenCodeZen(baseUrl)) {
+    if (/^claude-|^qwen3/i.test(model)) return "anthropic-messages";
+    if (/^muse-spark|^gpt-|^grok-/i.test(model)) return "openai-responses";
+  }
   return "openai-chat";
 }
 
