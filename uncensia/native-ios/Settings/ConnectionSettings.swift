@@ -47,6 +47,7 @@ private struct DefaultModelPicker: View {
           : kind == "edit" ? store.defaultEditModelID : store.defaultVideoModelID
     }
     nonmutating set {
+      if kind == "chat" && newValue.isEmpty { return }
       withAPI(app, store: store) { api in
         if kind == "chat" {
           _ = try await api.request(
@@ -63,7 +64,7 @@ private struct DefaultModelPicker: View {
   }
   var body: some View {
     Picker(title, selection: Binding(get: { value }, set: { value = $0 })) {
-      Text(uncensiaText("按可用后端选择")).tag("")
+      if kind != "chat" || value.isEmpty { Text(uncensiaText("按可用后端选择")).tag("") }
       ForEach(choices, id: \.stableID) { model in
         Text(model["name"].stringValue ?? model["id"].displayString).tag(model["id"].displayString)
       }
@@ -364,7 +365,7 @@ private struct ModelEditor: View {
       do {
         let r = try await api.request(
           "GET",
-          "/model-reference?model=\(remoteModel.addingPercentEncoding(withAllowedCharacters:.urlQueryAllowed) ?? remoteModel)"
+          "/model-reference?model=\(urlPart(remoteModel))"
         )
         reference = r["reference"]
       } catch { reference = .null }
@@ -573,6 +574,7 @@ private struct ModelDiscovery: View {
         "POST", "/models/bulk",
         body: .object(["providerId": provider["id"], "models": .array(bodies)]))
       try await store.refreshModels(api)
+      await app.refreshBootstrap()
       dismiss()
     }
   }

@@ -234,7 +234,10 @@ struct MemorySettingsView: View {
               Text(item["key"].displayString).font(.headline)
               Text(item["value"].displayString).lineLimit(3)
               if let source = item["sourceConversationId"].stringValue {
-                Button(uncensiaText("打开来源对话")) { appModel.selectedConversationID = source }.font(.caption)
+                Button(uncensiaText("打开来源对话")) {
+                  appModel.selectedConversationID = source
+                  appModel.selectedTab = "chat"
+                }.font(.caption)
               }
             }
           }.buttonStyle(.plain)
