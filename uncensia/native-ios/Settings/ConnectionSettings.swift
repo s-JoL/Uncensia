@@ -316,8 +316,14 @@ private struct ModelEditor: View {
           }
         }
         Section(uncensiaText("容量与采样")) {
-          TextField(uncensiaText("上下文长度"), text: $contextWindow).keyboardType(.numberPad)
-          TextField(uncensiaText("最大输出"), text: $maxTokens).keyboardType(.numberPad)
+          LabeledContent(uncensiaText("上下文长度")) {
+            TextField("128000", text: $contextWindow).keyboardType(.numberPad)
+              .multilineTextAlignment(.trailing)
+          }
+          LabeledContent(uncensiaText("最大输出")) {
+            TextField("8192", text: $maxTokens).keyboardType(.numberPad)
+              .multilineTextAlignment(.trailing)
+          }
           TextField(uncensiaText("温度（留空跟随服务）"), text: $temperature).keyboardType(.decimalPad)
           TextField(uncensiaText("Top P（留空跟随服务）"), text: $topP).keyboardType(.decimalPad)
           TextField(uncensiaText("单模型系统提示"), text: $systemPrompt, axis: .vertical)

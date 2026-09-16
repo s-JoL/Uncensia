@@ -288,6 +288,9 @@ private struct TranscriptView: View {
         .onChange(of: store.isSending) { _, sending in
             if sending {
                 viewport.interaction += 1; scrollFollow.cancel()
+                // Tapping send is a follow intent; a stale tracking phase left by a
+                // long-press or context menu must not keep the transcript pinned.
+                userScrolling = false
                 closeToBottom = true; viewport.restoration = nil; followLatest()
             }
         }
