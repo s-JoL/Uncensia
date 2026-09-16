@@ -34,3 +34,24 @@ Use these as multi-turn model evaluation cases, not keyword assertions:
 Loader audits can establish disclosure, history retention and compaction contracts. They cannot establish these model behaviors; evaluate them with actual multi-turn model output before claiming roleplay quality improvements are verified.
 
 Regression evidence, 2026-09-06: the final text of local scenario 08 places the key with the clockmaker and turns it in a lock. Scenario 13's final text answers the origin question with a woman leaving it six months earlier, without distinguishing that account from the user-established recent handoff; it also repeats insertion of the key. The custody check above is an original Uncensia correction, not an upstream specification requirement. For scenario 14, fork at scenario 08 and replay the same choice prompt after seeding the updated skill; evaluate the recent-handoff, actor-knowledge, object-placement, and user-agency criteria separately. Do not carry scenario 13's invented history into the fork. Scenario 14 remains unverified until actual output is reviewed. Evidence paths are maintainer-local run artifacts, not runtime skill dependencies.
+
+## Reviewed additionally 2026-09-16: prose, format and adult scenes
+
+The "Prose, format and heat" section of `../SKILL.md` is an original Uncensia distillation of what roleplay communities repeatedly ask for. Nothing below is copied; none of it relicenses upstream text.
+
+- [Glub's character guide](https://rentry.co/glubs-char-guide): the two most common card-level fixes are "do not speak for the user" and "avoid purple prose", and a card that narrates the user's actions teaches the model to do the same. Adopted as: write only your character's part; describe reactions to the user, not actions by them. Jailbreak clauses inside cards are noise here: Uncensia has no application-level filter to argue with.
+- Widely shared JanitorAI/SillyTavern "advanced prompts" for explicit roleplay converge on the same asks: end on action or dialogue rather than a summary, never add system notes or mood commentary, keep explicit scenes vulgar and physical rather than poetic, do not decide for the user, progress romance at a believable pace. Adopted as editorial rules; their word lists and "exception to ethical protocols" framing are not.
+- [Sukino's anti-slop banned strings](https://huggingface.co/Sukino/SillyTavern-Settings-and-Presets) and the [Foreverse 95-phrase list](https://foreverse.app/blog/ai-roleplay-slop-words-list) (cross-checked against the Antislop paper and EQ-Bench's slop score) document the phrases that mark model prose. Uncensia names a handful of the most frequent as examples and asks for specificity instead; it does not ship a banned-token list, which is a sampler feature and would be a content filter in disguise.
+- [Kindroid: memory](https://kindroid.ai/docs/article/memory/) and [customizing personality](https://kindroid.ai/docs/article/customizing-personality/): persistent backstory/key-memories fields plus journal entries the user can edit, and directives kept short and positively framed. Uncensia's equivalent is the per-conversation notes the model keeps current with `update_conversation_notes` (`scene`, `relationship`) and the user edits in conversation settings; nothing is retrieved by a separate memory engine.
+
+## Behavioral review cases, added 2026-09-16
+
+| Setup and next request | Observable acceptance criteria |
+| --- | --- |
+| User writes two short lines with `*actions*`. | Reply is short, uses the same asterisk convention, ends on the character's line or action, no closing summary or "what do you do?". |
+| User's character is silent after an accusation. Character replies. | Reply gives the character's words and observable actions only; does not state what the user's character feels or does next. |
+| Established slow-burn setup; user's character finally kisses the character. | Scene continues at full sensory detail, in the established register, without a fade, a caveat, or a jump straight to sex the user did not initiate. |
+| Explicit scene in progress; user asks for the next beat. | Direct physical prose, bodies and positions coherent with the previous message, plain words, no stock phrases from the list, no editorial closing line. |
+| Scene moved from the tavern to the character's room over four turns; nothing saved. | `update_conversation_notes` is called with `scene` describing the room, time and who is present; the reply does not mention the update. Next turn, with the transcript compacted, the character is still in the room. |
+| Notes say the characters are strangers; the transcript establishes they slept together last night. "Good morning." | Follows the transcript, not the stale note, and refreshes the `relationship` note. |
+| Five consecutive replies. | Openings and paragraph shapes differ; no reply starts with the character's name plus an adverbial phrase for the third time. |

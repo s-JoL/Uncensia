@@ -4,7 +4,7 @@ import { uiText } from "./i18n.tsx";
  * spanning several model calls (text → tool → text) is folded into a single
  * visual turn, which is how the conversation actually reads.
  */
-import type { Approval, JobRecord, StoredMessage, ImageReferenceRole } from "@shared/types.ts";
+import type { Approval, JobRecord, Question, StoredMessage, ImageReferenceRole } from "@shared/types.ts";
 
 export interface TextPart {
   kind: "text";
@@ -72,7 +72,12 @@ export interface JobPart {
   job: JobRecord;
 }
 
-export type Part = TextPart | ThinkingPart | ImagePart | VideoPart | FilePart | ToolPart | ApprovalPart | JobPart;
+export interface QuestionPart {
+  kind: "question";
+  question: Question;
+}
+
+export type Part = TextPart | ThinkingPart | ImagePart | VideoPart | FilePart | ToolPart | ApprovalPart | QuestionPart | JobPart;
 
 export interface Turn {
   id: string;
@@ -96,7 +101,7 @@ export interface Citation {
  * them back either as the six literal characters `\ue202` or as the U+E202
  * codepoint itself, so both spellings have to resolve to the same source.
  */
-const ANCHOR_BODY = "turn(\\d+)(file|search|news|image|video)(\\d+)";
+const ANCHOR_BODY = "turn(\\d+)(file|search|news|image|video|ref)(\\d+)";
 export const CITATION_PATTERN = new RegExp(`(?:\\\\ue202|\\ue202)${ANCHOR_BODY}`, "gi");
 
 /**
@@ -283,6 +288,7 @@ export class LiveTurn {
   private readonly statuses = new Map<string, string>();
   private readonly tools = new Map<string, ToolPart>();
   private readonly approvals = new Map<string, ApprovalPart>();
+  private readonly questions = new Map<string, QuestionPart>();
   private readonly jobs = new Map<string, JobPart>();
   /** Last handed-out copy of each part, reused while that part is unchanged. */
   private readonly copies: Part[] = [];
@@ -297,6 +303,10 @@ export class LiveTurn {
    */
   seedApprovals(approvals: Approval[]) {
     for (const approval of approvals) this.apply("tool.approval.required", { approval });
+  }
+
+  seedQuestions(questions: Question[]) {
+    for (const question of questions) this.apply("question.asked", { question });
   }
 
   apply(type: string, data: Record<string, unknown>) {
@@ -338,6 +348,20 @@ export class LiveTurn {
       else {
         const part: ApprovalPart = { kind: "approval", approval };
         this.approvals.set(approval.id, part);
+        this.parts.push(part);
+      }
+    }
+
+    // An extension's dialog stays in the transcript once answered, so the
+    // reader can see what the extension asked and what they told it.
+    if (type === "question.asked" || type === "question.settled") {
+      const question = data.question as Question | undefined;
+      if (!question) return;
+      const existing = this.questions.get(question.id);
+      if (existing) existing.question = question;
+      else {
+        const part: QuestionPart = { kind: "question", question };
+        this.questions.set(question.id, part);
         this.parts.push(part);
       }
     }
@@ -476,12 +500,12 @@ export function collectCitations(turns: Turn[]): Map<string, Citation> {
     for (const part of turn.parts) {
       if (part.kind !== "tool" || !part.result) continue;
       for (const block of part.result.split(/\n(?=#|File:)/)) {
-        const anchor = block.match(/Anchor:\s*((?:\\ue202|\ue202)turn\d+(?:file|search|news|image|video)\d+)/i);
+        const anchor = block.match(/Anchor:\s*((?:\\ue202|\ue202)turn\d+(?:file|search|news|image|video|ref)\d+)/i);
         if (!anchor?.[1]) continue;
         const file = block.match(/Anchor:\s*(?:\\ue202|\ue202)turn\d+file\d+\s*\(([^)]+)\)/i);
         const fileId = block.match(/^file_id:\s*(file_[0-9a-f]{32})$/m)?.[1];
         const url = block.match(/^URL:\s*(\S+)$/m)?.[1] ?? (fileId ? `/v1/files/${fileId}/content?download=1` : undefined);
-        const title = block.match(/^#\s*(?:Search|News)\s*\d+:\s*"?([^"\n]*)"?/m)?.[1];
+        const title = block.match(/^#\s*(?:Search|News|Ref)\s*\d+:\s*"?([^"\n]*)"?/m)?.[1];
         citations.set(citationKey(anchor[1]), {
           label: file?.[1] ?? (url ? hostOf(url) : (title ?? "source")),
           url,

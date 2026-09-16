@@ -10,6 +10,7 @@ import type { Jobs } from "../generation/jobs.ts";
 import { encodeForModel, registerGeneratedImage, saveImageBytes } from "../images.ts";
 import type { McpPool } from "../mcp/pool.ts";
 import { ApprovalRegistry, describeRisk, rejectionMessage } from "./approvals.ts";
+import { dialogResult, QuestionRegistry } from "./questions.ts";
 import { describeModelError } from "./errors.ts";
 import { applyModelParameters } from "../models/params.ts";
 import { requestEvidence } from "./evidence.ts";
@@ -34,6 +35,7 @@ import { fileSearchTool } from "../tools/file-search.ts";
 import { generationTools, uploadedImageContext } from "../tools/generation.ts";
 import { generationStatusTool } from "../tools/generation-status.ts";
 import { memoryTools } from "../tools/memory.ts";
+import { notesTools } from "../tools/notes.ts";
 import { taskTools } from "../tools/tasks.ts";
 import { learningTools } from "../tools/learning.ts";
 import {
@@ -41,10 +43,11 @@ import {
   enrichDiscoveredSkills,
   transformExpandedSkillMessages,
   withSkillContext,
+  type SkillRuntimeContext,
   type UncensiaSkill,
 } from "../tools/skills.ts";
 import { viewImageTool } from "../tools/vision.ts";
-import { webSearchTool } from "../tools/web-search.ts";
+import { fetchUrlTool, webSearchTool } from "../tools/web-search.ts";
 import { createPiLoop, HarnessHostError, type AgentLoop, type LoopFactory } from "./loop.ts";
 import { stringifyToolEnums } from "./tool-schema.ts";
 import {
@@ -171,6 +174,7 @@ export class Runtime {
   private closing = false;
   /** Wakes a parked preflight the moment its decision is recorded. */
   readonly approvals = new ApprovalRegistry();
+  readonly questions = new QuestionRegistry();
 
   constructor(
     private readonly store: Store,
@@ -307,7 +311,14 @@ export class Runtime {
     // Populated from Pi's effective resources, not a second directory scan.
     let skills: UncensiaSkill[] = [];
     const visualContinuity = conversation.visualContinuity;
-    const skillContext = { roleplay: conversation.roleplay, visualContinuity };
+    const store = this.store;
+    const skillContext: SkillRuntimeContext = {
+      roleplay: conversation.roleplay,
+      visualContinuity,
+      // Read live so a note the assistant saves earlier in this run reaches a
+      // skill it loads later in the same run.
+      get notes() { return store.getConversation(conversationId)?.notes ?? []; },
+    };
 
     const contextInput = {
       project: currentProject,
@@ -339,13 +350,12 @@ export class Runtime {
       tools.push(fileSearchTool(this.retrieval, capabilities.files.mode, () => [...new Set([...projectFileIds(this.store,conversationProject(this.store,conversationId)?.id ?? null), ...attachedIds])]));
     }
     if (capabilities.web.enabled) {
-      tools.push(
-        webSearchTool({
-          getApiKey: () => this.vault.get(SECRET.tavily),
-          provider: capabilities.web.provider,
-          baseUrl: capabilities.web.baseUrl,
-        }),
-      );
+      const web = {
+        getApiKey: () => this.vault.get(SECRET.tavily),
+        provider: capabilities.web.provider,
+        baseUrl: capabilities.web.baseUrl,
+      };
+      tools.push(webSearchTool(web), fetchUrlTool(web));
     }
     tools.push(...codingTools(capabilities.coding));
     tools.push(...resourceTools(this.config, this.store, conversationId, file => this.retrieval.indexFile(file)));
@@ -369,6 +379,7 @@ export class Runtime {
     tools.push(...mcpTools);
     tools.push(generationStatusTool(this.store, conversationId));
     tools.push(...memoryTools(this.store, capabilities.memory, conversationId, () => this.config.capabilities().memory));
+    tools.push(...notesTools(this.store, conversationId, notes => this.emit(runId, conversationId, "conversation.notes", { notes })));
     tools.push(...taskTools(this.store, conversationId, spec.id, runId, input.taskId, target => { this.stop(conversationId, target); }));
 
     let modelCallIndex = 0;
@@ -412,6 +423,23 @@ export class Runtime {
         onExtensionEvent: event => {
           const { type, ...data } = event;
           this.emit(runId, conversationId, `agent.${type}`, transportSafe(data));
+        },
+        ask: async (input, options) => {
+          // Extension code is untyped at runtime; only strings reach the row.
+          const text = (value: unknown) => (typeof value === "string" ? value : "");
+          const question = this.store.askQuestion({
+            runId, conversationId, kind: input.kind, title: text(input.title),
+            message: text(input.message),
+            options: Array.isArray(input.options) ? input.options.filter((option): option is string => typeof option === "string") : [],
+            placeholder: text(input.placeholder),
+          });
+          this.emit(runId, conversationId, "question.asked", { question });
+          // The run's own cancellation dismisses the dialog as well as the
+          // extension's signal; a stopped run must not keep a card waiting.
+          const signal = options?.signal ? AbortSignal.any([options.signal, cancel.signal]) : cancel.signal;
+          const settled = await this.questions.wait(this.store, question.id, signal, options?.timeout);
+          this.emit(runId, conversationId, "question.settled", { question: settled });
+          return dialogResult(settled);
         },
         providers: this.registry.runtime.getProviders(),
         workspace: capabilities.coding.workspace,
@@ -637,6 +665,12 @@ export class Runtime {
         const settled = this.store.decideApproval(pending.id, "expired");
         this.approvals.notify(pending.id);
         if (settled) this.emit(runId, conversationId, "tool.approval.resolved", { approval: settled });
+      }
+      for (const pending of this.store.pendingQuestions(conversationId)) {
+        if (pending.runId !== runId) continue;
+        const settled = this.store.answerQuestion(pending.id, "expired", null);
+        this.questions.notify(pending.id);
+        if (settled) this.emit(runId, conversationId, "question.settled", { question: settled });
       }
       this.store.pruneSettledTransientEvents(DELTA_RETENTION_MS);
       this.store.reclaimStorage();

@@ -13,6 +13,8 @@ Uncensia 使用 Pi 的 AgentSession、SessionManager、DefaultResourceLoader、M
 | 原生工具 | 按当前权限提供文件与命令工具，附加审批和资料交付 | audit-coding、audit-library-lifecycle |
 | 扩展消息 | custom message 保存、投影和 SSE，保留显示标记及顺序 | audit-harness-host |
 | 扩展事件 | notify/status、工具 partialResult 通过持久事件送达 | audit-harness-host、audit-web-agent-events |
+| 扩展对话框 | select/confirm/input/editor 落为 `questions` 行，经 `question.asked`/`question.settled` 事件与 `POST /questions/:id` 回答；run 停止或超时即撤销，confirm 只在回答 yes 时为真 | audit-harness-host |
+| 扩展与包 | 本地 `extensions/` 文件与 Pi 包（npm、Git、本机路径）经 Pi 的 PackageManager 安装、更新、移除；启停偏好写入 `agent-resources.json` 并转为 Pi settings，加载结果记录到设置页 | — |
 | 生命周期 | 等待初始化，关闭时停止接收新操作，排空工具和审批后清理 | audit-harness-host |
 | 错误 | 加载、命令与清理失败可见，不伪装为完成 | audit-harness-host |
 
@@ -22,8 +24,8 @@ Uncensia 使用 Pi 的 AgentSession、SessionManager、DefaultResourceLoader、M
 
 - 扩展实例按 run 创建与清理，闭包和临时设置不跨 run 保留。写入原生会话条目的状态可持久化。
 - HTTP 分支操作不等于 SDK 扩展的 newSession/fork/navigateTree/switchSession/reload hooks；相关宿主操作未完整映射。
-- RPC UI 已映射 notify/status；select、confirm、input、editor、自定义 TUI 等未实现方法明确失败。工具审批不能冒充通用扩展对话框。
-- 未提供完整扩展命令目录、补全、资源热重载、队列编辑及统计控制。
+- RPC UI 已映射 notify/status 与四种对话框；自定义 TUI 组件、编辑器操作、主题、终端输入等未实现方法明确失败。工具审批不能冒充通用扩展对话框，对话框也不能代替审批。
+- 未提供完整扩展命令目录、补全、资源热重载、队列编辑及统计控制。包与扩展的改动在下一次 run 生效。
 - 扩展内部切换模型/思考等级，尚未完整同步到 Uncensia 的持久模型配置。
 - 扩展不能通过 ctx.shutdown 关闭共享服务；终端组件和按键绑定没有自动 Web 等价物。
 

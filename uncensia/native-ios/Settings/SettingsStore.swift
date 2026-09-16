@@ -14,6 +14,7 @@ final class SettingsStore {
   var defaultVideoModelID = ""
   var mcpServers: [JSONValue] = []
   var mcpStatus: [JSONValue] = []
+  var resources: JSONValue = .object([:])
   var skills: [JSONValue] = []
   var skillDiagnostics: [String] = []
   var capabilities: JSONValue = .object([:])
@@ -31,6 +32,7 @@ final class SettingsStore {
       async let providers = api.request("GET", "/providers")
       async let models = api.request("GET", "/models")
       async let mcp = api.request("GET", "/mcp/servers")
+      async let resources = api.request("GET", "/extensions")
       async let skills = api.request("GET", "/skills")
       async let capabilities = api.request("GET", "/capabilities")
       async let prompts = api.request("GET", "/prompts")
@@ -40,7 +42,7 @@ final class SettingsStore {
       async let security = api.request("GET", "/security")
       let values = try await (
         providers, models, mcp, skills, capabilities, prompts, promptDefaults, memory, tasks,
-        security
+        security, resources
       )
       self.providers = values.0.arrayValue ?? []
       applyModels(values.1)
@@ -54,6 +56,7 @@ final class SettingsStore {
       self.memory = values.7
       self.tasks = values.8["items"].arrayValue ?? []
       self.security = values.9
+      self.resources = values.10
     } catch { fail(error) }
   }
 
@@ -68,6 +71,10 @@ final class SettingsStore {
     mcpServers = v["items"].arrayValue ?? []
     mcpStatus = v["status"].arrayValue ?? []
   }
+  func refreshResources(_ api: APIClient) async throws {
+    resources = try await api.request("GET", "/extensions")
+  }
+
   func refreshSkills(_ api: APIClient) async throws {
     let v = try await api.request("GET", "/skills")
     skills = v["items"].arrayValue ?? []

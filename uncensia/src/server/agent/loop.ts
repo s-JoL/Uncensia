@@ -9,6 +9,8 @@ import path from "node:path";
 import { paths } from "../env.ts";
 import { describeRefs, omitForeignThinking } from "./messages.ts";
 import { enabledSkills } from "../tools/skill-management.ts";
+import { recordResourceStatus, resourceSettings } from "../tools/extension-management.ts";
+import type { QuestionInput } from "./questions.ts";
 
 export type LoopImage = { type: "image"; data: string; mimeType: string };
 
@@ -53,6 +55,12 @@ export interface LoopStart {
   onSessionEvent?: (event: AgentSessionEvent) => void;
   onAbort?: () => void;
   onExtensionEvent: (event: { type: "extension_notify"; message: string; level: "info" | "warning" | "error" } | { type: "extension_status"; key: string; text?: string }) => void;
+  /**
+   * Puts an extension's dialog in front of the person and resolves with their
+   * answer, or `undefined` when it was dismissed, aborted or timed out. Without
+   * it the dialog APIs report themselves unsupported rather than pretending.
+   */
+  ask?: (question: QuestionInput, options?: { signal?: AbortSignal; timeout?: number }) => Promise<string | undefined>;
   systemPrompt: string;
   model: Model<never>;
   thinkingLevel: string;
@@ -80,6 +88,7 @@ export async function createPiLoop(start: LoopStart): Promise<AgentLoop> {
   const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
   for (const provider of start.providers) modelRuntime.registerNativeProvider(provider);
   const settings = SettingsManager.inMemory({
+    ...resourceSettings(),
     enableAnalytics: false, enableInstallTelemetry: false,
     steeringMode: "one-at-a-time", followUpMode: "one-at-a-time",
     retry: { enabled: true, maxRetries: 2, baseDelayMs: 1000, provider: { maxRetries: 3 } },
@@ -147,15 +156,16 @@ export async function createPiLoop(start: LoopStart): Promise<AgentLoop> {
   const unsupported = (action: string): never => {
     throw new HarnessHostError(`Uncensia harness does not support ${action}. No action was performed.`);
   };
-  // This is a limited RPC UI: notifications/status have a real event sink.
-  // hasUI means that a binding exists, not that terminal/dialog APIs work.
-  // Tool approvals cannot stand in for arbitrary extension dialogs.
+  // This is a limited RPC UI: dialogs, notifications and status have real
+  // sinks; terminal-only APIs (widgets, editor, themes) do not. hasUI means
+  // that a binding exists, not that every API works.
+  const ask = start.ask ?? ((): Promise<never> => Promise.reject(new HarnessHostError("Uncensia harness does not support extension dialogs in this context. No action was performed.")));
   const ui: ExtensionUIContext = {
     theme: session.extensionRunner.getUIContext().theme,
-    select: async () => unsupported("ui.select"),
-    confirm: async () => unsupported("ui.confirm"),
-    input: async () => unsupported("ui.input"),
-    editor: async () => unsupported("ui.editor"),
+    select: (title, options, opts) => ask({ kind: "select", title, options }, opts),
+    confirm: async (title, message, opts) => (await ask({ kind: "confirm", title, message }, opts)) === "yes",
+    input: (title, placeholder, opts) => ask({ kind: "input", title, placeholder }, opts),
+    editor: (title, prefill) => ask({ kind: "editor", title, placeholder: prefill }),
     custom: async () => unsupported("ui.custom"),
     notify: (message, level = "info") => {
       start.onExtensionEvent({ type: "extension_notify", message, level });
@@ -187,6 +197,7 @@ export async function createPiLoop(start: LoopStart): Promise<AgentLoop> {
   const initialize = () => {
     assertOpen();
     return initialization ??= (async () => {
+    recordResourceStatus({ loaded: extensionsResult.extensions.map(extension => extension.path), errors: extensionsResult.errors });
     if (extensionsResult.errors.length) {
       throw new HarnessHostError(`Extension loading failed: ${extensionsResult.errors.map(error => `${error.path}: ${error.error}`).join("; ")}`);
     }

@@ -6,7 +6,7 @@
  */
 import http from "node:http";
 import { SEARCH_PROVIDERS } from "../src/shared/types.ts";
-import { webSearchTool } from "../src/server/tools/web-search.ts";
+import { fetchUrlTool, webSearchTool } from "../src/server/tools/web-search.ts";
 
 let failures = 0;
 
@@ -92,6 +92,54 @@ await check("a rejected country filter never silently broadens the query", async
     assert(Boolean(requests[0]?.country), "country was removed");
     assert(message.includes("400") && message.includes("retained"), "error lost scope evidence");
   } finally { globalThis.fetch = original; }
+});
+
+await check("fetch_url reads pages through Tavily extract and reports each failed page in place", async () => {
+  const original = globalThis.fetch;
+  const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+    return Response.json({
+      results: [{ url: "https://example.com/one", raw_content: "PAGE ONE BODY" }],
+      failed_results: [{ url: "https://example.com/two", error: "403 forbidden" }],
+    });
+  };
+  try {
+    const tool = fetchUrlTool({ getApiKey: () => "test", provider: "tavily" });
+    const result = (await tool.execute("f1", { urls: ["https://example.com/one", "https://example.com/two", "https://example.com/one"] }, undefined as never)) as {
+      content: Array<{ text: string }>;
+      details: { structuredContent: { fetch_url: { pages: Array<{ link: string; read: boolean; error?: string }>; references: Array<{ type: string }> } } };
+    };
+    assert(requests.length === 1 && requests[0]!.url.endsWith("/extract"), "expected one extract call");
+    assert((requests[0]!.body.urls as string[]).length === 2, "duplicate URL was not collapsed");
+    const text = result.content[0]?.text ?? "";
+    assert(text.includes("PAGE ONE BODY"), "page body missing");
+    assert(/turn\d+ref0/.test(text) && /turn\d+ref1/.test(text), "ref anchors missing");
+    assert(text.includes("Not read: 403 forbidden"), "failure not reported in place");
+    const pages = result.details.structuredContent.fetch_url.pages;
+    assert(pages.length === 2 && pages[0]!.read && !pages[1]!.read && pages[1]!.error === "403 forbidden", "structured page state wrong");
+    assert(result.details.structuredContent.fetch_url.references.length === 1, "only read pages are references");
+  } finally { globalThis.fetch = original; }
+  return "one page read, one failure named, duplicates collapsed";
+});
+
+await check("fetch_url refuses bad input and providers without extraction instead of searching", async () => {
+  const original = globalThis.fetch;
+  let called = 0;
+  globalThis.fetch = async () => { called += 1; return Response.json({ results: [] }); };
+  try {
+    const expectError = async (tool: ReturnType<typeof fetchUrlTool>, params: unknown, pattern: RegExp) => {
+      let message = "";
+      try { await tool.execute("f2", params, undefined as never); } catch (error) { message = String(error); }
+      assert(pattern.test(message), `unexpected error: ${message || "(none)"}`);
+    };
+    await expectError(fetchUrlTool({ getApiKey: () => undefined, provider: "searxng", baseUrl }), { urls: ["https://example.com"] }, /cannot read pages by URL/);
+    await expectError(fetchUrlTool({ getApiKey: () => "test", provider: "tavily" }), { urls: ["ftp://example.com", "not a url"] }, /Not http\(s\) URLs: ftp:\/\/example.com, not a url/);
+    await expectError(fetchUrlTool({ getApiKey: () => "test", provider: "tavily" }), { urls: [] }, /at least one/);
+    await expectError(fetchUrlTool({ getApiKey: () => undefined, provider: "tavily" }), { urls: ["https://example.com"] }, /API key is not configured/);
+    assert(called === 0, "a request was sent despite refusing");
+  } finally { globalThis.fetch = original; }
+  return "no network call on refusal";
 });
 
 searx.close();

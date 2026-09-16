@@ -49,6 +49,16 @@ try{
    assert.equal(unchanged.title,'Reference contract');assert.deepEqual(unchanged.roleplay,rp);assert.deepEqual(unchanged.visualContinuity,visual);
  }
  console.log('PASS invalid visual references, roles and limits fail visibly before any context or title changes');
+ const notes=[{key:'relationship',label:'Where we stand',value:'Strangers who met at the clock shop.'},{key:'scene',label:'',value:'Evening, back room.'}];
+ assert.equal((await call('PATCH',`/conversations/${id}`,{notes})).status,200);
+ assert.deepEqual((await call('GET',`/conversations/${id}`)).body.notes,notes,'notes must round-trip independently');
+ for(const invalid of [null,{},[{key:'Bad Key',label:'',value:'x'}],[{key:'ok',label:'',value:'x'.repeat(12001)}],[{key:'dup',label:'',value:'a'},{key:'dup',label:'',value:'b'}],Array.from({length:25},(_,i)=>({key:`n${i}`,label:'',value:'x'}))]) {
+   assert.equal((await call('PATCH',`/conversations/${id}`,{title:'Must not be saved',notes:invalid})).status,400,JSON.stringify(invalid).slice(0,60));
+   const unchanged=(await call('GET',`/conversations/${id}`)).body;
+   assert.equal(unchanged.title,'Reference contract');assert.deepEqual(unchanged.notes,notes,'invalid notes overwrote saved notes');
+ }
+ assert.deepEqual((await call('PATCH',`/conversations/${id}`,{roleplay:rp})).body.notes,notes,'a context save without notes cleared them');
+ console.log('PASS conversation notes round-trip; bad keys, oversize values, duplicates and overflow fail before any change');
  const started=await call('POST',`/conversations/${id}/runs`,{text:'Use the second image as the base and the first as a style reference.',attachments:ids,imageReferences:[{imageId:ids[1],role:'base'},{imageId:ids[0],role:'style'}]});assert.equal(started.status,202);
  async function finish(runId:string){for(let i=0;i<200;i++){const run=services.store.getRun(runId);if(run?.status==='completed')return;if(run?.status==='failed')throw new Error(run.error??'failed');await new Promise(r=>setTimeout(r,50));}throw new Error('run timed out');}
  await finish(started.body.runId);
@@ -68,6 +78,7 @@ try{
  const firstUser=tree.entries.find((e:any)=>e.role==='user');
  const fork=await call('POST',`/conversations/${id}/fork`,{entryId:firstUser.id});assert.equal(fork.status,201);
  assert.deepEqual(fork.body.roleplay,rp,'fork lost saved RP fields');
+ assert.deepEqual(fork.body.notes,notes,'fork lost saved notes');
  const forkMessages=(await call('GET',`/conversations/${fork.body.id}/messages`)).body.items;assert.equal(forkMessages.length,1);assert(JSON.stringify(forkMessages).includes('reference_role'));
  assert.equal((await call('POST',`/conversations/${id}/runs`,{text:'test',modelId:'unknown'})).status,422);
  const matches=(await call('GET','/conversations/search?q=second%20image')).body.items;

@@ -109,7 +109,7 @@ export function Settings({
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 sm:p-6">
             <Input aria-label={uiText("查找设置")} placeholder={uiText("查找模型、记忆、提示词、连接…")} className="h-11 rounded-xl" value={search} onChange={event => setSearch(event.target.value)} />
             {search.trim() ? <div className="rounded-2xl border p-2">
-              {TABS.filter(item => `${item.label} ${{overview:uiText("默认 记忆 文件 资料"),providers:uiText("提供方 API 密钥 服务"),models:uiText("模型 生成 参数 上下文 长度 输出 温度"),skills:uiText("skill 技能 安装 编辑 启用 停用"),tasks:uiText("任务 定时 后台 计划 取消"),tools:uiText("MCP 工具 扩展"),capabilities:uiText("搜索 权限 文件 编码 记忆 嵌入 embedding 分块"),prompts:uiText("提示词 身份 作家 人设"),security:uiText("访问码 登录 安全 数据")}[item.id]}`.toLowerCase().includes(search.trim().toLowerCase())).map(item => <Button key={item.id} variant="ghost" className="w-full justify-start rounded-lg" onClick={() => { open(item.id); setSearch(""); }}>{item.label}</Button>)}
+              {TABS.filter(item => `${item.label} ${{overview:uiText("默认 记忆 文件 资料"),providers:uiText("提供方 API 密钥 服务"),models:uiText("模型 生成 参数 上下文 长度 输出 温度"),skills:uiText("skill 技能 安装 编辑 启用 停用"),tasks:uiText("任务 定时 后台 计划 取消"),tools:uiText("MCP 工具 扩展 包 extension package"),capabilities:uiText("搜索 权限 文件 编码 记忆 嵌入 embedding 分块"),prompts:uiText("提示词 身份 作家 人设"),security:uiText("访问码 登录 安全 数据")}[item.id]}`.toLowerCase().includes(search.trim().toLowerCase())).map(item => <Button key={item.id} variant="ghost" className="w-full justify-start rounded-lg" onClick={() => { open(item.id); setSearch(""); }}>{item.label}</Button>)}
               <p className="px-3 py-2 text-xs text-muted-foreground">{uiText("选择分组查看和修改设置。")}</p>
             </div> : null}
             {tab === "overview" ? <>

@@ -273,7 +273,7 @@ try {
   console.log("PASS real extension command errors persist and stream run.failed");
 
   const unsupported = ["newSession", "fork", "navigateTree", "switchSession", "reload", "shutdown",
-    ...["select", "confirm", "input", "editor", "custom", "onTerminalInput", "setWorkingMessage", "setWorkingVisible", "setWorkingIndicator", "setHiddenThinkingLabel", "setWidget", "setFooter", "setHeader", "setTitle", "pasteToEditor", "setEditorText", "getEditorText", "addAutocompleteProvider", "setEditorComponent", "getEditorComponent", "getAllThemes", "getTheme", "setTheme", "getToolsExpanded", "setToolsExpanded"].map(name => `ui.${name}`)];
+    ...["custom", "onTerminalInput", "setWorkingMessage", "setWorkingVisible", "setWorkingIndicator", "setHiddenThinkingLabel", "setWidget", "setFooter", "setHeader", "setTitle", "pasteToEditor", "setEditorText", "getEditorText", "addAutocompleteProvider", "setEditorComponent", "getEditorComponent", "getAllThemes", "getTheme", "setTheme", "getToolsExpanded", "setToolsExpanded"].map(name => `ui.${name}`)];
   for (const action of unsupported) {
     const { item, result } = await run(`/host-action ${action}`);
     assert.equal(result.status, "failed", action);
@@ -284,6 +284,59 @@ try {
   assert.equal((await run("/host-action waitForIdle")).result.status, "completed");
   assert.equal((await run("/host-action abort")).result.status, "cancelled");
   console.log(`PASS ${unsupported.length} unsupported host actions fail explicitly; waitForIdle and host abort work`);
+
+  // Extension dialogs become persisted questions a client answers over HTTP;
+  // the run waits on the row, never on an approval, and stopping the run
+  // settles the row instead of leaving it answerable.
+  async function askViaRun(action: string, settle: (question: { id: string }, item: { id: string }) => Promise<void>) {
+    const item = conversation();
+    const response = await call("POST", `/conversations/${item.id}/runs`, { text: `/host-action ${action}` });
+    assert.equal(response.status, 202);
+    const { runId } = await response.json() as { runId: string };
+    await until(() => services.store.pendingQuestions(item.id).length === 1, `question for ${action}`);
+    const [question] = services.store.pendingQuestions(item.id);
+    assert.equal(question!.runId, runId);
+    assert.equal(question!.kind, action.slice(3));
+    assert.equal(question!.title, "fixture");
+    assert.equal(services.store.pendingApprovals(item.id).length, 0, "a dialog must not become tool approval");
+    const listed = await (await call("GET", `/conversations/${item.id}/questions`)).json() as { items: Array<{ id: string }> };
+    assert.deepEqual(listed.items.map(entry => entry.id), [question!.id]);
+    await settle(question!, item);
+    await until(() => !services.runtime.isActive(item.id), `settle ${action}`);
+    const asked = services.store.eventsSince(runId, -1).filter(event => event.type === "question.asked").length;
+    const settledEvents = services.store.eventsSince(runId, -1).filter(event => event.type === "question.settled").length;
+    assert.equal(asked, 1, "one question.asked");
+    assert.equal(settledEvents, 1, "one question.settled");
+    assert.equal(services.store.pendingQuestions(item.id).length, 0);
+    return { item, run: services.store.getRun(runId)!, question: services.store.getQuestion(question!.id)! };
+  }
+  const dismissed = await askViaRun("ui.select", async question => {
+    const wrong = await call("POST", `/questions/${question.id}`, { answer: "not-an-option" });
+    assert.equal(wrong.status, 400, "a select answer must be one of the options");
+    assert.equal((await call("POST", `/questions/${question.id}`, { dismiss: true })).status, 200);
+    assert.equal((await call("POST", `/questions/${question.id}`, { dismiss: true })).status, 200, "repeat settle is idempotent");
+  });
+  assert.equal(dismissed.run.status, "completed");
+  assert.equal(dismissed.question.status, "dismissed");
+  const confirmed = await askViaRun("ui.confirm", async question => {
+    assert.equal((await call("POST", `/questions/${question.id}`, { answer: "maybe" })).status, 400, "confirm takes yes or no");
+    assert.equal((await call("POST", `/questions/${question.id}`, { answer: "yes" })).status, 200);
+  });
+  assert.equal(confirmed.run.status, "completed");
+  assert.deepEqual([confirmed.question.status, confirmed.question.answer], ["answered", "yes"]);
+  const typed = await askViaRun("ui.input", async question => {
+    assert.equal((await call("POST", `/questions/${question.id}`, { answer: "typed reply" })).status, 200);
+  });
+  assert.deepEqual([typed.question.status, typed.question.answer], ["answered", "typed reply"]);
+  const stopped = await askViaRun("ui.editor", async (_question, item) => {
+    assert.equal(services.runtime.stop(item.id), true);
+  });
+  assert.equal(stopped.run.status, "cancelled");
+  assert.equal(stopped.question.status, "dismissed", "stopping a run settles its question without an answer");
+  assert.equal((await call("POST", `/questions/${stopped.question.id}`, { answer: "late" })).status, 200);
+  assert.equal(services.store.getQuestion(stopped.question.id)!.status, "dismissed", "a late answer cannot revive a settled question");
+  assert.equal((await call("POST", `/questions/missing`, { answer: "x" })).status, 404);
+  console.log("PASS ui.select/confirm/input/editor persist as questions answered over HTTP; dismissal, validation, stop and late answers stay fail-closed");
   const uiRun = await run("/host-ui");
   assert.equal(uiRun.result.status, "completed");
   const uiEvents = services.store.eventsSince(uiRun.result.id, -1);
