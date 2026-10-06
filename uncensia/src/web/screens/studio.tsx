@@ -1360,16 +1360,17 @@ const serialize = (value: unknown) => (value === undefined ? "" : JSON.stringify
  */
 function summarize(tool: StudioTool) {
   const properties = tool.schema.properties ?? {};
-  const choices = (schema: JsonSchema | undefined, unit = "") => {
+  const choices = (schema: JsonSchema | undefined, unit = "", label = uiText("规格")) => {
     const values = schema ? enumOf(schema) : [];
     if (!values.length) return "";
-    return `${values.slice(0, 4).map(String).join("/")}${values.length > 4 ? "…" : ""}${unit}`;
+    // A long list (Seedream has 16 sizes) reads as noise; the form shows them all.
+    return values.length > 4 ? uiText("{0} 种{1}", [values.length, label]) : `${values.map(String).join("/")}${unit}`;
   };
   const references = properties[EXTRA_SOURCES_FIELD];
   return [
-    tool.local ? uiText("本地") : uiText("托管"),
-    choices(properties.aspect_ratio),
-    choices(properties.resolution ?? properties.size),
+    tool.local ? uiText("本地 GPU") : uiText("云端"),
+    choices(properties.aspect_ratio, "", uiText("画幅")),
+    choices(properties.resolution ?? properties.size, "", uiText("尺寸")),
     choices(properties.duration ?? properties.duration_seconds, uiText(" 秒")),
     references ? uiText("可带 {0} 张参考图", [references.maxItems ?? uiText("多")]) : "",
   ]

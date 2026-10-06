@@ -816,6 +816,7 @@ private struct ChatEmptyState: View {
     let store: ChatStore
     var body: some View {
         VStack(spacing: 14) {
+            Image("BrandMark").resizable().frame(width: 52, height: 52).accessibilityHidden(true)
             Text(uncensiaText("今天，想做点什么？")).font(.title2.weight(.semibold))
             Text(uncensiaText("从一个想法、一张图片，或一句话开始。")).font(.subheadline).foregroundStyle(.secondary)
             HStack(spacing: 10) {

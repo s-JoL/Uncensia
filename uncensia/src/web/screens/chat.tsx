@@ -1,4 +1,5 @@
 import { uiText } from "../i18n.tsx";
+import brandMark from "../assets/uncensia-mark.svg";
 import {
   Check,
   ListTodo,
@@ -801,7 +802,8 @@ export function Chat({
       >
         {visibleTurns.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 px-6 pb-8 text-center">
-            <h1 className="text-3xl font-medium tracking-tight sm:text-4xl">{uiText("今天，想做点什么？")}</h1>
+            <img src={brandMark} alt="" className="mb-2 size-14 drop-shadow-[0_8px_24px_rgb(255_94_108/0.35)]" />
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{uiText("今天，想做点什么？")}</h1>
             <p className="max-w-md text-sm text-muted-foreground">{uiText("从一个想法、一张图片，或一句话开始。")}</p>
             {bootstrap.models.some(model => model.enabled && (model.kind ?? "chat") === "chat" && model.configured) ? null : <SetupCard />}
           </div>
@@ -839,7 +841,7 @@ export function Chat({
       <div className={cn("shrink-0 bg-background px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6", !visibleTurns.length && "mb-auto")}>
         <div
           className={cn(
-            "mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-[28px] border border-border/60 bg-card p-3 shadow-[0_4px_24px_#00000008] transition-colors sm:p-4",
+            "mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-[28px] border border-border bg-card p-3 shadow-[0_8px_30px_rgb(31_26_30/0.06)] transition-[border-color,box-shadow] focus-within:border-primary/40 focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-primary)_14%,transparent)] sm:p-4",
             dragging && "border-primary bg-accent/40",
           )}
           onDragOver={(event) => {
@@ -990,7 +992,7 @@ export function Chat({
                   size="sm"
                   data-testid="composer-send"
                   aria-label={uiText("发送消息")}
-                  className="size-9 rounded-full p-0"
+                  className="size-9 rounded-full border-0 bg-[image:var(--brand-gradient)] p-0 text-white shadow-sm disabled:bg-none disabled:bg-muted disabled:text-muted-foreground"
                   disabled={!draft.trim()}
                   onClick={() => void send()}
                 >
@@ -1002,8 +1004,8 @@ export function Chat({
         </div>
 
         {!visibleTurns.length ? <div className="mx-auto mt-5 flex max-w-3xl flex-wrap justify-center gap-2">
-          {[{label:uiText("写点东西"), text:uiText("帮我把一个故事想法写成开场：")}, {label:uiText("创作图片"), text:uiText("生成一张图片：")}].map(item => <Button key={item.label} variant="outline" className="rounded-full px-4 text-sm text-muted-foreground" onClick={() => { setDraft(item.text); textareaRef.current?.focus(); }}><Sparkles />{item.label}</Button>)}
-          <Button variant="outline" className="rounded-full px-4 text-sm text-muted-foreground" onClick={() => setPickingAsset(true)}><FileText />{uiText("使用我的资料")}</Button>
+          {[{label:uiText("写点东西"), text:uiText("帮我把一个故事想法写成开场：")}, {label:uiText("创作图片"), text:uiText("生成一张图片：")}].map(item => <Button key={item.label} variant="outline" className="rounded-full bg-card/60 px-4 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground [&_svg]:text-primary" onClick={() => { setDraft(item.text); textareaRef.current?.focus(); }}><Sparkles />{item.label}</Button>)}
+          <Button variant="outline" className="rounded-full bg-card/60 px-4 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground [&_svg]:text-primary" onClick={() => setPickingAsset(true)}><FileText />{uiText("使用我的资料")}</Button>
         </div> : <p className="mx-auto mt-2 max-w-3xl text-center text-[11px] text-muted-foreground">{running ? uiText("你可以随时停止，或继续补充要求") : uiText("重要内容请核对。图片与文件可在资料库中继续使用。")}</p>}
       </div>
 
@@ -1305,7 +1307,7 @@ const TurnView = memo(function TurnView({
         ) : (
           <>
             {text ? (
-              <div className="max-w-[85%] rounded-3xl bg-muted px-5 py-3 whitespace-pre-wrap text-foreground">
+              <div className="max-w-[85%] rounded-3xl rounded-br-md bg-secondary px-5 py-3 whitespace-pre-wrap text-foreground">
                 {text}
               </div>
             ) : null}
@@ -1342,9 +1344,9 @@ const TurnView = memo(function TurnView({
         }
         if (part.kind === "thinking") {
           return (
-            <details key={index} className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
-              <summary className="cursor-pointer text-muted-foreground select-none">{uiText("思考过程")}</summary>
-              <div className="mt-2 whitespace-pre-wrap text-muted-foreground">{part.text}</div>
+            <details key={index} className="group/think max-w-full text-sm">
+              <summary className="w-fit cursor-pointer rounded-md px-2 py-1 text-muted-foreground select-none hover:bg-muted/60 hover:text-foreground">{uiText("思考过程")}</summary>
+              <div className="mt-1 ml-2 border-l-2 border-border pl-3 whitespace-pre-wrap text-muted-foreground">{part.text}</div>
             </details>
           );
         }

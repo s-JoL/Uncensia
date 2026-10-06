@@ -1040,5 +1040,9 @@
   "世界书": "Lorebook",
   "开场白（第一条回复从这里开始）：\n{0}": "Opening message (the first reply starts here):\n{0}",
   "导出为 Markdown": "Export as Markdown",
-  "成果与记录": "Results and records"
+  "成果与记录": "Results and records",
+  "{0} 种{1}": "{0} {1} options",
+  "规格": "spec",
+  "本地 GPU": "Local GPU",
+  "云端": "Cloud"
 }
