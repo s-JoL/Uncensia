@@ -207,6 +207,8 @@ export interface ManagedSkill {
   editable: boolean;
   enabled: boolean;
   manualOnly: boolean;
+  /** Written by the assistant (`origin: learned` in its frontmatter) rather than shipped or hand-made. */
+  learned: boolean;
   content: string;
   revision: string;
 }

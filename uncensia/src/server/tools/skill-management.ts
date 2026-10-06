@@ -30,17 +30,30 @@ export function managedSkills(cwd: string) {
   return {
     items: result.skills.map((skill): ManagedSkill => {
       const content = fs.readFileSync(skill.filePath, "utf8");
+      const origin = parseFrontmatter<Record<string, unknown>>(content).frontmatter?.origin;
       return { id: key(skill.filePath), name: skill.name, description: skill.description, filePath: skill.filePath,
         editable: editable(skill.filePath), enabled: state[key(skill.filePath)] !== false,
-        manualOnly: skill.disableModelInvocation, content, revision: hash(content) };
+        manualOnly: skill.disableModelInvocation, learned: origin === "learned", content, revision: hash(content) };
     }), diagnostics: result.diagnostics.map(item => `${item.path}: ${item.message}`),
   };
 }
+export const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 function validate(content: string) {
   if (Buffer.byteLength(content) > 256_000) throw new Error("技能文件不能超过 256 KB");
   const { frontmatter: header } = parseFrontmatter<Record<string, unknown>>(content);
-  if (typeof header?.name !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(header.name) || typeof header.description !== "string" || !header.description.trim()) throw new Error("名称使用小写英文、数字和短横线，并填写描述");
+  if (typeof header?.name !== "string" || !SKILL_NAME.test(header.name) || typeof header.description !== "string" || !header.description.trim()) throw new Error("名称使用小写英文、数字和短横线，并填写描述");
   return header.name as string;
+}
+
+/**
+ * A complete SKILL.md from its parts, so a caller never has to hand-write YAML.
+ * JSON strings are valid YAML double-quoted scalars, which keeps a description
+ * containing a colon or a quote from breaking the header.
+ */
+export function composeSkill(input: { name: string; description: string; body: string; learned?: boolean }) {
+  const lines = ["---", `name: ${input.name}`, `description: ${JSON.stringify(input.description.trim())}`];
+  if (input.learned) lines.push("origin: learned");
+  return `${lines.join("\n")}\n---\n\n${input.body.trim()}\n`;
 }
 export function createSkill(content: string) {
   const name = validate(content);
