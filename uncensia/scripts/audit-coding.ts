@@ -84,7 +84,10 @@ try {
   });
   await check("bash keeps bundled Node, failure output and explicit approval classification", async () => {
     assert.match(text(await call("bash", { command: "node --version" })), /v2[4-9]\./);
-    await assert.rejects(call("bash", { command: "echo failure-probe >&2; exit 3" }), /failure-probe[\s\S]*exited with code 3/);
+    // Pi 1.0 reports a non-zero exit as an error result instead of throwing.
+    const failure = await call("bash", { command: "echo failure-probe >&2; exit 3" }) as { isError?: boolean };
+    assert.equal(failure.isError, true);
+    assert.match(text(failure), /failure-probe[\s\S]*exited with code 3/);
     assert(describeRisk("bash", { command: "echo hello" }, workspace));
     assert(describeRisk("write", { path: "chapter.txt", content: "overwrite" }, workspace));
     assert.equal(describeRisk("write", { path: "new-file.txt", content: "new" }, workspace), null);

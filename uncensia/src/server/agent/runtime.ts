@@ -543,6 +543,9 @@ export class Runtime {
 
       // The agent awaits every listener, so tree writes stay in event order.
       unsubscribeRun = agent.subscribe(async (event) => {
+        // Pi 1.0 records the system prompt as a transcript message. It is model
+        // configuration, not a turn: never store it as one or stream it.
+        if ("message" in event && (event.message as { role?: string }).role === "system") return;
         if (event.type === "message_start" && (event.message as { role?: string }).role === "assistant") {
           modelCallIndex += 1;
         }
