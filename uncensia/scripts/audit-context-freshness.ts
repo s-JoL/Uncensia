@@ -61,7 +61,9 @@ try {
   assert.ok(systems.every(s => s === systems[0] && !s.includes("CONTEXT_MARKER")));
   assert.ok(stub.requests.every(r => JSON.stringify(r.tools) === JSON.stringify(stub.requests[0]!.tools)));
   const raw = fs.readFileSync(path.join(dir, "sessions-sdk", `${conv.id}.jsonl`), "utf8");
-  assert.ok(!raw.includes("uncensia-current-context"), "ephemeral context must not be persisted or compacted as user facts");
+  // Pi 1.0 persists the system prompt, which names the block; its data must not be persisted.
+  const turns = raw.split("\n").filter(line => line && JSON.parse(line).message?.role !== "system").join("\n");
+  assert.ok(!turns.includes("uncensia-current-context"), "ephemeral context must not be persisted or compacted as user facts");
   const caps = services.config.capabilities();
   const before = JSON.stringify(memoryTools(services.store, caps.memory).map(t => t.parameters));
   services.store.saveMemoryWithinBudget("new_key", "a new fact", 10, 16000);

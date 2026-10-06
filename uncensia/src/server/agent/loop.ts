@@ -270,8 +270,8 @@ export async function createPiLoop(start: LoopStart): Promise<AgentLoop> {
     },
     prompt: (text, media) => invoke(() => session.prompt(text, { images: media })),
     continue: () => invoke(() => session.prompt("继续上面的任务，保留已完成的结果。")),
-    steer: (text) => invoke(() => session.steer(text)),
-    followUp: (text) => invoke(() => session.followUp(text)),
+    steer: (text) => invoke(async () => { await session.steer(text); }),
+    followUp: (text) => invoke(async () => { await session.followUp(text); }),
     abort: () => { void session.abort(); },
     subscribe: (listener) => {
       assertOpen();

@@ -3,16 +3,20 @@ import type { ModelReference } from "@shared/types.ts";
 
 // Prefer the model author's catalogue, never an arbitrary gateway's limits.
 const AUTHORS: BuiltinProvider[] = ["google", "deepseek", "moonshotai", "zai", "xai", "anthropic", "openai"];
-const ALIASES: Record<string, [BuiltinProvider, string]> = {
-  "deepseek-v4-flash-0731": ["deepseek", "deepseek-v4-flash"],
-  "deepseek-v4-flash-vision": ["deepseek", "deepseek-v4-flash-vision-exp"],
+// Candidates in order: the author renames catalogue entries between releases
+// (Pi 1.0 lists DeepSeek's V4 Flash as `deepseek-flash`).
+const ALIASES: Record<string, Array<[BuiltinProvider, string]>> = {
+  "deepseek-v4-flash-0731": [["deepseek", "deepseek-flash"], ["deepseek", "deepseek-v4-flash"]],
+  "deepseek-v4-flash-vision": [["deepseek", "deepseek-v4-flash-vision-exp"], ["deepseek", "deepseek-flash"]],
 };
 const catalog = new Map(AUTHORS.flatMap(provider => getBuiltinModels(provider).map(model => [model.id, model] as const)));
 
 /** Exact identifiers only. Unknown versions stay unknown, not family guesses. */
 export function modelReference(id: string): ModelReference | undefined {
-  const alias = ALIASES[id];
-  const model = alias ? getBuiltinModel(alias[0], alias[1] as never) : catalog.get(id);
+  const aliases = ALIASES[id];
+  const model = aliases
+    ? aliases.map(([provider, name]) => getBuiltinModel(provider, name as never)).find(Boolean)
+    : catalog.get(id);
   if (!model) return undefined;
   return {
     contextWindow: model.contextWindow, maxTokens: model.maxTokens,
