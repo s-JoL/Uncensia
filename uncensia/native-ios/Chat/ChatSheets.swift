@@ -21,7 +21,7 @@ struct ConversationList: View {
         } label: {
           Label(uncensiaText("新对话"), systemImage: "square.and.pencil")
         }.tint(.primary).listRowSeparator(.hidden).accessibilityIdentifier("conversation.new")
-        // Inside a conversation the tab bar is hidden; the workspaces are here instead.
+        // The workspaces are also one tap away here, as in ChatGPT's sidebar.
         ForEach([("studio", uncensiaText("创作台"), "photo.on.rectangle.angled"), ("library", uncensiaText("资料库"), "books.vertical"), ("projects", uncensiaText("项目"), "folder")], id: \.0) { tab in
           Button {
             app.selectedTab = tab.0
