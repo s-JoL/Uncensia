@@ -51,6 +51,9 @@ interface Route {
   focusSeq?: number;
 }
 
+/** Untitled until named; older servers stored an English placeholder instead of nothing. */
+const displayTitle = (title: string | undefined) => !title || title === "New conversation" ? uiText("未命名对话") : title;
+
 const SCREEN_PATHS: Record<Exclude<Screen, "chat">, string> = {
   studio: "/studio",
   files: "/library",
@@ -300,7 +303,7 @@ function SearchResults({
       {[...grouped.values()].map((group) => (
         <div key={group[0]!.conversationId} className="flex flex-col gap-1">
           <div className="truncate px-1 text-xs font-medium text-muted-foreground">
-            {group[0]!.title || uiText("未命名对话")}
+            {displayTitle(group[0]!.title)}
           </div>
           {group.map((hit) => (
             <button
@@ -522,7 +525,7 @@ function Workspace({ bootstrap, reload }: { bootstrap: Bootstrap; reload: () => 
                       className="min-w-0 flex-1 truncate px-3 py-2 text-left text-sm"
                       onClick={() => navigate({ screen: "chat", conversationId: conversation.id })}
                     >
-                      {conversation.title || uiText("未命名对话")}
+                      {displayTitle(conversation.title)}
                     </button>
                     <Button
                       variant="ghost"
@@ -567,7 +570,7 @@ function Workspace({ bootstrap, reload }: { bootstrap: Bootstrap; reload: () => 
         title={uiText("删除对话")}
         description={
           pendingDelete
-            ? uiText("「{0}」的转写会一并删掉，无法恢复。", [pendingDelete.title || uiText("未命名对话")])
+            ? uiText("「{0}」的转写会一并删掉，无法恢复。", [displayTitle(pendingDelete.title)])
             : undefined
         }
         footer={

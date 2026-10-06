@@ -148,7 +148,8 @@ export function createApp(services: Services) {
     return new Response(new Uint8Array(fs.readFileSync(file)), {
       headers: {
         "content-type": STATIC_MIME[path.extname(file)] ?? "application/octet-stream",
-        "cache-control": file.endsWith("index.html") ? "no-cache" : "public, max-age=31536000, immutable",
+        // Hashed build assets never change; the page and the manifest keep their names across releases.
+        "cache-control": /(?:index\.html|\.webmanifest)$/.test(file) ? "no-cache" : "public, max-age=31536000, immutable",
       },
     });
   });

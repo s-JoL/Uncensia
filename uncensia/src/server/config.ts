@@ -59,7 +59,13 @@ const DEFAULT_CAPABILITIES: Capabilities = {
   },
   files: { enabled: true, searchEnabled: true, mode: "hybrid" },
   web: { enabled: true, provider: "tavily", baseUrl: "", hasTavilyKey: false },
-  coding: { read: true, write: true, shell: true, workspace: "" },
+  // Local file and command tools are developer tools: off until the owner turns
+  // them on. A server reachable through a tunnel must not hand a leaked access
+  // code a shell.
+  coding: { read: false, write: false, shell: false, workspace: "" },
+  // Skills are versioned, take effect next run and can be reverted, so learning
+  // them is on; persistent instructions change every conversation and are not.
+  learning: { skills: true, prompts: false },
   embedding: {
     enabled: true,
     baseUrl: "https://openrouter.ai/api/v1",
@@ -119,8 +125,8 @@ export class Config {
       // Preserve the old write-linked permission on upgrade, then save it
       // independently so subsequent workspace changes cannot toggle learning.
       learning: {
-        skills: stored.learning?.skills ?? stored.coding?.write ?? DEFAULT_CAPABILITIES.coding.write,
-        prompts: stored.learning?.prompts ?? stored.coding?.write ?? DEFAULT_CAPABILITIES.coding.write,
+        skills: stored.learning?.skills ?? stored.coding?.write ?? DEFAULT_CAPABILITIES.learning!.skills,
+        prompts: stored.learning?.prompts ?? stored.coding?.write ?? DEFAULT_CAPABILITIES.learning!.prompts,
       },
       embedding: {
         ...DEFAULT_CAPABILITIES.embedding,

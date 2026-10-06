@@ -251,6 +251,8 @@ export const api = {
   deleteProvider: (id: string) => request<void>("DELETE", `/providers/${id}`),
   setProviderKey: (id: string, value: string) => request<void>("PUT", `/providers/${id}/key`, { value }),
   remoteModels: (id: string) => request<{ items: DiscoveredModel[] }>("GET", `/providers/${id}/models`),
+  testProvider: (id: string, modelId?: string) =>
+    request<{ ok: boolean; modelId?: string; model?: string; latencyMs?: number; message?: string; reason?: string }>("POST", `/providers/${id}/test`, modelId ? { modelId } : {}),
 
   models: () =>
     request<{

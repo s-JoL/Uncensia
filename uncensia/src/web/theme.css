@@ -153,6 +153,15 @@
     margin: 0;
   }
 
+  /* Launched from the home screen, the page runs under the status bar and the
+     rounded corners; in a browser tab these insets are zero. */
+  #root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);

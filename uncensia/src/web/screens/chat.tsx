@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TaskPanel } from "../ui/task-panel.tsx";
+import { classifyProviderFailure, needsSettings } from "@shared/provider-error.ts";
+import { openPath } from "../navigation.ts";
 import { ConversationEvidence } from "../resource-view.tsx";
 import type {
   Approval,
@@ -734,7 +736,7 @@ export function Chat({
 
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center gap-2 px-3 md:px-6">
+      <header className="flex h-16 shrink-0 items-center gap-1 px-2 sm:gap-2 sm:px-3 md:px-6">
         <Button variant="ghost" size="icon" className="md:hidden" aria-label={uiText("菜单")} onClick={onOpenRail}>
           <MenuIcon />
         </Button>
@@ -745,7 +747,7 @@ export function Chat({
           <MenuItem disabled={running} onSelect={() => setShowTree(true)}>{uiText("查看版本与分支")}</MenuItem>
           <MenuItem disabled={running} onSelect={async () => { try { setRunning(true); const run = await api.compactConversation(conversationId); await follow(conversationId, run.runId, run.seq, new Set()); } catch (error) { setRunning(false); toast(error instanceof Error ? error.message : String(error), true); } }}>{uiText("整理上下文")}</MenuItem>
         </Menu> : null}
-        <Button variant="ghost" size="sm" aria-label={uiText("任务与成果")} onClick={() => setShowTasks(true)}><ListTodo />{uiText("任务与成果")}{backgroundTasks.some(task => ["pending", "running"].includes(task.status)) ? " ·" : ""}</Button>
+        <Button variant="ghost" size="sm" className="relative" aria-label={uiText("任务与成果")} onClick={() => setShowTasks(true)}><ListTodo /><span className="hidden sm:inline">{uiText("任务与成果")}</span>{backgroundTasks.some(task => ["pending", "running"].includes(task.status)) ? <span aria-hidden className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary sm:static" /> : null}</Button>
         {showTree && conversationId ? <ConversationTree id={conversationId} onClose={() => setShowTree(false)} onFork={onConversationCreated} /> : null}
 
         <Button
@@ -758,9 +760,9 @@ export function Chat({
         </Button>
 
         {running ? (
-          <Button variant="danger" size="sm" onClick={() => void stop()}>
+          <Button variant="danger" size="sm" aria-label={uiText("停止")} onClick={() => void stop()}>
             <Square />
-            {uiText("停止")}</Button>
+            <span className="hidden sm:inline">{uiText("停止")}</span></Button>
         ) : null}
       </header>
 
@@ -776,10 +778,11 @@ export function Chat({
           <div className="flex flex-col items-center justify-center gap-3 px-6 pb-8 text-center">
             <h1 className="text-3xl font-medium tracking-tight sm:text-4xl">{uiText("今天，想做点什么？")}</h1>
             <p className="max-w-md text-sm text-muted-foreground">{uiText("从一个想法、一张图片，或一句话开始。")}</p>
+            {bootstrap.models.some(model => model.enabled && (model.kind ?? "chat") === "chat" && model.configured) ? null : <SetupCard />}
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-5 py-6 sm:px-6" ref={watchContent}>
-            {title ? <p className="text-center text-xs text-muted-foreground">{title}</p> : null}
+            {title && title !== "New conversation" ? <p className="text-center text-xs text-muted-foreground">{title}</p> : null}
             {visibleTurns.map((turn, index) => (
               <TurnView
                 key={`${turn.id}-${index}`}
@@ -864,7 +867,7 @@ export function Chat({
                 ? runningInstruction === "steer"
                   ? uiText("补充方向，当前回合结束后立即生效")
                   : uiText("写下当前回答结束后要继续做的事")
-                : uiText("向 Uncensia 提问，或描述你想创作的内容")
+                : uiText("问点什么，或描述想创作的内容")
             }
             onChange={(event) => {
               setDraft(event.target.value);
@@ -1349,7 +1352,8 @@ const TurnView = memo(function TurnView({
         if (part.kind === "job") {
           return <JobCard key={part.jobId} job={part.job} onZoom={onImageClick} />;
         }
-        return <ToolView key={index} part={part} onImageClick={onImageClick} />;
+        const retried = part.isError && turn.parts.slice(index + 1).some(later => later.kind === "tool" && later.name === part.name && !later.isError && !later.running);
+        return <ToolView key={index} part={part} onImageClick={onImageClick} retried={retried} />;
       })}
 
       {turn.cancelled ? <p role="status" className="text-sm text-muted-foreground">{uiText("已停止")}</p> : turn.status ? <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />{turn.status}</p> : null}
@@ -1358,11 +1362,7 @@ const TurnView = memo(function TurnView({
           <Spinner />
           {uiText("正在思考…")}</div>
       ) : null}
-      {turn.error ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {turn.error}
-        </p>
-      ) : null}
+      {turn.error ? <ErrorNotice raw={turn.error} /> : null}
 
       {onRegenerate || onContinue || onFeedback ? (
         <div className="flex flex-wrap items-center gap-1 text-muted-foreground">
@@ -1387,6 +1387,51 @@ const TurnView = memo(function TurnView({
     </div>
   );
 });
+
+/**
+ * A fresh install has models but no keys. Saying so before the first message
+ * beats letting that message fail with a provider's authentication error.
+ */
+function SetupCard() {
+  return (
+    <div className="mt-4 flex w-full max-w-md flex-col gap-3 rounded-xl border bg-card p-4 text-left">
+      <div>
+        <p className="font-medium">{uiText("先连接一个模型服务")}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{uiText("Uncensia 用你自己的密钥直接连接你选的服务商，没有我们的中转。推荐 OpenRouter：一个密钥就能用多种对话模型；生图和视频可另配 Siray 或本地 ComfyUI。")}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => openPath("/settings/providers")}>{uiText("填写密钥")}</Button>
+        <Button size="sm" variant="outline" onClick={() => window.open("https://openrouter.ai/keys", "_blank", "noopener")}>{uiText("获取 OpenRouter 密钥")}</Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A failed turn says what went wrong in words and, when the fix is a key, model
+ * or address, links to where it is made; retrying is the turn's own Regenerate.
+ * The provider's raw response stays one click away for diagnosis.
+ */
+function ErrorNotice({ raw }: { raw: string }) {
+  const failure = classifyProviderFailure(raw);
+  const settings = needsSettings(failure.kind);
+  return (
+    <div role="alert" className="flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+      <p className="text-destructive">
+        {uiText(failure.headline)}
+        {failure.status ? <span className="text-destructive/70"> · {failure.status}</span> : null}
+      </p>
+      {failure.detail && failure.detail !== raw ? <p className="text-xs text-muted-foreground">{failure.detail}</p> : null}
+      <div className="flex flex-wrap items-center gap-1">
+        {settings ? <Button size="sm" variant="outline" onClick={() => openPath("/settings/providers")}>{uiText("打开连接服务")}</Button> : null}
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none px-2 py-1">{uiText("原始错误")}</summary>
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-2">{raw}</pre>
+        </details>
+      </div>
+    </div>
+  );
+}
 
 /**
  * An attachment with nothing to preview. The name is all there is to recognise

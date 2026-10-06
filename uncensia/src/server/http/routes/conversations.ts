@@ -54,7 +54,7 @@ export function conversationRoutes(services: Services) {
     if (wanted && (!spec?.enabled || !spec.configured || spec.kind !== "chat")) return fail(context, 422, "invalid_model", "The requested chat model is unavailable");
     const modelId = wanted || config.defaultModelId();
     if (!modelId) return fail(context, 422, "no_model", "Configure a model before starting a conversation");
-    return context.json(store.createConversation(modelId, body.title || "New conversation", body.projectId), 201);
+    return context.json(store.createConversation(modelId, body.title || "", body.projectId), 201);
   });
 
   /**

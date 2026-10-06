@@ -58,7 +58,7 @@ HTTP 和 agent 写入共用数据库中的原子预算检查，以保存时的�
 | write | Pi write、edit，移动、删除、恢复；启用资料库时可 import_file 导入资料 |
 | shell | Pi bash |
 
-工作目录由 `capabilities.coding.workspace` 指定。同一文件写入串行，覆盖/删除备份到 `data/coding-trash`，需要审批的操作见 [Agent](02-agent.md)。设置中的“工作目录访问”分别控制查看文件、修改文件和运行命令。命令按服务进程权限执行，工作目录与文件开关不是 shell 的隔离边界。
+工作目录由 `capabilities.coding.workspace` 指定。同一文件写入串行，覆盖/删除备份到 `data/coding-trash`，需要审批的操作见 [Agent](02-agent.md)。设置中的“开发者工具”分别控制查看文件、修改文件和运行命令，全新安装默认全部关闭（已有安装保留自己的选择）；工作目录指向 Uncensia 源码并允许修改文件即为开发者模式。命令按服务进程权限执行，工作目录与文件开关不是 shell 的隔离边界。
 
 MCP 使用 stdio 或 Streamable HTTP。设置管理进程/地址、参数、环境变量、请求头、启用状态和重连；不自动回退到旧 HTTP+SSE。工具来自已启用、已连接的服务器。
 
@@ -66,7 +66,7 @@ MCP 使用 stdio 或 Streamable HTTP。设置管理进程/地址、参数、环�
 
 ## 提示词与定时任务
 
-“技能与长期指令”使用独立的 `learning.skills`、`learning.prompts` 开关，分别提供 `manage_skill`、`manage_prompt`。任一项开启时提供 `learning_history`，仅返回对应类别；每次调用重新检查权限。旧配置首次保存时继承原有 coding.write 的授权状态并独立持久化，以后修改文件写入权限不再联动。已有技能的发现和读取不依赖修改开关。技能启停和提示词更改下一轮加载。`data/learning-history` 在修改前保留原因、来源对话与新旧正文，设置 → 技能展示最近 50 次尝试；备份记录不代表写入一定成功。恢复时使用旧正文与当前版本再次更新。源代码仍走工作目录工具、备份和审批，验证与部署状态分别报告。专用工具开关不是文件系统隔离；开放 shell 或相应目录写入时，本机工具仍可修改技能与指令文件。
+“持续学习”使用独立的 `learning.skills`、`learning.prompts` 开关，分别提供 `manage_skill`、`manage_prompt`；全新安装默认开启技能、关闭长期指令。`manage_skill` 支持 `list`（只返回名称、描述、版本与是否助手所学）、`read`、`create`（由 `name`/`description`/`body` 生成头部并标记 `origin: learned`）、`patch`（替换唯一的一段原文）和 `update`。任一项开启时提供 `learning_history`，仅返回对应类别；每次调用重新检查权限。旧配置首次保存时继承原有 coding.write 的授权状态并独立持久化，以后修改文件写入权限不再联动。已有技能的发现和读取不依赖修改开关。技能启停和提示词更改下一轮加载。`data/learning-history` 在写入成功后保留原因、来源对话与新旧正文，设置 → 技能展示最近 50 次修改。恢复时使用旧正文与当前版本再次更新。源代码仍走工作目录工具、备份和审批，验证与部署状态分别报告。专用工具开关不是文件系统隔离；开放 shell 或相应目录写入时，本机工具仍可修改技能与指令文件。
 
 全局和工具提示词在设置管理，并落到 `data/prompts/global.md`、`tools.md`；文件存在时以文件为准。模型可配置专属系统提示词。保留原有 writing brief 和用户自定义内容，更新使用包资源所有权机制。更改通常下一轮生效，源代码变更需重启。
 

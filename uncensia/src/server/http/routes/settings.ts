@@ -13,6 +13,7 @@ import { SECRET, type Config } from "../../config.ts";
 import { adapterOps, GenerationError } from "../../generation/index.ts";
 import { slug } from "../../ids.ts";
 import { discoverModels } from "../../models/catalogue.ts";
+import { sideRequestOptions } from "../../models/registry.ts";
 import { modelReference } from "../../models/reference.ts";
 import { managedSkills, createSkill, updateSkill } from "../../tools/skill-management.ts";
 import {
@@ -206,6 +207,34 @@ export function settingsRoutes(services: Services) {
     vault.delete(SECRET.provider(context.req.param("id")));
     services.reload();
     return context.body(null, 204);
+  });
+
+  /**
+   * Sends one tiny real request through a chat model of this provider. A model
+   * list that loads proves the address, not the key: OpenRouter lists models to
+   * anyone. Only a completion shows the key, the model and the route all work.
+   */
+  app.post("/providers/:id/test", async (context) => {
+    const provider = store.getProvider(context.req.param("id"));
+    if (!provider) return fail(context, 404, "not_found", "Provider not found");
+    const body = await readJson<{ modelId?: string }>(context);
+    const candidates = store.listModels().filter(spec => spec.providerId === provider.id && spec.enabled && isChatKind(spec.kind));
+    const spec = candidates.find(item => item.id === body.modelId) ?? candidates.find(item => item.id === config.defaultModelId()) ?? candidates[0];
+    if (!spec) return context.json({ ok: false, reason: "no_chat_model", message: `${provider.name} has no enabled chat model to test` });
+    const started = Date.now();
+    const signal = AbortSignal.any([context.req.raw.signal, AbortSignal.timeout(30_000)]);
+    try {
+      const { model } = registry.resolve(spec.id);
+      const reply = await registry.runtime.completeSimple(model, {
+        systemPrompt: "Reply with the single word OK.",
+        messages: [{ role: "user", content: [{ type: "text", text: "OK?" }], timestamp: Date.now() }],
+      } as never, { signal, ...sideRequestOptions(spec), maxTokens: spec.reasoning ? 512 : 16 } as never);
+      const failed = (reply as { stopReason?: string; errorMessage?: string }).stopReason === "error";
+      if (failed) return context.json({ ok: false, modelId: spec.id, model: spec.name, latencyMs: Date.now() - started, message: (reply as { errorMessage?: string }).errorMessage ?? "" });
+      return context.json({ ok: true, modelId: spec.id, model: spec.name, latencyMs: Date.now() - started });
+    } catch (error) {
+      return context.json({ ok: false, modelId: spec.id, model: spec.name, latencyMs: Date.now() - started, message: error instanceof Error ? error.message : String(error) });
+    }
   });
 
   /** Live catalogue from the provider, so models can be added without typing ids. */
