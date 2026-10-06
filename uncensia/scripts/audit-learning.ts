@@ -61,6 +61,20 @@ try {
   await call("manage_skill", { action: "update", id: skill.id, revision: skill.revision, content: content + "Check sources.\n", reason: "Source check was missing" });
   await assert.rejects(() => call("manage_skill", { action: "update", id: skill.id, revision: skill.revision, content, reason: "stale" }), /changed/);
   assert.ok(managedSkills(dir).items.find(s => s.name === "audit-learning")!.content.includes("Check sources"));
+  // Created from parts: the header is written for the model, marked as learned.
+  await assert.rejects(() => call("manage_skill", { action: "create", name: "Bad Name", description: "x", body: "y", reason: "r" }), /lowercase/);
+  await call("manage_skill", { action: "create", name: "audit-style", description: "Use when writing: short: sentences", body: "Prefer short sentences.\nEnd on a hook.", reason: "The person rewrote a draft this way" });
+  const listed = await call("manage_skill", { action: "list" });
+  const style = listed.items.find((item: { name: string }) => item.name === "audit-style");
+  assert.ok(style && style.learned === true && !("content" in style), "list is compact and marks learned skills");
+  await assert.rejects(() => call("manage_skill", { action: "patch", id: "audit-style", revision: style.revision, old: "missing passage", new: "x", reason: "r" }), /does not occur/);
+  await assert.rejects(() => call("manage_skill", { action: "patch", id: "audit-style", revision: style.revision, old: "e", new: "x", reason: "r" }), /occurs \d+ times/);
+  await call("manage_skill", { action: "patch", id: "audit-style", revision: style.revision, old: "End on a hook.", new: "End every chapter on a hook.", reason: "The person asked for hooks per chapter" });
+  const patched = await call("manage_skill", { action: "read", id: "audit-style" });
+  assert.match(patched.content, /description: "Use when writing: short: sentences"/);
+  assert.match(patched.content, /End every chapter on a hook\./);
+  assert.equal(learningHistory()[0]!.target.endsWith("SKILL.md"), true, "history records the patched file");
+  await assert.rejects(() => call("manage_skill", { action: "patch", id: "audit-style", revision: style.revision, old: "Prefer", new: "Use", reason: "stale" }), /changed/);
   const knowledge = { title: "Evidence", content: "The amber telescope is a fixture, not a real fact.", sources: ["https://example.org/evidence"] };
   const saved = await call("save_knowledge", knowledge);
   assert.equal(saved.indexing, "indexed", "keyword indexing does not claim ready vector embeddings");
