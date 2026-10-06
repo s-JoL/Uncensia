@@ -6,9 +6,12 @@ struct MessageRow: View {
   let message: ChatMessage
   let api: APIClient?
   private let parts: [TranscriptPart]
-  init(message: ChatMessage, api: APIClient?, inlineMedia: Set<String> = []) {
+  /// False for a failed attempt that a retry in the same turn replaced.
+  private let showsFailure: Bool
+  init(message: ChatMessage, api: APIClient?, inlineMedia: Set<String> = [], showsFailure: Bool = true) {
     self.message = message
     self.api = api
+    self.showsFailure = showsFailure
     parts = Self.visibleParts(message: message, inlineMedia: inlineMedia)
   }
 
@@ -52,7 +55,7 @@ struct MessageRow: View {
       ForEach(parts) { part in
         TranscriptPartView(part: part, api: api, user: message.role == "user")
       }
-      if message.role == "assistant", message.content["stopReason"].stringValue == "error" {
+      if showsFailure, message.role == "assistant", message.content["stopReason"].stringValue == "error" {
         ProviderFailureNotice(raw: message.content["errorMessage"].stringValue ?? "")
       }
     }
@@ -127,7 +130,7 @@ struct StreamingRow: View {
         DisclosureGroup(uncensiaText("思考过程")) {
           Text(thinking).foregroundStyle(.secondary).textSelection(.enabled).padding(.top, 6)
         }
-        .padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+        .quietDisclosure()
       }
       ForEach(Array(tools.enumerated()), id: \.offset) { _, tool in
         ToolTranscriptCard(
@@ -138,7 +141,7 @@ struct StreamingRow: View {
       }
       if !text.isEmpty { RichMarkdown(text: text, api: api, streaming: true).accessibilityElement(children: .contain).accessibilityLabel(uncensiaText("正在回复")).accessibilityIdentifier("chat.live.text") }
       if !status.isEmpty {
-        Label(localizedStreamingStatus(status), image: "lucide-sparkles").font(.caption)
+        Label(localizedStreamingStatus(status), systemImage: "sparkles").font(.caption)
           .foregroundStyle(.secondary)
       }
       if text.isEmpty { ProgressView().controlSize(.small) }
@@ -220,7 +223,7 @@ private struct TranscriptPartView: View {
       case .thinking(let text):
         DisclosureGroup(uncensiaText("思考过程")) {
           Text(text).textSelection(.enabled).foregroundStyle(.secondary).padding(.top, 6)
-        }.padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+        }.quietDisclosure()
       case .image(let id, let role):
         VStack {
           AuthenticatedTranscriptImage(path: "/images/\(id)?w=1280", api: api).frame(
@@ -240,7 +243,7 @@ private struct TranscriptPartView: View {
             } else {
               Rectangle().fill(.black)
             }
-            Image("lucide-circle-play").font(.system(size: 54)).foregroundStyle(.white)
+            Image(systemName: "play.circle").font(.system(size: 54)).foregroundStyle(.white)
               .shadow(radius: 4)
           }.frame(maxWidth: 520).aspectRatio(16 / 9, contentMode: .fit).clipShape(
             RoundedRectangle(cornerRadius: 12))
@@ -250,7 +253,7 @@ private struct TranscriptPartView: View {
         Button {
           preview = .init(id: id, name: name, kind: mime == "application/pdf" ? .document : .file)
         } label: {
-          Label(name, image: mime == "application/pdf" ? "lucide-file-text" : "lucide-file").lineLimit(1)
+          Label(name, systemImage: mime == "application/pdf" ? "doc.text" : "doc").lineLimit(1)
         }.buttonStyle(.bordered)
       case .tool(let name, let arguments):
         ToolTranscriptCard(name: name, arguments: arguments, result: nil)
@@ -292,8 +295,17 @@ private struct ToolTranscriptCard: View {
         }
       }.padding(.top, 6)
     } label: {
-      Label(label, image: "lucide-wrench").foregroundStyle(.secondary)
-    }.padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 11))
+      Label(label, systemImage: "wrench.and.screwdriver").foregroundStyle(.secondary)
+    }.quietDisclosure()
+  }
+}
+
+extension View {
+  /// Reasoning and tool steps are secondary to the answer: small, grey, no accent tint.
+  func quietDisclosure() -> some View {
+    font(.footnote).tint(.secondary).foregroundStyle(.secondary)
+      .padding(.horizontal, 10).padding(.vertical, 6)
+      .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
   }
 }
 
@@ -699,7 +711,7 @@ private struct AuthenticatedTranscriptImage: View {
               .frame(width: geometry.size.width, height: geometry.size.height)
           }
         } else if failed {
-          Button { failed = false; attempt += 1 } label: { Label(uncensiaText("重试"), image: "lucide-refresh-cw") }
+          Button { failed = false; attempt += 1 } label: { Label(uncensiaText("重试"), systemImage: "arrow.clockwise") }
         } else { ProgressView() }
       }
       .clipped()
@@ -732,7 +744,7 @@ struct TranscriptMediaViewer: View {
           TranscriptQuickLook(url: url).accessibilityIdentifier("media.preview")
         } else if let error {
           ContentUnavailableView {
-            Label(uncensiaText("无法打开"), image: "lucide-triangle-alert")
+            Label(uncensiaText("无法打开"), systemImage: "exclamationmark.triangle")
           } description: {
             Text(error)
           } actions: {
@@ -749,10 +761,10 @@ struct TranscriptMediaViewer: View {
               NavigationLink {
                 TranscriptProvenance(assetID: item.id, kind: item.kind, api: api)
               } label: {
-                Image("lucide-info")
+                Image(systemName: "info.circle")
               }.accessibilityLabel(uncensiaText("来源")).accessibilityIdentifier("media.provenance")
             }
-            ShareLink(item: url) { Image("lucide-share") }
+            ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
           }
         }
       }
