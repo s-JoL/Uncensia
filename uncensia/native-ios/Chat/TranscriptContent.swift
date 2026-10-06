@@ -52,7 +52,57 @@ struct MessageRow: View {
       ForEach(parts) { part in
         TranscriptPartView(part: part, api: api, user: message.role == "user")
       }
+      if message.role == "assistant", message.content["stopReason"].stringValue == "error" {
+        ProviderFailureNotice(raw: message.content["errorMessage"].stringValue ?? "")
+      }
     }
+  }
+}
+
+/// A failed reply stays explained after the conversation is reopened, in the
+/// same words as the web client (`src/shared/provider-error.ts`).
+struct ProviderFailureNotice: View {
+  let raw: String
+  @State private var showsRaw = false
+
+  static func headline(for raw: String) -> (status: Int, text: String) {
+    let range = raw.range(of: #"(?:^|\s)(\d{3})(?::|\s)"#, options: .regularExpression)
+    let status = range.flatMap { Int(raw[$0].filter(\.isNumber)) } ?? 0
+    let text: String
+    switch status {
+    case 401: text = uncensiaText("服务商拒绝了密钥，请在设置里检查 API Key")
+    case 403: text = uncensiaText("服务商拒绝了这次请求，密钥可能没有该模型的权限")
+    case 404: text = uncensiaText("服务商没有这个模型或接口，请检查模型 ID 和 Base URL")
+    case 408: text = uncensiaText("服务商响应超时")
+    case 413: text = uncensiaText("请求内容过大，请缩短消息或减少附件")
+    case 422: text = uncensiaText("服务商拒绝了请求参数")
+    case 429: text = uncensiaText("触发了服务商限流，请稍后再试")
+    case 502: text = uncensiaText("服务商网关错误")
+    case 503: text = uncensiaText("服务商暂时不可用")
+    case 504: text = uncensiaText("服务商网关超时")
+    case 500...599: text = uncensiaText("服务商内部错误")
+    default:
+      text = raw.range(of: "fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|socket hang up|Connection error", options: [.regularExpression, .caseInsensitive]) == nil
+        ? uncensiaText("模型请求失败") : uncensiaText("无法连接到服务商，请检查网络或代理")
+    }
+    return (status, text)
+  }
+
+  var body: some View {
+    let failure = Self.headline(for: raw)
+    VStack(alignment: .leading, spacing: 6) {
+      Label(failure.status > 0 ? "\(failure.text) · \(failure.status)" : failure.text, systemImage: "exclamationmark.triangle")
+        .font(.subheadline).foregroundStyle(.red)
+      if !raw.isEmpty {
+        Button(showsRaw ? uncensiaText("收起原始错误") : uncensiaText("原始错误")) { showsRaw.toggle() }
+          .font(.caption).buttonStyle(.borderless)
+        if showsRaw { Text(raw).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled) }
+      }
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    .accessibilityIdentifier("chat.failure")
   }
 }
 

@@ -133,7 +133,7 @@ struct LibraryScreen: View {
           ScrollView(.horizontal) {
             HStack {
               sourceButton(uncensiaText("全部"), id: "all")
-              ForEach(store.sources, id: \.id) { sourceButton("\($0.id)  \($0.count)", id: $0.id) }
+              ForEach(store.sources, id: \.id) { sourceButton("\(librarySourceLabel($0.id))  \($0.count)", id: $0.id) }
             }
           }.scrollIndicators(.hidden)
         }
@@ -169,7 +169,7 @@ struct LibraryScreen: View {
           .background(.quaternary).clipShape(RoundedRectangle(cornerRadius: 11))
       }.accessibilityIdentifier("library.open.\(file.id)")
       Text(file.name).font(.headline).lineLimit(1)
-      Text("\(file.byteLabel) · \(file.source)").font(.caption).foregroundStyle(.secondary)
+      Text("\(file.byteLabel) · \(librarySourceLabel(file.source))").font(.caption).foregroundStyle(.secondary)
         .lineLimit(1)
       HStack {
         attachButton(file)
@@ -188,7 +188,7 @@ struct LibraryScreen: View {
       ).onTapGesture { open(file) }
       VStack(alignment: .leading) {
         Text(file.name).lineLimit(1)
-        Text("\(file.byteLabel) · \(file.source) · \(file.embeddingStatus)").font(.caption)
+        Text("\(file.byteLabel) · \(librarySourceLabel(file.source)) · \(file.embeddingStatus)").font(.caption)
           .foregroundStyle(.secondary)
       }
       Spacer()
@@ -548,5 +548,22 @@ private struct QuickLookView: UIViewControllerRepresentable {
     func previewController(_ controller: QLPreviewController, previewItemAt index: Int)
       -> QLPreviewItem
     { url as NSURL }
+  }
+}
+
+/// The same names the web library uses for where a file came from (`FILE_SOURCE_LABELS`).
+func librarySourceLabel(_ id: String) -> String {
+  switch id {
+  case "web": uncensiaText("网页原件")
+  case "excerpt": uncensiaText("原文摘录")
+  case "tool-output": uncensiaText("工具原始记录")
+  case "deliverable": uncensiaText("交付快照")
+  case "mcp": uncensiaText("MCP 资料")
+  case "workspace": uncensiaText("工作成果")
+  case "upload": uncensiaText("上传")
+  case "generated": uncensiaText("生成")
+  case "note": uncensiaText("自建")
+  case "librechat": uncensiaText("迁移")
+  default: id
   }
 }

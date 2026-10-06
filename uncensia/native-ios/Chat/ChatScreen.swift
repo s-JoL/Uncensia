@@ -243,6 +243,7 @@ private struct TranscriptView: View {
             }.scrollTargetLayout().padding(.horizontal, 20).padding(.vertical, 20)
         }
         .coordinateSpace(name: "transcriptViewport")
+        .readableUnderNavigationBar()
         .accessibilityIdentifier("chat.transcript")
         .scrollDismissesKeyboard(.interactively)
         .scrollPosition($position)
