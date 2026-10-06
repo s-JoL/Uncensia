@@ -1,6 +1,6 @@
 import { uiText } from "../i18n.tsx";
 import { useState } from "react";
-import { CHARACTER_CARD_MAX_BYTES, previewCharacterCard, type CharacterCardPreview } from "@shared/character-card.ts";
+import { CHARACTER_CARD_MAX_BYTES, extractCardFromPng, previewCharacterCard, type CharacterCardPreview } from "@shared/character-card.ts";
 import { Button } from "./button.tsx";
 import { Textarea } from "./input.tsx";
 
@@ -13,14 +13,23 @@ export function CharacterCardImport({ onApply }: { onApply: (card: CharacterCard
   return <details className="rounded-lg border p-3 text-sm">
     <summary className="cursor-pointer font-medium">{uiText("从角色卡导入设定")}</summary>
     <div className="mt-3 space-y-3">
-      <p className="text-xs leading-relaxed text-muted-foreground">{uiText("读取 Character Card V2 JSON 的角色、场景和示例对白。预览后应用到草稿，保存对话设定才会生效。")}</p>
-      <input type="file" accept=".json,application/json" aria-label={uiText("选择角色卡 JSON")} className="block w-full min-w-0 text-xs file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-2" onChange={async event => {
+      <p className="text-xs leading-relaxed text-muted-foreground">{uiText("读取角色卡（PNG 或 JSON，V1/V2/V3）的角色、场景、开场白、示例对白和世界书。预览后应用到草稿，保存对话设定才会生效。")}</p>
+      <input type="file" accept=".png,image/png,.json,application/json" aria-label={uiText("选择角色卡文件")} className="block w-full min-w-0 text-xs file:mr-3 file:rounded-md file:border file:bg-background file:px-3 file:py-2" onChange={async event => {
         const file = event.target.files?.[0];
         event.target.value = "";
         if (!file) return;
         change("");
-        if (file.size > CHARACTER_CARD_MAX_BYTES) { setError(uiText("角色卡 JSON 最大支持 1 MB")); return; }
-        try { change(await file.text()); } catch { setError(uiText("无法读取文件，请重新选择")); }
+        try {
+          if (file.type === "image/png" || file.name.toLowerCase().endsWith(".png")) {
+            if (file.size > 20 * CHARACTER_CARD_MAX_BYTES) { setError(uiText("角色卡图片过大")); return; }
+            const embedded = extractCardFromPng(new Uint8Array(await file.arrayBuffer()));
+            if (!embedded) { setError(uiText("这张 PNG 里没有角色卡数据")); return; }
+            change(embedded);
+            return;
+          }
+          if (file.size > CHARACTER_CARD_MAX_BYTES) { setError(uiText("角色卡 JSON 最大支持 1 MB")); return; }
+          change(await file.text());
+        } catch { setError(uiText("无法读取文件，请重新选择")); }
       }} />
       <Textarea rows={4} value={source} aria-label={uiText("角色卡 JSON 内容")} placeholder={uiText("也可以在这里粘贴角色卡 JSON……")} onChange={event => change(event.target.value)} />
       <Button variant="outline" size="sm" disabled={!source.trim()} onClick={() => {
@@ -30,7 +39,7 @@ export function CharacterCardImport({ onApply }: { onApply: (card: CharacterCard
       {error ? <p role="alert" className="text-destructive">{error}</p> : null}
       {preview ? <div className="space-y-3 rounded-md bg-muted/40 p-3">
         <p className="font-medium">{preview.name}</p>
-        {[[uiText("角色"), preview.character], [uiText("场景"), preview.scene], [uiText("示例对白"), preview.examples]].map(([label, value]) => <div key={label}>
+        {[[uiText("角色"), preview.character], [uiText("场景"), preview.scene], [uiText("开场白"), preview.opening], [uiText("示例对白"), preview.examples], [uiText("世界书"), preview.lore]].filter(([, value], index) => index < 2 || value).map(([label, value]) => <div key={label}>
           <p className="text-xs text-muted-foreground">{label}</p>
           <p className="max-h-36 overflow-auto whitespace-pre-wrap break-words text-sm">{value || uiText("（空）")}</p>
         </div>)}

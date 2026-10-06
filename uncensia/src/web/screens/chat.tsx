@@ -605,6 +605,15 @@ export function Chat({
     }
   };
 
+  // Illustrating a passage is the creative loop the product is built around:
+  // the request lands in the composer so the reader can add a style first.
+  const canIllustrate = !running && bootstrap.models.some(model => model.enabled && model.configured && (model.ops ?? []).includes("text_to_image"));
+  const illustrate = (turn: Turn, latest: boolean) => {
+    const passage = turnText(turn).replace(/[#*_`>~|]+/g, " ").replace(/\s+/g, " ").trim();
+    setDraft(latest ? uiText("给上面这段内容配一张插图。") : uiText("给这段内容配一张插图：「{0}」", [passage.length > 120 ? `${passage.slice(0, 120)}…` : passage]));
+    textareaRef.current?.focus();
+  };
+
   const resume = async () => {
     if (!conversationId || running) return;
     setRunning(true);
@@ -760,6 +769,7 @@ export function Chat({
         </div>
         {conversationId ? <Menu trigger={<Button variant="ghost" size="icon" aria-label={uiText("对话操作")}><MoreHorizontal /></Button>}>
           <MenuItem disabled={running} onSelect={() => setShowTree(true)}>{uiText("查看版本与分支")}</MenuItem>
+          <MenuItem disabled={!turns.length} onSelect={() => exportMarkdown(title, turns)}>{uiText("导出为 Markdown")}</MenuItem>
           <MenuItem disabled={running} onSelect={async () => { try { setRunning(true); const run = await api.compactConversation(conversationId); await follow(conversationId, run.runId, run.seq, new Set()); } catch (error) { setRunning(false); toast(error instanceof Error ? error.message : String(error), true); } }}>{uiText("整理上下文")}</MenuItem>
         </Menu> : null}
         <Button variant="ghost" size="sm" className="relative" aria-label={uiText("任务与成果")} onClick={() => setShowTasks(true)}><ListTodo /><span className="hidden sm:inline">{uiText("任务与成果")}</span>{backgroundTasks.some(task => ["pending", "running"].includes(task.status)) ? <span aria-hidden className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary sm:static" /> : null}</Button>
@@ -816,6 +826,7 @@ export function Chat({
                     : undefined
                 }
                 onContinue={canAct && turn === visibleTurns.at(-1) && turn.role === "assistant" ? resume : undefined}
+                onIllustrate={canIllustrate && turn.role === "assistant" && turnText(turn).trim().length > 40 ? () => illustrate(turn, turn === visibleTurns.at(-1)) : undefined}
               />
             ))}
             {!running ? proposals.map(proposal => (
@@ -1026,7 +1037,13 @@ export function Chat({
           />
           {roleplay.enabled ? (
             <>
-              <CharacterCardImport onApply={card => setRoleplay(current => ({ ...current, character: card.character, scene: card.scene, examples: card.examples }))} />
+              <CharacterCardImport onApply={card => setRoleplay(current => ({
+                ...current,
+                character: card.character,
+                scene: [card.scene, card.opening ? uiText("开场白（第一条回复从这里开始）：\n{0}", [card.opening]) : ""].filter(Boolean).join("\n\n"),
+                examples: card.examples,
+                world: card.lore || current.world,
+              }))} />
               <Field label={uiText("角色")} hint={uiText("身份、性格、说话方式与关系")}>
                 <Textarea
                   rows={4}
@@ -1236,6 +1253,7 @@ const TurnView = memo(function TurnView({
   onRegenerate,
   onContinue,
   onFeedback,
+  onIllustrate,
 }: {
   turn: Turn;
   citations: Map<string, Citation>;
@@ -1248,6 +1266,8 @@ const TurnView = memo(function TurnView({
   onRegenerate?: () => void;
   onContinue?: () => void;
   onFeedback?: (text: string) => Promise<void>;
+  /** Puts an illustration request for this reply in the composer. */
+  onIllustrate?: () => void;
 }) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState("");
@@ -1394,6 +1414,11 @@ const TurnView = memo(function TurnView({
             <Button variant="ghost" size="sm" onClick={onContinue}>
               {uiText("继续")}</Button>
           ) : null}
+          {onIllustrate ? (
+            <Button variant="ghost" size="sm" onClick={onIllustrate}>
+              <ImageIcon />
+              {uiText("配图")}</Button>
+          ) : null}
           <CopyButton text={turnText(turn)} />
         </div>
       ) : null}
@@ -1405,6 +1430,28 @@ const TurnView = memo(function TurnView({
     </div>
   );
 });
+
+/**
+ * The conversation as a readable document: a story or a draft taken out of the
+ * chat. Pictures are named by their library id, since a standalone file cannot
+ * reach the server's authenticated image URLs.
+ */
+function exportMarkdown(title: string, turns: Turn[]) {
+  const heading = title && title !== "New conversation" ? title : uiText("未命名对话");
+  const body = turns.map(turn => {
+    const text = turnText(turn).trim();
+    const pictures = turn.parts.filter(part => part.kind === "image").map(part => `*[${uiText("图片")} ${(part as { imageId: string }).imageId}]*`);
+    const content = [text, ...pictures].filter(Boolean).join("\n\n");
+    if (!content) return "";
+    return turn.role === "user" ? content.split("\n").map(line => `> ${line}`).join("\n") : content;
+  }).filter(Boolean).join("\n\n---\n\n");
+  const blob = new Blob([`# ${heading}\n\n${body}\n`], { type: "text/markdown;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${heading.replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 80) || "conversation"}.md`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+}
 
 /**
  * One lesson the assistant proposes to keep. Nothing is written until the

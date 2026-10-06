@@ -82,6 +82,14 @@ const FIELD_LABELS: Record<string, string> = {
   seed: uiText("随机种子"),
   steps: uiText("步数"),
   negative_prompt: uiText("负面提示词"),
+  // Fallbacks for schemas saved without titles by older installations.
+  size: uiText("尺寸"),
+  output_format: uiText("文件格式"),
+  duration: uiText("时长"),
+  audio_enable: uiText("生成声音"),
+  prompt_expansion_enable: uiText("供应商扩写提示词"),
+  n: uiText("输出数量"),
+  quality: uiText("质量"),
 };
 
 /** Never the literal `null`: a picture the library has no name for is its id. */
@@ -364,7 +372,7 @@ export function Studio({ onOpenRail }: { onOpenRail: () => void }) {
   const negativeValue = String(values.negative_prompt ?? "");
   const missingFields = [...required].filter((key) => !filled(values[key]));
   const canRun = Boolean(tool) && !busy && missingFields.length === 0;
-  const missingLabels = missingFields.map(key => uiText(FIELD_LABELS[key] ?? tool?.schema.properties?.[key]?.title ?? key.replaceAll("_", " ")));
+  const missingLabels = missingFields.map(key => uiText(tool?.schema.properties?.[key]?.title ?? FIELD_LABELS[key] ?? key.replaceAll("_", " ")));
 
   const run = async () => {
     if (!tool) return;
@@ -1058,7 +1066,9 @@ function SchemaField({
   label?: string;
   required?: boolean;
 }) {
-  const fieldLabel = uiText(given ?? FIELD_LABELS[name] ?? schema.title ?? name.replaceAll("_", " "));
+  // The model's own title wins: the same name means different things per model
+  // (Seedream's size is pixels, Wan's is 480p/720p).
+  const fieldLabel = uiText(given ?? schema.title ?? FIELD_LABELS[name] ?? name.replaceAll("_", " "));
   const label = required && fieldLabel ? uiText("{0}（必填）", [fieldLabel]) : fieldLabel;
   const hint = describe(schema);
   const options = enumOf(schema);
