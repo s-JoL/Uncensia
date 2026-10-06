@@ -36,7 +36,7 @@ export function ConversationEvidence({ id, revision }: { id: string; revision?: 
     document.addEventListener("visibilitychange", load);
     return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", load); };
   }, [id, open, revision, refresh]);
-  return <details className="mt-4 rounded border p-3 text-sm" onToggle={event => setOpen(event.currentTarget.open)}><summary>{uiText("交付、反馈与执行记录")}</summary>
+  return <details className="mt-4 rounded border p-3 text-sm" onToggle={event => setOpen(event.currentTarget.open)}><summary>{uiText("成果与记录")}</summary>
     {error ? <p role="alert">{error}</p> : !data ? <p>{uiText("加载中…")}</p> : <div className="mt-3 flex min-w-0 flex-col gap-3">
       {!data.deliverables.length && !data.feedback.length && !data.contexts.length ? <p>{uiText("暂无记录")}</p> : null}
       {data.deliverables.map(item => <DeliverableCard key={`${item.key}:${item.revision}`} id={id} item={item} onChange={() => setRefresh(n => n + 1)} />)}
