@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { AgentSession, DefaultResourceLoader, SettingsManager, createReadTool, loadSkillsFromDir, formatSkillsForPrompt, type Skill } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { formatRoleplayContext } from "../src/server/prompts/context.ts";
-import { previewCharacterCard } from "../src/shared/character-card.ts";
+import { extractCardFromPng, previewCharacterCard } from "../src/shared/character-card.ts";
 import {
   enrichDiscoveredSkills,
   omitSkillProceduresForCompaction,
@@ -463,6 +463,26 @@ await check("CCv2 text preview separates voice, scenario and non-prompt metadata
     let rejected = false; try { previewCharacterCard(invalid); } catch { rejected = true; }
     assert(rejected, "invalid or oversized card was accepted");
   }
+  assert(preview.opening === "A greeting that has not happened", "first message dropped");
+});
+
+await check("cards as shared: V1, V3, missing optional fields, lorebook and PNG-embedded", async () => {
+  const v1 = previewCharacterCard(JSON.stringify({ name: "Rin", description: "{{char}} keeps bees.", first_mes: "Hello, {{user}}." }));
+  assert(v1.character.includes("Rin keeps bees.") && v1.opening === "Hello, {{user}}." && v1.notices.some(n => n.includes("{{user}}")), "V1 card");
+  const v3 = previewCharacterCard(JSON.stringify({ spec: "chara_card_v3", spec_version: "3.0", data: { name: "Kai", description: "A pilot.", character_book: { entries: [
+    { keys: ["Harbor"], content: "{{char}}'s home port.", enabled: true }, { keys: ["Old"], content: "disabled", enabled: false } ] } } }));
+  assert(v3.lore.includes("【Harbor】 Kai's home port.") && !v3.lore.includes("disabled"), "V3 lorebook flattened, disabled entries skipped");
+  const card = JSON.stringify({ spec: "chara_card_v2", data: { name: "Mira", description: "Repairs clocks." } });
+  assert(previewCharacterCard(card).character.includes("Repairs clocks."), "a card without optional fields is accepted");
+  // A minimal PNG: signature, a tEXt chunk with keyword "chara", IEND. CRCs are not checked by readers.
+  const chunk = (type: string, body: Uint8Array) => {
+    const out = new Uint8Array(12 + body.length); const view = new DataView(out.buffer);
+    view.setUint32(0, body.length); out.set(new TextEncoder().encode(type), 4); out.set(body, 8); return out;
+  };
+  const text = new Uint8Array([...new TextEncoder().encode("chara"), 0, ...new TextEncoder().encode(Buffer.from(card, "utf8").toString("base64"))]);
+  const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, ...chunk("tEXt", text), ...chunk("IEND", new Uint8Array())]);
+  assert(extractCardFromPng(png) === card, "PNG card text chunk");
+  assert(extractCardFromPng(new Uint8Array([1, 2, 3])) === null, "non-PNG bytes");
 });
 
 fs.rmSync(sandbox, { recursive: true, force: true });
