@@ -22,6 +22,14 @@ for (const file of fs.readdirSync(root, { recursive: true }).filter(file => /\.t
   }
   walk(source);
 }
+// Labels reach uiText through a lookup, so the literal scan above never sees them.
+const { FILE_SOURCE_LABELS, OP_LABELS } = await import('../src/shared/types.ts');
+const { classifyProviderFailure } = await import('../src/shared/provider-error.ts');
+const failures = ['401: {}', '403: {}', '404: {}', '408: {}', '413: {}', '422: {}', '429: {}', '500: {}', '502: {}', '503: {}', '504: {}', '599: {}', 'fetch failed', 'odd'].map(raw => classifyProviderFailure(raw).headline);
+for (const key of [...Object.values(FILE_SOURCE_LABELS), ...Object.values(OP_LABELS), ...failures]) {
+  assert.ok(dictionary[key], `missing English translation for looked-up label ${key}`);
+  count++;
+}
 assert.equal(language(), 'zh-CN');
 assert.equal(uiText('对话'), '对话');
 let selected = 'en';

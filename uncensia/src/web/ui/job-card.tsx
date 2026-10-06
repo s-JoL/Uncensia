@@ -42,6 +42,9 @@ export function JobCard({
   const videos = job.assets.filter((asset) => asset.kind === "video");
   const images = job.assets.filter((asset) => asset.kind === "image");
   const percent = job.progress == null ? null : Math.round(job.progress * 100);
+  // Providers report states such as IN_PROGRESS as the note; the badge already
+  // says that in words. A sentence from the provider is still worth showing.
+  const note = job.note && !/^[A-Z][A-Z0-9_]*$/.test(job.note.trim()) ? job.note : "";
 
   return (
     <Card className={cn("flex flex-col gap-2 p-2.5", className)}>
@@ -74,9 +77,9 @@ export function JobCard({
           />
         </div>
       ) : null}
-      {active && (job.note || percent != null) ? (
+      {active && (note || percent != null) ? (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="min-w-0 flex-1 truncate">{job.note}</span>
+          <span className="min-w-0 flex-1 truncate">{note}</span>
           {percent == null ? null : <span className="shrink-0 tabular-nums">{percent}%</span>}
         </p>
       ) : null}

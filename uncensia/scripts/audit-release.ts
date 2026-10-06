@@ -20,8 +20,11 @@ try {
   assert.equal(caps.embedding.baseUrl, 'https://openrouter.ai/api/v1');
   assert.equal(caps.embedding.model, 'qwen/qwen3-embedding-8b');
   assert.equal(caps.embedding.hasKey, false);
-  assert.equal(caps.coding.write, true);
-  assert.equal(caps.coding.shell, true);
+  // Developer tools start off; skill learning starts on, persistent instructions off.
+  assert.equal(caps.coding.read, false);
+  assert.equal(caps.coding.write, false);
+  assert.equal(caps.coding.shell, false);
+  assert.deepEqual(caps.learning, { skills: true, prompts: false });
   assert.equal(caps.embedding.chunkOverlap, 150);
   services.store.upsertMemory('fixture', 'User-owned memory', 1);
   services.config.setDefaultModelId('user-choice');

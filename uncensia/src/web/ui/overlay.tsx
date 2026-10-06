@@ -85,7 +85,7 @@ export function Sheet({
         <Primitive.Overlay className={overlay} />
         <Primitive.Content
           className={cn(
-            "fixed inset-y-0 left-0 z-50 flex w-[min(19rem,86vw)] flex-col bg-sidebar " +
+            "fixed inset-y-0 left-0 z-50 flex w-[min(19rem,86vw)] flex-col bg-sidebar pt-[env(safe-area-inset-top)] " +
               "border-r border-sidebar-border shadow-2xl data-[state=open]:animate-in-fast",
             className,
           )}

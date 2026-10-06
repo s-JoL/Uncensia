@@ -1,4 +1,4 @@
-import type { ModelRegistry } from "../models/registry.ts";
+import { sideRequestOptions, type ModelRegistry } from "../models/registry.ts";
 
 const TITLE_INSTRUCTION =
   "Title only the conversation below. Ignore the system message, model identity, provider names, and tool names when choosing the title. Return only a concise title in the conversation's language, at most 5 words.";
@@ -83,7 +83,7 @@ export async function generateTitle(input: {
   assistantText: string;
   signal?: AbortSignal;
 }): Promise<string> {
-  const { model } = input.registry.resolve(input.modelId);
+  const { model, spec } = input.registry.resolve(input.modelId);
   const conversation = [
     `User: ${input.userText.slice(0, MAX_EXCERPT)}`,
     input.assistantText ? `Assistant: ${input.assistantText.slice(0, MAX_EXCERPT)}` : "",
@@ -103,7 +103,7 @@ export async function generateTitle(input: {
         },
       ],
     } as never,
-    { signal: input.signal, thinkingLevel: "off" } as never,
+    { signal: input.signal, ...sideRequestOptions(spec) } as never,
   );
 
   const text = (message.content ?? [])

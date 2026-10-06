@@ -10,7 +10,9 @@ const API = process.env.UNCENSIA_API_URL ?? process.env.LUMA_API_URL ?? "http://
 export default defineConfig({
   plugins: [react(), tailwind()],
   root: "src/web",
-  publicDir: false,
+  // Fixed-name files the browser asks for by path: the web app manifest and
+  // its icons, so "Add to Home Screen" works without hashed URLs.
+  publicDir: "public",
   resolve: {
     alias: {
       "@shared": fileURLToPath(new URL("./src/shared", import.meta.url)),
