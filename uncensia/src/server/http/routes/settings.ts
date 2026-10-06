@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type {
   ApiMode,
   Capabilities,
@@ -40,10 +40,28 @@ function apiMode(input: unknown): ApiMode | undefined {
   return typeof input === "string" && API_MODE_IDS.has(input as ApiMode) ? (input as ApiMode) : undefined;
 }
 
+const proposalFailure = (context: Context, error: unknown) => {
+  const status = (error as { status?: number }).status;
+  return fail(context, status === 404 || status === 409 ? status : 400, status === 404 ? "not_found" : "invalid", error instanceof Error ? error.message : String(error));
+};
+
 export function settingsRoutes(services: Services) {
   const app = new Hono();
   const { store, config, vault, registry, mcp } = services;
   app.get("/learning/history", context => context.json({ items: learningHistory() }));
+
+  // Proposals wait for the person; accepting writes through the same skill and
+  // memory paths as everything else, so history and next-run discovery apply.
+  app.get("/conversations/:id/learning-proposals", context => context.json({ items: services.runtime.reflection.list(context.req.param("id")) }));
+  app.post("/learning-proposals/:id/accept", async context => {
+    const body = await readJson<{ as?: "memory" }>(context);
+    try { return context.json(services.runtime.reflection.accept(context.req.param("id"), body.as === "memory" ? "memory" : undefined)); }
+    catch (error) { return proposalFailure(context, error); }
+  });
+  app.post("/learning-proposals/:id/dismiss", context => {
+    try { return context.json(services.runtime.reflection.dismiss(context.req.param("id"))); }
+    catch (error) { return proposalFailure(context, error); }
+  });
 
   const workspace = () => config.capabilities().coding.workspace;
   const statusOf = (error: unknown) => ((error as { status?: number }).status === 404 ? 404 : (error as { status?: number }).status === 409 ? 409 : 400);

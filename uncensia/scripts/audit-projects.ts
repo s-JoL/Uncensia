@@ -16,6 +16,8 @@ const { fileSearchTool } = await import("../src/server/tools/file-search.ts");
 const { projectFileIds, conversationProject, updateProject } = await import("../src/server/projects.ts");
 const { deliverable } = await import("../src/server/resources.ts");
 const services = createServices();
+// Counts every request the stub sees; a background learning review would add one.
+services.config.saveCapabilities({ learning: { ...services.config.capabilities().learning!, proposals: false } });
 try {
   const app = createApp(services);
   const login = await app.request("/v1/auth/token", { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({accessCode:process.env.UNCENSIA_ACCESS_CODE}) });

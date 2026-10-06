@@ -371,7 +371,7 @@ export interface Capabilities {
   web: WebCapability;
   coding: CodingCapability;
   /** Optional only for pre-split clients/configurations; Config normalizes it. */
-  learning?: { skills: boolean; prompts: boolean };
+  learning?: LearningCapability;
   embedding: EmbeddingCapability;
   studio: StudioCapability;
 }
@@ -623,6 +623,33 @@ export interface RunSummary {
 export type BackgroundTaskStatus = "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
 
 export type TaskMode = "once" | "continuous" | "interval";
+export interface LearningCapability {
+  /** The assistant may create and revise skills. */
+  skills: boolean;
+  /** The assistant may revise the persistent instructions. */
+  prompts: boolean;
+  /** After a run, propose a lesson worth keeping; nothing is saved until the person accepts. */
+  proposals?: boolean;
+}
+
+export type LearningProposalKind = "memory" | "skill_new" | "skill_patch";
+
+export interface LearningProposal {
+  id: string;
+  conversationId: string;
+  runId: string | null;
+  kind: LearningProposalKind;
+  /** One sentence, in the person's language, of what would be kept. */
+  summary: string;
+  /** memory: key/value; skill_new: name/description/body; skill_patch: skill/old/new/revision. */
+  payload: Record<string, string>;
+  status: "pending" | "accepted" | "dismissed";
+  /** What accepting did, e.g. the memory key or skill name written. */
+  result: string | null;
+  createdAt: number;
+  resolvedAt: number | null;
+}
+
 export interface LearningChange {
   id: string;
   at: string;

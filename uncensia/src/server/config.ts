@@ -65,7 +65,7 @@ const DEFAULT_CAPABILITIES: Capabilities = {
   coding: { read: false, write: false, shell: false, workspace: "" },
   // Skills are versioned, take effect next run and can be reverted, so learning
   // them is on; persistent instructions change every conversation and are not.
-  learning: { skills: true, prompts: false },
+  learning: { skills: true, prompts: false, proposals: true },
   embedding: {
     enabled: true,
     baseUrl: "https://openrouter.ai/api/v1",
@@ -127,6 +127,7 @@ export class Config {
       learning: {
         skills: stored.learning?.skills ?? stored.coding?.write ?? DEFAULT_CAPABILITIES.learning!.skills,
         prompts: stored.learning?.prompts ?? stored.coding?.write ?? DEFAULT_CAPABILITIES.learning!.prompts,
+        proposals: stored.learning?.proposals ?? DEFAULT_CAPABILITIES.learning!.proposals,
       },
       embedding: {
         ...DEFAULT_CAPABILITIES.embedding,
@@ -178,7 +179,7 @@ export class Config {
         shell: Boolean(coding.shell),
         workspace: String(coding.workspace || path.resolve(paths.root, "..")),
       },
-      learning: { skills: Boolean(learning.skills), prompts: Boolean(learning.prompts) },
+      learning: { skills: Boolean(learning.skills), prompts: Boolean(learning.prompts), proposals: learning.proposals !== false },
       embedding: {
         enabled: Boolean(embedding.enabled),
         baseUrl: String(embedding.baseUrl || DEFAULT_CAPABILITIES.embedding.baseUrl).replace(/\/$/, ""),

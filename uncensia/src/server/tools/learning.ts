@@ -23,7 +23,7 @@ export function learningHistory(): LearningChange[] {
 }
 
 /** Durable evidence and old content are user-readable files, never global memory. */
-function record(conversationId: string, kind: LearningChange["kind"], target: string, before: string | null, after: string, reason: string) {
+export function record(conversationId: string, kind: LearningChange["kind"], target: string, before: string | null, after: string, reason: string) {
   if (!reason.trim()) throw new Error("Explain the observed problem and why this change helps.");
   const dir = path.join(paths.data, "learning-history");
   fs.mkdirSync(dir, { recursive: true });

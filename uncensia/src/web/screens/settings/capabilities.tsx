@@ -365,6 +365,10 @@ export function CapabilitiesSection({ reload }: { reload: () => Promise<void> })
       </Section>
       <Section title={uiText("持续学习")} hint={uiText("助手把你的偏好和做法沉淀为技能与长期指令，以后的对话直接使用。所有修改都有版本记录，可以回滚；不会训练或更换模型。") }>
         <SectionBody>
+          <Field label={uiText("学习建议")} hint={uiText("对话中出现反馈、重写或较复杂的任务后，助手会提出一条值得保留的偏好或做法，显示在回复下方；你点保存才会写入。每次建议会额外调用一次模型。") }>
+            <Switch label={uiText("提出学习建议")} checked={capabilities.learning?.proposals ?? true}
+              onChange={value => void patch({ learning: { proposals: value } })} />
+          </Field>
           <Field label={uiText("管理技能")} hint={uiText("允许助手新增、修改和启停技能，保存修改原因与旧版本。已有技能的读取和使用不受此开关影响。") }>
             <Switch label={uiText("允许修改技能")} checked={capabilities.learning?.skills ?? false}
               onChange={value => void patch({ learning: { skills: value } })} />
