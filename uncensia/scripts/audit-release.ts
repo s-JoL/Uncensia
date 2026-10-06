@@ -24,7 +24,7 @@ try {
   assert.equal(caps.coding.read, false);
   assert.equal(caps.coding.write, false);
   assert.equal(caps.coding.shell, false);
-  assert.deepEqual(caps.learning, { skills: true, prompts: false });
+  assert.deepEqual(caps.learning, { skills: true, prompts: false, proposals: true });
   assert.equal(caps.embedding.chunkOverlap, 150);
   services.store.upsertMemory('fixture', 'User-owned memory', 1);
   services.config.setDefaultModelId('user-choice');

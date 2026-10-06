@@ -30,12 +30,12 @@ try {
   // Legacy installations inherit their old write permission once; saving any
   // capability materializes the independent values for subsequent updates.
   services.store.setSetting("capabilities", { coding: { read: true, write: false, shell: false, workspace: dir } });
-  assert.deepEqual(services.config.capabilities().learning, { skills: false, prompts: false });
+  assert.deepEqual(services.config.capabilities().learning, { skills: false, prompts: false, proposals: true });
   services.config.saveCapabilities({ coding: { ...services.config.capabilities().coding, write: true } });
   assert.ok(!tools().some(t => t.name === "manage_prompt"));
   assert.ok(!tools().some(t => t.name === "manage_skill"));
   services.store.setSetting("capabilities", { coding: { read: true, write: true, shell: false, workspace: dir } });
-  assert.deepEqual(services.config.capabilities().learning, { skills: true, prompts: true });
+  assert.deepEqual(services.config.capabilities().learning, { skills: true, prompts: true, proposals: true });
   services.config.saveCapabilities({ coding: { ...services.config.capabilities().coding, write: false } });
   assert.ok(tools().some(t => t.name === "manage_skill"), "workspace writes do not control skills");
   services.config.saveCapabilities({ learning: { skills: true, prompts: false } });

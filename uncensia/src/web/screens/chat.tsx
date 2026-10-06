@@ -9,6 +9,7 @@ import {
   Sparkles,
   FileText,
   ImageIcon,
+  Lightbulb,
   Menu as MenuIcon,
   Paperclip,
   Pencil,
@@ -28,6 +29,7 @@ import type {
   Bootstrap,
   ConversationNote,
   FileRecord,
+  LearningProposal,
   Question,
   RoleplayContext,
   StoredMessage,
@@ -134,6 +136,8 @@ export function Chat({
   const [savingContext, setSavingContext] = useState(false);
   const [showTasks, setShowTasks] = useState(false);
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
+  /** Lessons proposed after a run, waiting for the reader to keep or dismiss. */
+  const [proposals, setProposals] = useState<LearningProposal[]>([]);
   const [editingSeq, setEditingSeq] = useState<number | null>(null);
   const [runningInstruction, setRunningInstruction] = useState<"steer" | "follow-up">("steer");
 
@@ -195,6 +199,12 @@ export function Chat({
    * second device. The transcript already holds the settled messages, so the
    * stream is replayed from the run's resume point.
    */
+  const loadProposals = useCallback((id: string) => {
+    void api.learningProposals(id).then(({ items }) => {
+      if (openConversationRef.current === id) setProposals(items.filter(item => item.status === "pending"));
+    }).catch(() => undefined);
+  }, []);
+
   const follow = useCallback(
     async (id: string, runId: string, from: number, known: Set<string>) => {
       abortRef.current?.abort();
@@ -254,6 +264,9 @@ export function Chat({
           // A turn that drew three pictures took minutes, and the reader has
           // usually gone elsewhere by the time it lands.
           if (completed) notifyFinished(uiText("回复完成"), turnText(turn.snapshot()).trim().slice(0, 120));
+          // A proposal is written in the background after the run ends; it is
+          // looked for a few times rather than streamed on a closed run.
+          if (completed) for (const delay of [4_000, 10_000, 20_000]) setTimeout(() => loadProposals(id), delay);
           // The live turn is only swapped for the stored transcript once that
           // transcript is actually in hand; dropping it while the network is
           // down would blank an answer the reader was in the middle of.
@@ -269,7 +282,7 @@ export function Chat({
         }
       }
     },
-    [onConversationChanged, syncMessages, toast],
+    [onConversationChanged, syncMessages, toast, loadProposals],
   );
 
   useEffect(() => {
@@ -286,6 +299,8 @@ export function Chat({
     }
     openConversationRef.current = conversationId;
     setEditingSeq(null);
+    setProposals([]);
+    if (conversationId) loadProposals(conversationId);
     if (!conversationId) {
       setTitle("");
       setModelId(bootstrap.defaultModelId);
@@ -803,6 +818,9 @@ export function Chat({
                 onContinue={canAct && turn === visibleTurns.at(-1) && turn.role === "assistant" ? resume : undefined}
               />
             ))}
+            {!running ? proposals.map(proposal => (
+              <LearningProposalBar key={proposal.id} proposal={proposal} onSettled={id => setProposals(items => items.filter(item => item.id !== id))} />
+            )) : null}
           </div>
         )}
       </div>
@@ -1387,6 +1405,49 @@ const TurnView = memo(function TurnView({
     </div>
   );
 });
+
+/**
+ * One lesson the assistant proposes to keep. Nothing is written until the
+ * reader chooses; the proposed text is one click away before deciding.
+ */
+function LearningProposalBar({ proposal, onSettled }: { proposal: LearningProposal; onSettled: (id: string) => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const p = proposal.payload;
+  const details = proposal.kind === "memory" ? `${p.key}: ${p.value}`
+    : proposal.kind === "skill_new" ? `${p.name}\n${p.description}\n\n${p.body}`
+      : `${p.skill}\n\n- ${p.old}\n+ ${p.new}`;
+  const act = async (work: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    try {
+      await work();
+      if (done) toast(done);
+      onSettled(proposal.id);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div role="status" className="flex flex-col gap-2 rounded-xl border bg-card px-3 py-2.5 text-sm">
+      <p className="flex items-start gap-2">
+        <Lightbulb className="mt-0.5 size-4 shrink-0 text-primary" />
+        <span className="min-w-0 flex-1"><span className="text-muted-foreground">{uiText("学到了：")}</span>{proposal.summary}</span>
+      </p>
+      {open ? <pre className="ml-6 max-h-60 overflow-auto rounded-lg bg-muted/50 px-3 py-2 text-xs whitespace-pre-wrap">{details}</pre> : null}
+      <div className="ml-6 flex flex-wrap items-center gap-1">
+        <Button size="sm" variant="primary" disabled={busy} onClick={() => void act(() => api.acceptLearningProposal(proposal.id), proposal.kind === "memory" ? uiText("已记住") : uiText("技能已保存，下次对话起使用"))}>
+          {proposal.kind === "memory" ? uiText("记住") : proposal.kind === "skill_new" ? uiText("存成技能") : uiText("更新技能")}
+        </Button>
+        {proposal.kind !== "memory" ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => api.acceptLearningProposal(proposal.id, "memory"), uiText("已记住"))}>{uiText("只记住")}</Button> : null}
+        <Button size="sm" variant="ghost" onClick={() => setOpen(value => !value)}>{open ? uiText("收起") : uiText("查看内容")}</Button>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void act(() => api.dismissLearningProposal(proposal.id), "")}>{uiText("忽略")}</Button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * A fresh install has models but no keys. Saying so before the first message
