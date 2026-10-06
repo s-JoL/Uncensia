@@ -12,74 +12,79 @@
 
 /* ------------------------------------------------------------------ tokens */
 
+/* The brand is a warm coral-to-rose ember on ink: creative and a little
+   nocturnal, never the neutral grey of a generic chat client. The accent is
+   spent sparingly — primary actions, the send button, the current place and
+   focus — so it still means something when it appears. */
 :root {
-  /* A warm near-white rather than #fff: long reading sessions on a pure white
-     panel are what make an interface feel like a spreadsheet. */
-  --background: #ffffff;
-  --foreground: #252525;
-  --card: oklch(100% 0 0);
+  /* Warm paper rather than #fff: long reading sessions on a pure white panel
+     are what make an interface feel like a spreadsheet. */
+  --background: #fbf8f6;
+  --foreground: #1f1a1e;
+  --card: #ffffff;
   --card-foreground: var(--foreground);
-  --popover: oklch(100% 0 0);
+  --popover: #ffffff;
   --popover-foreground: var(--foreground);
 
-  --primary: #252525;
-  --primary-foreground: oklch(99% 0.002 260);
-  --secondary: oklch(96.2% 0.004 260);
-  --secondary-foreground: oklch(30% 0.014 260);
-  --muted: oklch(96.6% 0.003 260);
-  --muted-foreground: oklch(52% 0.014 260);
-  --accent: #eeeeee;
-  --accent-foreground: #252525;
+  --primary: #e8495f;
+  --primary-foreground: #ffffff;
+  --secondary: #f3eeeb;
+  --secondary-foreground: #3a3036;
+  --muted: #f4efec;
+  --muted-foreground: #776b72;
+  --accent: #f0e9e5;
+  --accent-foreground: #1f1a1e;
 
-  --destructive: oklch(58% 0.19 22);
-  --destructive-foreground: oklch(99% 0.002 60);
-  --success: oklch(58% 0.13 152);
-  --warning: oklch(70% 0.13 70);
+  --destructive: oklch(56% 0.2 25);
+  --destructive-foreground: #ffffff;
+  --success: oklch(56% 0.13 152);
+  --warning: oklch(68% 0.14 70);
 
-  --border: oklch(91.5% 0.004 260);
-  --input: oklch(89% 0.005 260);
-  --ring: oklch(54% 0.16 264);
+  --border: #ebe2dd;
+  --input: #e2d8d3;
+  --ring: #e8495f;
 
-  --sidebar: #f7f7f7;
+  --sidebar: #f5f0ec;
   --sidebar-foreground: var(--foreground);
-  --sidebar-border: oklch(92% 0.004 260);
-  --sidebar-accent: oklch(94% 0.006 264);
+  --sidebar-border: #ebe2dd;
+  --sidebar-accent: #ebe3de;
 
-  --radius: 0.625rem;
+  --brand-gradient: linear-gradient(135deg, #ffa35c 0%, #ff5e6c 50%, #e23c93 100%);
+  --radius: 0.75rem;
 }
 
 .dark {
-  /* Not black. A near-black with a trace of blue keeps large surfaces from
-     looking like holes and gives elevation somewhere to go. */
-  --background: #212121;
-  --foreground: oklch(93% 0.006 260);
-  --card: #292929;
+  /* Not black: an ink with a trace of plum keeps large surfaces from looking
+     like holes and gives the ember accent something warm to sit on. */
+  --background: #151117;
+  --foreground: #f0eaee;
+  --card: #1d181f;
   --card-foreground: var(--foreground);
-  --popover: #303030;
+  --popover: #241e27;
   --popover-foreground: var(--foreground);
 
-  --primary: #f2f2f2;
-  --primary-foreground: #202020;
-  --secondary: oklch(26% 0.01 265);
-  --secondary-foreground: oklch(92% 0.006 260);
-  --muted: oklch(25% 0.009 265);
-  --muted-foreground: oklch(68% 0.012 260);
-  --accent: #353535;
-  --accent-foreground: #eeeeee;
+  --primary: #ff6b7a;
+  --primary-foreground: #1b0e13;
+  --secondary: #262028;
+  --secondary-foreground: #ece4ea;
+  --muted: #211b23;
+  --muted-foreground: #a3979f;
+  --accent: #2a232d;
+  --accent-foreground: #f0eaee;
 
-  --destructive: oklch(68% 0.16 18);
-  --destructive-foreground: oklch(18% 0.02 265);
+  --destructive: oklch(68% 0.17 18);
+  --destructive-foreground: #1b0e13;
   --success: oklch(76% 0.15 148);
   --warning: oklch(80% 0.12 76);
 
-  --border: oklch(30% 0.01 265);
-  --input: oklch(34% 0.011 265);
-  --ring: oklch(66% 0.12 264);
+  --border: #2e2731;
+  --input: #3a313d;
+  --ring: #ff6b7a;
 
-  --sidebar: #181818;
+  --sidebar: #100d12;
   --sidebar-foreground: var(--foreground);
-  --sidebar-border: oklch(27% 0.01 265);
-  --sidebar-accent: #303030;
+  --sidebar-border: #221c25;
+  --sidebar-accent: #231d26;
 }
 
 /* ------------------------------------------------------- token → utilities */
@@ -110,6 +115,7 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent: var(--sidebar-accent);
+  --color-brand: var(--primary);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

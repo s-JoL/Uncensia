@@ -48,6 +48,8 @@ targets:
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1,2"
+        # The brand coral (web --primary) tints controls, links and selection.
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
   UncensiaTests:
     type: bundle.unit-test
     platform: iOS
