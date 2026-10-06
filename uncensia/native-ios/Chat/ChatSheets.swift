@@ -19,8 +19,16 @@ struct ConversationList: View {
           app.selectedConversationID = nil
           dismiss()
         } label: {
-          Label(uncensiaText("新对话"), image: "lucide-square-pen")
+          Label(uncensiaText("新对话"), systemImage: "square.and.pencil")
         }.tint(.primary).listRowSeparator(.hidden).accessibilityIdentifier("conversation.new")
+        // Inside a conversation the tab bar is hidden; the workspaces are here instead.
+        ForEach([("studio", uncensiaText("创作台"), "photo.on.rectangle.angled"), ("library", uncensiaText("资料库"), "books.vertical"), ("projects", uncensiaText("项目"), "folder")], id: \.0) { tab in
+          Button {
+            app.selectedTab = tab.0
+            dismiss()
+          } label: { Label(tab.1, systemImage: tab.2) }
+            .tint(.primary).listRowSeparator(.hidden).accessibilityIdentifier("workspace.\(tab.0)")
+        }
         if let error { Text(error).foregroundStyle(.red) }
         if query.trimmingCharacters(in: .whitespaces).isEmpty {
           ForEach(historySections, id: \.title) { section in
@@ -32,7 +40,7 @@ struct ConversationList: View {
               HStack {
                 Text(item.title).foregroundStyle(.primary).lineLimit(1)
                 Spacer(minLength: 0)
-                if item.id == app.selectedConversationID { Image("lucide-check").foregroundStyle(.secondary) }
+                if item.id == app.selectedConversationID { Image(systemName: "checkmark").foregroundStyle(.secondary) }
               }.padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }.listRowSeparator(.hidden)
              .listRowBackground(item.id == app.selectedConversationID ? Color.primary.opacity(0.06) : Color.clear)
@@ -295,7 +303,7 @@ struct ConversationContextSheet: View {
         previewRow(uncensiaText("示例对白"), preview.examples)
         if !preview.notes.isEmpty { DisclosureGroup(uncensiaText("作者说明（不用于生成）")) { Text(preview.notes) } }
         ForEach(preview.notices, id: \.self) {
-          Label($0, image: "lucide-info").font(.caption)
+          Label($0, systemImage: "info.circle").font(.caption)
         }
         Button(uncensiaText("替换角色、场景与示例草稿")) {
           role.character = preview.character

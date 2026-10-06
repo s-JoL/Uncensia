@@ -49,7 +49,7 @@ Keep only:
 
 Never keep: facts about fictional characters, settings or plot (those belong to the story, not the person); one-off requests; anything an existing skill or memory below already covers; anything the assistant already saved during the exchange; secrets or credentials.
 
-Prefer correcting an existing skill (skill_patch) over creating a new one when the topic is already covered. Prefer memory for a single short preference; use skill_new when the lesson is a procedure or needs examples.
+Prefer correcting an existing skill (skill_patch) over creating a new one when the topic is already covered. Prefer memory for a single short preference; use skill_new when the lesson is a procedure or needs examples. To refine an existing memory, answer "memory" with the same key and the complete new value; skill_patch only applies to the skills listed.
 
 Reply with JSON only, one of:
 {"action":"none"}
@@ -190,6 +190,11 @@ export class Reflection {
       return { kind: "skill_new" as const, summary, payload: { name, description, body } };
     }
     if (raw.action === "skill_patch") {
+      // A patch aimed at a memory key is a memory refinement in the wrong shape.
+      const memoryKey = text(raw.skill, 64);
+      if (!skills.some(item => item.name === memoryKey) && this.store.listMemories().some(memory => memory.key === memoryKey) && typeof raw.new === "string" && raw.new.trim()) {
+        return { kind: "memory" as const, summary, payload: { key: memoryKey, value: raw.new.trim().slice(0, 600) } };
+      }
       const skill = skills.find(item => item.name === text(raw.skill, 64));
       const old = typeof raw.old === "string" ? raw.old : "", replacement = typeof raw.new === "string" ? raw.new : "";
       if (!skill?.editable || !old || old === replacement || skill.content.split(old).length - 1 !== 1) return null;

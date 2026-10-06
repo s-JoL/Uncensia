@@ -23,7 +23,7 @@ struct StudioScreen: View {
           ForEach(store.toolsForKind) { tool in Text(tool.title).tag(tool.id) }
         }
         if let tool = store.selectedTool {
-          Text(tool.summary).font(.caption).foregroundStyle(.secondary)
+          if !tool.summary.isEmpty { Text(tool.summary).font(.caption).foregroundStyle(.secondary) }
           if tool.schema["properties"]["source_image_id"] != .null {
             sourcePicker(
               title: tool.kind == "video" ? uncensiaText("首帧图片") : uncensiaText("原图"), key: "source_image_id", multiple: false)
@@ -59,7 +59,7 @@ struct StudioScreen: View {
               queuePresented = true
             }
           } label: {
-            Label(store.submitting ? uncensiaText("正在提交…") : uncensiaText("开始生成"), image: "lucide-sparkles")
+            Label(store.submitting ? uncensiaText("正在提交…") : uncensiaText("开始生成"), systemImage: "sparkles")
           }.buttonStyle(.borderedProminent).disabled(!store.canSubmit || store.submitting)
         }
         if let error = store.failure { Text(error).foregroundStyle(.red).font(.caption) }
@@ -70,13 +70,13 @@ struct StudioScreen: View {
           Button {
             galleryPresented = true
           } label: {
-            Label(uncensiaText("作品"), image: "lucide-images")
+            Label(uncensiaText("作品"), systemImage: "photo.on.rectangle.angled")
           }
           Button {
             queuePresented = true
           } label: {
             Label(
-              uncensiaText("队列"), image: store.activeJobs.isEmpty ? "lucide-list-todo" : "lucide-clock")
+              uncensiaText("队列"), systemImage: store.activeJobs.isEmpty ? "checklist" : "clock")
           }
         }
       }
@@ -85,10 +85,10 @@ struct StudioScreen: View {
         if store.loading && store.gallery.isEmpty {
           ProgressView(uncensiaText("正在读取创作台…")).padding(40)
         } else if !store.enabled {
-          ContentUnavailableView(uncensiaText("创作台已关闭"), image: "lucide-paintbrush")
+          ContentUnavailableView(uncensiaText("创作台已关闭"), systemImage: "paintbrush")
         } else if store.gallery.isEmpty {
           ContentUnavailableView(
-            uncensiaText("还没有作品"), image: "lucide-images", description: Text(uncensiaText("选择模型，开始第一次创作。")))
+            uncensiaText("还没有作品"), systemImage: "photo.on.rectangle.angled", description: Text(uncensiaText("选择模型，开始第一次创作。")))
         } else {
           LazyVGrid(columns: [GridItem(.adaptive(minimum: 155), spacing: 10)], spacing: 10) {
             ForEach(store.gallery) { asset in
@@ -172,7 +172,7 @@ private struct CompactStudioGallery: View {
     NavigationStack {
       ScrollView {
         if store.gallery.isEmpty {
-          ContentUnavailableView(uncensiaText("还没有作品"), image: "lucide-images")
+          ContentUnavailableView(uncensiaText("还没有作品"), systemImage: "photo.on.rectangle.angled")
         } else {
           LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 10)], spacing: 10) {
             ForEach(store.gallery) { asset in
@@ -199,9 +199,10 @@ private struct StudioTool: Identifiable {
   var modelID: String { raw["modelId"].stringValue ?? "" }
   var op: String { raw["op"].stringValue ?? raw["name"].stringValue ?? "" }
   var schema: JSONValue { raw["schema"] }
+  /// Only what the person can act on or would not otherwise know: hosted is the default.
   var summary: String {
     [
-      raw["local"].boolValue == true ? uncensiaText("本地") : uncensiaText("托管"),
+      raw["local"].boolValue == true ? uncensiaText("本地") : nil,
       raw["configured"].boolValue == false ? uncensiaText("需要设置") : nil,
     ].compactMap { $0 }.joined(separator: " · ")
   }
@@ -509,8 +510,14 @@ private struct SchemaControl: View {
         default:
           if (concrete["maxLength"].doubleValue ?? 0) > 240 || name.contains("prompt") {
             VStack(alignment: .leading) {
-              Text(title).font(.caption)
+              Text(title).font(.caption).foregroundStyle(.secondary)
               TextEditor(text: stringBinding).frame(minHeight: name == "prompt" ? 130 : 80)
+                .overlay(alignment: .topLeading) {
+                  if stringBinding.wrappedValue.isEmpty {
+                    Text(name == "prompt" ? uncensiaText("描述你想要的画面") : title)
+                      .foregroundStyle(.tertiary).padding(.top, 8).padding(.leading, 5).allowsHitTesting(false)
+                  }
+                }
             }
           } else {
             TextField(title, text: stringBinding)
@@ -580,11 +587,11 @@ private struct ArrayControl: View {
               copy.remove(at: index)
               value = .array(copy)
             } label: {
-              Image("lucide-circle-minus")
+              Image(systemName: "minus.circle")
             }
           }
         }
-        Button(uncensiaText("添加项目"), image: "lucide-plus") { value = .array(items + [.null]) }.disabled(
+        Button(uncensiaText("添加项目"), systemImage: "plus") { value = .array(items + [.null]) }.disabled(
           schema["maxItems"].doubleValue.map { Int($0) <= items.count } ?? false)
       }
     }
@@ -716,12 +723,12 @@ private struct StudioTile: View {
       if asset.kind == "video" {
         if let poster = asset.posterID {
           StudioRemoteImage(path: "/images/\(poster)?w=320", api: api).overlay {
-            Image("lucide-play").font(.largeTitle).foregroundStyle(.white).shadow(
+            Image(systemName: "play").font(.largeTitle).foregroundStyle(.white).shadow(
               radius: 5)
           }
         } else {
           Color.black.overlay {
-            Image("lucide-play").font(.largeTitle).foregroundStyle(.white)
+            Image(systemName: "play").font(.largeTitle).foregroundStyle(.white)
           }
         }
       } else {
@@ -826,7 +833,7 @@ private struct AssetDetail: View {
         ToolbarItem(placement: .cancellationAction) { Button(uncensiaText("完成")) { dismiss() } }
         if let localURL {
           ToolbarItem(placement: .primaryAction) {
-            ShareLink(item: localURL) { Image("lucide-share") }
+            ShareLink(item: localURL) { Image(systemName: "square.and.arrow.up") }
           }
         }
       }.task {

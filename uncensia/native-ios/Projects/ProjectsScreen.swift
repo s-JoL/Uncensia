@@ -34,9 +34,9 @@ struct ProjectsScreen: View {
         if loading && projects.isEmpty {
           ProgressView(uncensiaText("正在加载项目…"))
         } else if let error, projects.isEmpty {
-          ContentUnavailableView(uncensiaText("项目不可用"), image: "lucide-cloud-alert", description: Text(error))
+          ContentUnavailableView(uncensiaText("项目不可用"), systemImage: "exclamationmark.icloud", description: Text(error))
         } else if projects.isEmpty {
-          ContentUnavailableView(uncensiaText("暂无项目"), image: "lucide-folder-closed",
+          ContentUnavailableView(uncensiaText("暂无项目"), systemImage: "folder",
             description: Text(uncensiaText("将说明、参考资料和相关对话保存在一起。")))
         } else {
           List(projects) { project in
@@ -55,7 +55,7 @@ struct ProjectsScreen: View {
       .navigationTitle(uncensiaText("项目"))
       .toolbar {
         ToolbarItem(placement: .primaryAction) {
-          Button { editing = ProjectDraft() } label: { Label(uncensiaText("新建项目"), image: "lucide-folder-closed") }
+          Button { editing = ProjectDraft() } label: { Label(uncensiaText("新建项目"), systemImage: "folder") }
             .accessibilityIdentifier("project.create")
         }
       }

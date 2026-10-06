@@ -9,9 +9,9 @@ struct MCPSettingsView: View {
     List {
       Section {
         HStack {
-          Button(uncensiaText("添加 MCP 服务器"), image: "lucide-plus") { adding = true }
+          Button(uncensiaText("添加 MCP 服务器"), systemImage: "plus") { adding = true }
           Spacer()
-          Button(uncensiaText("重连"), image: "lucide-refresh-cw") {
+          Button(uncensiaText("重连"), systemImage: "arrow.clockwise") {
             withAPI(appModel, store: store) { api in
               _ = try await api.request("POST", "/mcp/reconnect")
               try await store.refreshMCP(api)
@@ -64,7 +64,7 @@ private struct PiResourcesSections: View {
     Section {
       Text(uncensiaText("扩展是随助手一起运行的代码，可以添加工具、命令和事件处理；包是从 npm、Git 或本地目录安装的一组扩展、技能和提示词。改动在下一次运行生效。")).font(.caption).foregroundStyle(.secondary)
       TextField(uncensiaText("npm:pi-skills 或 https://github.com/user/repo"), text: $source).textInputAutocapitalization(.never).autocorrectionDisabled()
-      Button(uncensiaText("安装"), image: "lucide-plus") { confirmingInstall = true }.disabled(source.trimmingCharacters(in: .whitespaces).isEmpty)
+      Button(uncensiaText("安装"), systemImage: "plus") { confirmingInstall = true }.disabled(source.trimmingCharacters(in: .whitespaces).isEmpty)
       Text(uncensiaText("第三方包的代码会以助手的权限运行，只安装你信任的来源。")).font(.caption).foregroundStyle(.orange)
       ForEach((store.resources["diagnostics"].arrayValue ?? []).compactMap(\.stringValue), id: \.self) { Text($0).font(.caption).foregroundStyle(.orange) }
       if let status = store.resources["status"].objectValue {
@@ -116,7 +116,7 @@ private struct PiResourcesSections: View {
       }
     }
     Section {
-      Button(uncensiaText("新建扩展"), image: "lucide-plus") { adding = true }
+      Button(uncensiaText("新建扩展"), systemImage: "plus") { adding = true }
       let extensions = store.resources["extensions"].arrayValue ?? []
       if extensions.isEmpty { Text(uncensiaText("还没有扩展。可以新建一个本地扩展，或安装一个包。")).font(.caption).foregroundStyle(.secondary) }
       ForEach(extensions, id: \.stableID) { extensionItem in
@@ -309,7 +309,7 @@ struct SkillsSettingsView: View {
   var body: some View {
     List {
       Section {
-        Button(uncensiaText("添加技能"), image: "lucide-plus") { adding = true }
+        Button(uncensiaText("添加技能"), systemImage: "plus") { adding = true }
         TextField(uncensiaText("查找技能"), text: $search)
       }
       if !store.skillDiagnostics.isEmpty {
@@ -350,7 +350,7 @@ struct SkillsSettingsView: View {
         }
       }
       Section {
-        Button(uncensiaText("刷新记录"), image: "lucide-refresh-cw") {
+        Button(uncensiaText("刷新记录"), systemImage: "arrow.clockwise") {
           withAPI(appModel, store: store) { api in try await store.refreshLearning(api) }
         }
         if store.learningHistory.isEmpty {
@@ -430,7 +430,7 @@ struct TasksSettingsView: View {
   var body: some View {
     List {
       if store.tasks.isEmpty {
-        ContentUnavailableView(uncensiaText("目前没有定时任务"), image: "lucide-clock")
+        ContentUnavailableView(uncensiaText("目前没有定时任务"), systemImage: "clock")
       } else {
         ForEach(store.tasks, id: \.stableID) { task in
           BackgroundTaskCard(task: task, api: appModel.api, onChanged: refresh) {

@@ -101,6 +101,12 @@ try {
   assert.ok(services.store.listMemories().some(item => item.key === "tone_guide" && item.value === "Warm tone"));
   assert.ok(!managedSkills(workspace).items.some(item => item.name === "tone-guide"));
 
+  // A patch aimed at a memory key becomes a refinement of that memory.
+  const refined = await reflect('{"action":"skill_patch","skill":"answer_length","old":"three","new":"Keep recommendations to two short points.","summary":"Even shorter"}');
+  assert.ok(refined && refined.kind === "memory" && refined.payload.key === "answer_length");
+  reflection.accept(refined.id);
+  assert.equal(services.store.listMemories().find(item => item.key === "answer_length")?.value, "Keep recommendations to two short points.");
+
   // Dismissed: nothing written, and the reviewer is told not to repeat it.
   const dismissed = await reflect('{"action":"memory","key":"emoji","value":"Likes emoji.","summary":"Likes emoji"}');
   assert.ok(dismissed);

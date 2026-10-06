@@ -10,7 +10,7 @@ struct RootView: View {
     @State private var restoring = true
     var body: some View {
         @Bindable var app = app
-        Group { if restoring { ProgressView(uncensiaText("正在连接…")) } else if app.isReady { TabView(selection: $app.selectedTab) { Tab(uncensiaText("对话"), image: "lucide-messages-square", value: "chat") { ChatScreen() }; Tab(uncensiaText("创作台"), image: "lucide-images", value: "studio") { StudioScreen() }; Tab(uncensiaText("项目"), image: "lucide-folder-closed", value: "projects") { ProjectsScreen() }; Tab(uncensiaText("资料库"), image: "lucide-file-text", value: "library") { LibraryScreen() }; Tab(uncensiaText("设置"), image: "lucide-settings-2", value: "settings") { SettingsScreen() } } } else { SignInView() } }
+        Group { if restoring { ProgressView(uncensiaText("正在连接…")) } else if app.isReady { TabView(selection: $app.selectedTab) { Tab(uncensiaText("对话"), systemImage: "bubble.left.and.bubble.right", value: "chat") { ChatScreen() }; Tab(uncensiaText("创作台"), systemImage: "photo.on.rectangle.angled", value: "studio") { StudioScreen() }; Tab(uncensiaText("项目"), systemImage: "folder", value: "projects") { ProjectsScreen() }; Tab(uncensiaText("资料库"), systemImage: "books.vertical", value: "library") { LibraryScreen() }; Tab(uncensiaText("设置"), systemImage: "gearshape", value: "settings") { SettingsScreen() } } } else { SignInView() } }
         .task { await automaticConnection() }
     }
     private func automaticConnection() async {
