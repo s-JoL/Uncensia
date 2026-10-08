@@ -47,7 +47,7 @@ check("native skill read shows its source and loaded procedure", () => {
   const part = tool({ name: "read", args: { path: "C:/skills/image-generate/SKILL.md" }, result: "Write one paragraph." });
   assert(toolSummary(part.name, part.args as Record<string, unknown>) === "image-generate/SKILL.md", "source missing from summary");
   const html = renderTool(part);
-  assert(html.includes("读取资料") && html.includes("Write one paragraph."), "native read result missing");
+  assert(html.includes("使用技能") && html.includes("image-generate") && html.includes("Write one paragraph."), "native read result missing");
 });
 
 check("generate_image shows the prompt, not the whole argument object", () => {

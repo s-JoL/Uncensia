@@ -8,7 +8,8 @@ import type { Store } from "../store/store.ts";
 import type { FileRecord, LearningChange } from "@shared/types.ts";
 import { paths } from "../env.ts";
 import { ingestFile } from "../library.ts";
-import { createSkill, managedSkills, updateSkill } from "./skill-management.ts";
+import { composeSkill, createSkill, managedSkills, SKILL_NAME, updateSkill } from "./skill-management.ts";
+import { listMods, readMod, saveMod, setModEnabled } from "../mods.ts";
 
 const revision = (text: string) => createHash("sha256").update(text).digest("hex");
 const result = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }], details: {} });
@@ -23,7 +24,7 @@ export function learningHistory(): LearningChange[] {
 }
 
 /** Durable evidence and old content are user-readable files, never global memory. */
-function record(conversationId: string, kind: LearningChange["kind"], target: string, before: string | null, after: string, reason: string) {
+export function record(conversationId: string, kind: LearningChange["kind"], target: string, before: string | null, after: string, reason: string) {
   if (!reason.trim()) throw new Error("Explain the observed problem and why this change helps.");
   const dir = path.join(paths.data, "learning-history");
   fs.mkdirSync(dir, { recursive: true });
@@ -33,7 +34,8 @@ function record(conversationId: string, kind: LearningChange["kind"], target: st
 }
 
 export function learningTools(config: Config, store: Store, conversationId: string,
-  index?: (file: FileRecord & { diskPath: string }) => Promise<unknown>): AgentTool[] {
+  index?: (file: FileRecord & { diskPath: string }) => Promise<unknown>,
+  onModsChanged?: () => void): AgentTool[] {
   const caps = config.capabilities();
   const tools: AgentTool[] = [];
   if (caps.files.enabled) tools.push({
@@ -60,35 +62,108 @@ export function learningTools(config: Config, store: Store, conversationId: stri
     },
   });
   const allowed = (kind: "skills" | "prompts") => { if (!config.capabilities().learning?.[kind]) throw new Error(`${kind} management is disabled`); };
-  if (caps.learning?.skills || caps.learning?.prompts) tools.push({ name: "learning_history", label: "Review changes", description: "Read the latest 50 persistent behavior change attempts, with reasons and old/new content. Use old content to restore through manage_prompt or manage_skill with the current revision. Records are backups before a write, not proof of successful application.", parameters: Type.Object({}), execute: async () => {
+  if (caps.learning?.skills || caps.learning?.prompts) tools.push({ name: "learning_history", label: "Review changes", description: "Read the latest 50 persistent behavior change attempts, with reasons and old/new content. Use old content to restore through manage_prompt or manage_skill with the current revision. Each record is written after the change was saved.", parameters: Type.Object({}), execute: async () => {
     const permissions = config.capabilities().learning;
     if (!permissions?.skills && !permissions?.prompts) throw new Error("Learning history is disabled");
-    return result(learningHistory().filter(row => row.kind === "skill" ? permissions.skills : permissions.prompts));
+    return result(learningHistory().filter(row => row.kind === "prompt" ? permissions.prompts : permissions.skills));
   } });
   if (caps.learning?.skills) tools.push({
     name: "manage_skill", label: "Manage skills",
-    description: "List, create, revise or enable a reusable skill when authorized to improve persistent behavior. List first; update requires the exact current revision. Keep task-specific procedure in skills and preserve unrelated instructions. Record concrete evidence in reason. Saved changes are discovered on the next run. Old content is saved to learning history before a change; a history record is an attempted change, not proof it succeeded.",
+    description: "Keep reusable procedures and the person's working preferences as skills that later conversations load on demand. "
+      + "list: names, descriptions and revisions. read: one skill's full text. "
+      + "create: give name (lowercase letters, digits, hyphens, e.g. fiction-style), description (one line saying when to use it) and body (the procedure in Markdown); the header is written for you. "
+      + "patch: replace one exact passage (old must occur once) — prefer this for corrections. update: replace the whole text or enable/disable. "
+      + "patch and update need the current revision from list or read. Every change needs a reason citing what happened in the conversation. Changes apply from the next run; the previous text is kept for restore.",
     executionMode: "sequential",
-    parameters: Type.Object({ action: Type.Union([Type.Literal("list"), Type.Literal("create"), Type.Literal("update")]), id: Type.Optional(Type.String()), content: Type.Optional(Type.String({ maxLength: 256000 })), revision: Type.Optional(Type.String()), enabled: Type.Optional(Type.Boolean()), reason: Type.Optional(Type.String({ maxLength: 4000 })) }),
+    parameters: Type.Object({
+      action: Type.Union([Type.Literal("list"), Type.Literal("read"), Type.Literal("create"), Type.Literal("patch"), Type.Literal("update")]),
+      id: Type.Optional(Type.String({ description: "Skill id or name" })),
+      name: Type.Optional(Type.String({ maxLength: 64 })),
+      description: Type.Optional(Type.String({ maxLength: 1024 })),
+      body: Type.Optional(Type.String({ maxLength: 200000 })),
+      old: Type.Optional(Type.String({ maxLength: 20000 })),
+      new: Type.Optional(Type.String({ maxLength: 20000 })),
+      content: Type.Optional(Type.String({ maxLength: 256000, description: "Whole SKILL.md including its header (update, or create from a complete file)" })),
+      revision: Type.Optional(Type.String()),
+      enabled: Type.Optional(Type.Boolean()),
+      reason: Type.Optional(Type.String({ maxLength: 4000 })),
+    }),
     execute: async (_id, args) => {
       allowed("skills");
-      const a = args as { action: string; id?: string; content?: string; revision?: string; enabled?: boolean; reason?: string };
+      const a = args as { action: string; id?: string; name?: string; description?: string; body?: string; old?: string; new?: string; content?: string; revision?: string; enabled?: boolean; reason?: string };
       const list = managedSkills(config.capabilities().coding.workspace);
-      if (a.action === "list") return result(list);
-      if (!a.reason?.trim()) throw new Error("A reason is required");
+      const find = () => {
+        const wanted = a.id ?? a.name;
+        const skill = list.items.find(s => s.id === wanted || s.name === wanted);
+        if (!skill) throw new Error(`No skill named ${wanted ?? "(missing id)"}; call list for the current names`);
+        return skill;
+      };
+      if (a.action === "list") return result({ items: list.items.map(({ id, name, description, enabled, editable, learned, revision }) => ({ id, name, description, enabled, editable, learned, revision })), diagnostics: list.diagnostics });
+      if (a.action === "read") { const { id, name, content, revision } = find(); return result({ id, name, content, revision }); }
+      if (!a.reason?.trim()) throw new Error("A reason is required: say what happened in the conversation that this change addresses");
       if (a.action === "create") {
-        if (!a.content) throw new Error("Skill content is required");
-        const history = record(conversationId, "skill", "new", null, a.content, a.reason);
-        createSkill(a.content);
-        return result({ saved: true, history, effective: "next run" });
+        let content = a.content;
+        if (!content) {
+          if (!a.name || !SKILL_NAME.test(a.name)) throw new Error("name must be lowercase letters, digits and single hyphens, e.g. fiction-style");
+          if (!a.description?.trim()) throw new Error("description is required: one line saying when this skill applies");
+          if (!a.body?.trim()) throw new Error("body is required: the procedure in Markdown");
+          if (list.items.some(s => s.name === a.name)) throw new Error(`A skill named ${a.name} already exists; read it and patch it instead`);
+          content = composeSkill({ name: a.name, description: a.description, body: a.body, learned: true });
+        }
+        createSkill(content);
+        return result({ saved: true, history: record(conversationId, "skill", "new", null, content, a.reason), effective: "next run" });
+      }
+      const skill = find();
+      if (a.revision !== skill.revision) throw new Error("Skill changed since you read it; read it again and use its current revision");
+      if (a.action === "patch") {
+        if (!a.old || a.new === undefined) throw new Error("patch needs old (an exact passage of the current text) and new");
+        const count = skill.content.split(a.old).length - 1;
+        if (count !== 1) throw new Error(count ? `old occurs ${count} times; include more surrounding text so it is unique` : "old does not occur in the current text; read the skill and copy the passage exactly");
+        const content = skill.content.replace(a.old, () => a.new!);
+        updateSkill(skill, { content, revision: skill.revision });
+        return result({ saved: true, history: record(conversationId, "skill", skill.filePath, skill.content, content, a.reason), effective: "next run" });
       }
       if (a.action !== "update") throw new Error("Unknown action");
-      const skill = list.items.find(s => s.id === a.id);
-      if (!skill || a.revision !== skill.revision) throw new Error("Skill changed or is missing; list again before updating");
       if (a.content === undefined && a.enabled === undefined) throw new Error("No change supplied");
-      const history = record(conversationId, "skill", skill.filePath, skill.content, a.content ?? skill.content, `${a.reason}; enabled before=${skill.enabled}, after=${a.enabled ?? skill.enabled}`);
       updateSkill(skill, a);
+      const history = record(conversationId, "skill", skill.filePath, skill.content, a.content ?? skill.content, `${a.reason}; enabled before=${skill.enabled}, after=${a.enabled ?? skill.enabled}`);
       return result({ saved: true, history, effective: "next run" });
+    },
+  });
+  if (caps.learning?.skills) tools.push({
+    name: "manage_mod", label: "Manage mods",
+    description: "Extend the interface with a mod: declarative JSON, no code. Slots: messageActions (buttons under a reply that put a prompt in the composer; {excerpt} is the reply's opening), starters (suggestion chips on an empty conversation), panels (a side panel showing conversation notes by key, which you keep with update_conversation_notes). "
+      + "list: names, titles and revisions. read: one mod's JSON. create: give manifest {name (kebab-case), title, description, contributes}. update: give the whole manifest and the current revision. enable: name and enabled. "
+      + "Use a mod when the person wants a recurring button, starting point or always-visible panel; a procedure belongs in a skill. Every change needs a reason; it shows in the web client at once.",
+    executionMode: "sequential",
+    parameters: Type.Object({
+      action: Type.Union([Type.Literal("list"), Type.Literal("read"), Type.Literal("create"), Type.Literal("update"), Type.Literal("enable")]),
+      name: Type.Optional(Type.String({ maxLength: 64 })),
+      manifest: Type.Optional(Type.Unsafe<Record<string, unknown>>({ type: "object", description: "{ name, title, description, contributes: { messageActions?: [{label, prompt}], starters?: [{label, prompt}], panels?: [{title, notes: [noteKey]}] } }" })),
+      revision: Type.Optional(Type.String()),
+      enabled: Type.Optional(Type.Boolean()),
+      reason: Type.Optional(Type.String({ maxLength: 4000 })),
+    }),
+    execute: async (_id, args) => {
+      allowed("skills");
+      const a = args as { action: string; name?: string; manifest?: Record<string, unknown>; revision?: string; enabled?: boolean; reason?: string };
+      if (a.action === "list") return result({ items: listMods().items.map(({ name, title, description, enabled, origin, revision }) => ({ name, title, description, enabled, learned: origin === "learned", revision })), errors: listMods().errors });
+      if (a.action === "read") return result(readMod(a.name ?? ""));
+      if (!a.reason?.trim()) throw new Error("A reason is required: say what the person asked for");
+      if (a.action === "enable") {
+        if (typeof a.enabled !== "boolean") throw new Error("enabled is required");
+        setModEnabled(a.name ?? "", a.enabled);
+        onModsChanged?.();
+        return result({ saved: true, enabled: a.enabled });
+      }
+      if (a.action !== "create" && a.action !== "update") throw new Error("Unknown action");
+      if (!a.manifest) throw new Error("manifest is required");
+      const manifest: Record<string, unknown> = { ...a.manifest, origin: "learned" };
+      if (a.action === "create" && listMods().items.some(mod => mod.name === manifest.name)) throw new Error(`A mod named ${String(manifest.name)} exists; read it and update it instead`);
+      const saved = saveMod(manifest, a.action === "update" ? a.revision : undefined);
+      const history = record(conversationId, "mod", saved.name, saved.before, saved.after, a.reason);
+      onModsChanged?.();
+      return result({ saved: true, name: saved.name, history, effective: "now, in the web client" });
     },
   });
   if (caps.learning?.prompts) tools.push({
@@ -104,8 +179,8 @@ export function learningTools(config: Config, store: Store, conversationId: stri
       if (a.action === "read") return result({ content: before, revision: revision(before) });
       if (a.action !== "update" || !a.content?.trim() || !a.reason?.trim()) throw new Error("Content and reason are required");
       if (a.revision !== revision(before)) throw new Error("Prompt changed; read again before updating");
-      const history = record(conversationId, "prompt", a.target, before, a.content, a.reason);
       config.savePrompts({ [a.target]: a.content });
+      const history = record(conversationId, "prompt", a.target, before, a.content, a.reason);
       return result({ saved: true, history, revision: revision(a.content), effective: "next run" });
     },
   });

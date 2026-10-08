@@ -7,7 +7,9 @@ public struct Conversation: Identifiable, Sendable, Equatable {
     public var updatedAt: Double
     public init?(_ json: JSONValue) {
         guard let id = json["id"].stringValue else { return nil }
-        self.id = id; title = json["title"].stringValue ?? uncensiaText("新对话"); modelID = json["modelId"].stringValue ?? ""; updatedAt = json["updatedAt"].doubleValue ?? 0
+        // New conversations are untitled until named; older servers stored an English placeholder.
+        let named = json["title"].stringValue ?? ""
+        self.id = id; title = named.isEmpty || named == "New conversation" ? uncensiaText("新对话") : named; modelID = json["modelId"].stringValue ?? ""; updatedAt = json["updatedAt"].doubleValue ?? 0
     }
 }
 

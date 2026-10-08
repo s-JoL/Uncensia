@@ -416,7 +416,7 @@ export class Store {
 
   // ----------------------------------------------------------- conversations
 
-  createConversation(modelId: string, title = "New conversation", projectId?: string | null) {
+  createConversation(modelId: string, title = "", projectId?: string | null) {
     if (projectId && !getProject(this,projectId)) throw new Error("Project not found");
     const id = newId("conv");
     const now = Date.now();

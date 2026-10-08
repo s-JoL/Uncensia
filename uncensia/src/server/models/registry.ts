@@ -47,6 +47,14 @@ function anthropicCompat(spec: ModelSpec): Record<string, unknown> | undefined {
  */
 const runtimeId = (providerId: string, mode: ApiMode) => `${providerId}::${mode}`;
 
+/**
+ * Options for a short side request such as a title or a connection test.
+ * pi-ai's simple calls read the level from `reasoning`; leaving it out asks
+ * the gateway to disable reasoning, which some reject outright ("Reasoning is
+ * mandatory for this endpoint"). A reasoning model gets a low budget instead.
+ */
+export const sideRequestOptions = (spec: ModelSpec) => (spec.reasoning ? { reasoning: "low" as const } : {});
+
 export interface ResolvedModel {
   spec: ModelSpec;
   provider: Provider;

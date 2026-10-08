@@ -18,6 +18,7 @@ import type {
 } from "@shared/types.ts";
 import { API_MODES, OP_LABELS, isChatKind, isGenerationKind, needsApiKey } from "@shared/types.ts";
 import { api } from "../../api.ts";
+import { classifyProviderFailure } from "@shared/provider-error.ts";
 import {
   Badge,
   Button,
@@ -154,6 +155,23 @@ export function ProvidersSection({ reload }: { reload: () => Promise<void> }) {
   const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [addingProvider, setAddingProvider] = useState(false);
+  const [tests, setTests] = useState<Record<string, { busy: boolean; ok?: boolean; text?: string }>>({});
+  // A saved key is only a string until a real request proves it; testing right
+  // after saving is what tells an expired or mistyped key apart from a good one.
+  const test = async (provider: Provider) => {
+    setTests(current => ({ ...current, [provider.id]: { busy: true } }));
+    try {
+      const result = await api.testProvider(provider.id);
+      const text = result.ok
+        ? uiText("可用 · {0} · {1} ms", [result.model ?? "", result.latencyMs ?? 0])
+        : result.reason === "no_chat_model"
+          ? uiText("没有可测试的对话模型")
+          : (() => { const failure = classifyProviderFailure(result.message ?? ""); return `${uiText(failure.headline)}${failure.status ? ` · ${failure.status}` : ""}`; })();
+      setTests(current => ({ ...current, [provider.id]: { busy: false, ok: result.ok, text } }));
+    } catch (error) {
+      setTests(current => ({ ...current, [provider.id]: { busy: false, ok: false, text: error instanceof Error ? error.message : String(error) } }));
+    }
+  };
 
   return (
     <>
@@ -211,6 +229,9 @@ export function ProvidersSection({ reload }: { reload: () => Promise<void> }) {
                   {provider.baseUrl}
                   {customHeader ? ` · ${customHeader}` : ""}
                 </div>
+                {tests[provider.id]?.text ? (
+                  <div role="status" className={tests[provider.id]!.ok ? "text-xs text-success" : "text-xs text-destructive"}>{tests[provider.id]!.text}</div>
+                ) : null}
               </div>
               {!keyless && (wantsKey || provider.hasKey) ? (
                 <>
@@ -241,11 +262,17 @@ export function ProvidersSection({ reload }: { reload: () => Promise<void> }) {
                           [provider.id]: "",
                         }));
                         await refresh();
+                        if (rows.some(model => isChatKind(model.kind) && model.enabled)) void test(provider);
                       }
                     }}
                   >
                     {uiText("保存")}</Button>
                 </>
+              ) : null}
+              {(provider.hasKey || keyless) && rows.some(model => isChatKind(model.kind) && model.enabled) ? (
+                <Button size="sm" variant="outline" disabled={tests[provider.id]?.busy} onClick={() => void test(provider)}>
+                  {tests[provider.id]?.busy ? <Spinner /> : null}
+                  {uiText("测试")}</Button>
               ) : null}
               <Button
                 variant="ghost"

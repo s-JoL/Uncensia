@@ -33,7 +33,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       document.documentElement.classList.toggle("dark", dark);
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute("content", dark ? "#111318" : "#fbfaf9");
+        ?.setAttribute("content", dark ? "#151117" : "#fbf8f6");
     };
     apply();
     if (choice !== "system") return;

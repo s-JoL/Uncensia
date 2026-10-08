@@ -6,9 +6,12 @@ struct MessageRow: View {
   let message: ChatMessage
   let api: APIClient?
   private let parts: [TranscriptPart]
-  init(message: ChatMessage, api: APIClient?, inlineMedia: Set<String> = []) {
+  /// False for a failed attempt that a retry in the same turn replaced.
+  private let showsFailure: Bool
+  init(message: ChatMessage, api: APIClient?, inlineMedia: Set<String> = [], showsFailure: Bool = true) {
     self.message = message
     self.api = api
+    self.showsFailure = showsFailure
     parts = Self.visibleParts(message: message, inlineMedia: inlineMedia)
   }
 
@@ -52,7 +55,57 @@ struct MessageRow: View {
       ForEach(parts) { part in
         TranscriptPartView(part: part, api: api, user: message.role == "user")
       }
+      if showsFailure, message.role == "assistant", message.content["stopReason"].stringValue == "error" {
+        ProviderFailureNotice(raw: message.content["errorMessage"].stringValue ?? "")
+      }
     }
+  }
+}
+
+/// A failed reply stays explained after the conversation is reopened, in the
+/// same words as the web client (`src/shared/provider-error.ts`).
+struct ProviderFailureNotice: View {
+  let raw: String
+  @State private var showsRaw = false
+
+  static func headline(for raw: String) -> (status: Int, text: String) {
+    let range = raw.range(of: #"(?:^|\s)(\d{3})(?::|\s)"#, options: .regularExpression)
+    let status = range.flatMap { Int(raw[$0].filter(\.isNumber)) } ?? 0
+    let text: String
+    switch status {
+    case 401: text = uncensiaText("服务商拒绝了密钥，请在设置里检查 API Key")
+    case 403: text = uncensiaText("服务商拒绝了这次请求，密钥可能没有该模型的权限")
+    case 404: text = uncensiaText("服务商没有这个模型或接口，请检查模型 ID 和 Base URL")
+    case 408: text = uncensiaText("服务商响应超时")
+    case 413: text = uncensiaText("请求内容过大，请缩短消息或减少附件")
+    case 422: text = uncensiaText("服务商拒绝了请求参数")
+    case 429: text = uncensiaText("触发了服务商限流，请稍后再试")
+    case 502: text = uncensiaText("服务商网关错误")
+    case 503: text = uncensiaText("服务商暂时不可用")
+    case 504: text = uncensiaText("服务商网关超时")
+    case 500...599: text = uncensiaText("服务商内部错误")
+    default:
+      text = raw.range(of: "fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|socket hang up|Connection error", options: [.regularExpression, .caseInsensitive]) == nil
+        ? uncensiaText("模型请求失败") : uncensiaText("无法连接到服务商，请检查网络或代理")
+    }
+    return (status, text)
+  }
+
+  var body: some View {
+    let failure = Self.headline(for: raw)
+    VStack(alignment: .leading, spacing: 6) {
+      Label(failure.status > 0 ? "\(failure.text) · \(failure.status)" : failure.text, systemImage: "exclamationmark.triangle")
+        .font(.subheadline).foregroundStyle(.red)
+      if !raw.isEmpty {
+        Button(showsRaw ? uncensiaText("收起原始错误") : uncensiaText("原始错误")) { showsRaw.toggle() }
+          .font(.caption).buttonStyle(.borderless)
+        if showsRaw { Text(raw).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled) }
+      }
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    .accessibilityIdentifier("chat.failure")
   }
 }
 
@@ -77,7 +130,7 @@ struct StreamingRow: View {
         DisclosureGroup(uncensiaText("思考过程")) {
           Text(thinking).foregroundStyle(.secondary).textSelection(.enabled).padding(.top, 6)
         }
-        .padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+        .quietDisclosure()
       }
       ForEach(Array(tools.enumerated()), id: \.offset) { _, tool in
         ToolTranscriptCard(
@@ -88,7 +141,7 @@ struct StreamingRow: View {
       }
       if !text.isEmpty { RichMarkdown(text: text, api: api, streaming: true).accessibilityElement(children: .contain).accessibilityLabel(uncensiaText("正在回复")).accessibilityIdentifier("chat.live.text") }
       if !status.isEmpty {
-        Label(localizedStreamingStatus(status), image: "lucide-sparkles").font(.caption)
+        Label(localizedStreamingStatus(status), systemImage: "sparkles").font(.caption)
           .foregroundStyle(.secondary)
       }
       if text.isEmpty { ProgressView().controlSize(.small) }
@@ -170,7 +223,7 @@ private struct TranscriptPartView: View {
       case .thinking(let text):
         DisclosureGroup(uncensiaText("思考过程")) {
           Text(text).textSelection(.enabled).foregroundStyle(.secondary).padding(.top, 6)
-        }.padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+        }.quietDisclosure()
       case .image(let id, let role):
         VStack {
           AuthenticatedTranscriptImage(path: "/images/\(id)?w=1280", api: api).frame(
@@ -190,7 +243,7 @@ private struct TranscriptPartView: View {
             } else {
               Rectangle().fill(.black)
             }
-            Image("lucide-circle-play").font(.system(size: 54)).foregroundStyle(.white)
+            Image(systemName: "play.circle").font(.system(size: 54)).foregroundStyle(.white)
               .shadow(radius: 4)
           }.frame(maxWidth: 520).aspectRatio(16 / 9, contentMode: .fit).clipShape(
             RoundedRectangle(cornerRadius: 12))
@@ -200,7 +253,7 @@ private struct TranscriptPartView: View {
         Button {
           preview = .init(id: id, name: name, kind: mime == "application/pdf" ? .document : .file)
         } label: {
-          Label(name, image: mime == "application/pdf" ? "lucide-file-text" : "lucide-file").lineLimit(1)
+          Label(name, systemImage: mime == "application/pdf" ? "doc.text" : "doc").lineLimit(1)
         }.buttonStyle(.bordered)
       case .tool(let name, let arguments):
         ToolTranscriptCard(name: name, arguments: arguments, result: nil)
@@ -228,6 +281,10 @@ private struct ToolTranscriptCard: View {
       "read": uncensiaText("读取资料"), "write": uncensiaText("写入文件"), "edit": uncensiaText("修改文件"), "grep": uncensiaText("搜索内容"), "find": uncensiaText("查找文件"), "ls": uncensiaText("查看目录"),
       "bash": uncensiaText("执行命令"), "web_search": uncensiaText("搜索网页"), "file_search": uncensiaText("查阅文件"), "view_image": uncensiaText("查看图片"),
       "generate_image": uncensiaText("生成图片"), "edit_image": uncensiaText("编辑图片"), "generate_video": uncensiaText("生成视频"),
+      "set_memory": uncensiaText("记住"), "delete_memory": uncensiaText("忘记"), "update_conversation_notes": uncensiaText("更新对话笔记"),
+      "manage_skill": uncensiaText("管理技能"), "manage_mod": uncensiaText("管理模组"), "manage_prompt": uncensiaText("修改长期指令"),
+      "fetch_url": uncensiaText("读取网页"), "search_history": uncensiaText("查找历史"), "read_resource": uncensiaText("读取原文"),
+      "list_resources": uncensiaText("查找资料"), "create_task": uncensiaText("安排任务"), "inspect_generations": uncensiaText("核对生成记录"),
     ][name] ?? name
   }
   var body: some View {
@@ -242,8 +299,17 @@ private struct ToolTranscriptCard: View {
         }
       }.padding(.top, 6)
     } label: {
-      Label(label, image: "lucide-wrench").foregroundStyle(.secondary)
-    }.padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 11))
+      Label(label, systemImage: "wrench.and.screwdriver").foregroundStyle(.secondary)
+    }.quietDisclosure()
+  }
+}
+
+extension View {
+  /// Reasoning and tool steps are secondary to the answer: small, grey, no accent tint.
+  func quietDisclosure() -> some View {
+    font(.footnote).tint(.secondary).foregroundStyle(.secondary)
+      .padding(.horizontal, 10).padding(.vertical, 6)
+      .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
   }
 }
 
@@ -649,7 +715,7 @@ private struct AuthenticatedTranscriptImage: View {
               .frame(width: geometry.size.width, height: geometry.size.height)
           }
         } else if failed {
-          Button { failed = false; attempt += 1 } label: { Label(uncensiaText("重试"), image: "lucide-refresh-cw") }
+          Button { failed = false; attempt += 1 } label: { Label(uncensiaText("重试"), systemImage: "arrow.clockwise") }
         } else { ProgressView() }
       }
       .clipped()
@@ -682,7 +748,7 @@ struct TranscriptMediaViewer: View {
           TranscriptQuickLook(url: url).accessibilityIdentifier("media.preview")
         } else if let error {
           ContentUnavailableView {
-            Label(uncensiaText("无法打开"), image: "lucide-triangle-alert")
+            Label(uncensiaText("无法打开"), systemImage: "exclamationmark.triangle")
           } description: {
             Text(error)
           } actions: {
@@ -699,10 +765,10 @@ struct TranscriptMediaViewer: View {
               NavigationLink {
                 TranscriptProvenance(assetID: item.id, kind: item.kind, api: api)
               } label: {
-                Image("lucide-info")
+                Image(systemName: "info.circle")
               }.accessibilityLabel(uncensiaText("来源")).accessibilityIdentifier("media.provenance")
             }
-            ShareLink(item: url) { Image("lucide-share") }
+            ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
           }
         }
       }

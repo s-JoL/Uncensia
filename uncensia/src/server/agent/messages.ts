@@ -1,11 +1,11 @@
-﻿import {
+﻿import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import {
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
   formatSize,
   truncateHead,
-  type AgentMessage,
   type TruncationOptions,
-} from "@earendil-works/pi-agent-core";
+} from "@earendil-works/pi-coding-agent";
 import type { ImageReferenceRole } from "@shared/types.ts";
 
 /**

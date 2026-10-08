@@ -21,7 +21,12 @@ export async function projectTranscript(store: Store, sessions: Sessions, conver
   return store.replaceMessages(
     conversationId,
     entries.flatMap(entry => entry.type === "message" || entry.type === "custom_message"
-      ? sessionEntryToContextMessages(entry).map(message => ({ message, entryId: entry.id }))
+      ? sessionEntryToContextMessages(entry)
+        // Pi 1.0 records the system prompt as a transcript entry so prompt and
+        // tool changes survive resume. It configures the model; it is not
+        // something the reader said or was told.
+        .filter(message => message.role !== "system")
+        .map(message => ({ message, entryId: entry.id }))
       : []),
   );
 }

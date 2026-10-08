@@ -18,7 +18,7 @@ export function uiText(source: string, values: unknown[] = []): string {
 }
 
 export function LanguageSelect() {
-  return <select aria-label="Language / 语言" className="rounded-md border bg-background px-2 py-1 text-xs"
+  return <select aria-label="Language / 语言" className="h-8 cursor-pointer rounded-md border-0 bg-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
     value={language()} onChange={event => {
       localStorage.setItem(KEY, event.target.value);
       // Module-level option labels are localized at startup. Conversation and

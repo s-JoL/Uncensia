@@ -364,7 +364,7 @@ import XCTest
     func testConversationEvidenceShowsPersistedDeliveryAndFeedback() async throws {
         let app = try await launch("settled-fixture")
         app.buttons["conversation.actions"].tap()
-        app.buttons["Deliverables, feedback and execution"].firstMatch.tap()
+        app.buttons["conversation.results"].firstMatch.tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Verified fixture delivery")).firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Keep the original wording."].exists)
         app.buttons["View versions"].firstMatch.tap()

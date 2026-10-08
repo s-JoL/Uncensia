@@ -1,0 +1,19 @@
+{
+  "name": "creative-kit",
+  "title": "创作工具包",
+  "description": "写作与角色扮演的常用入口：开场建议、续写与改写按钮，以及显示故事大纲、连续性和当前场景的侧边面板。",
+  "contributes": {
+    "starters": [
+      { "label": "角色扮演", "prompt": "我们来玩一个角色扮演。你扮演：" },
+      { "label": "写小说", "prompt": "帮我构思一部小说，先给出大纲：" }
+    ],
+    "messageActions": [
+      { "label": "续写", "prompt": "接着上面继续写，保持同样的风格和节奏。" },
+      { "label": "换个写法", "prompt": "换一种写法重写上面这段：「{excerpt}」" }
+    ],
+    "panels": [
+      { "title": "故事", "notes": ["outline", "continuity", "style"] },
+      { "title": "场景与关系", "notes": ["scene", "relationship", "today"] }
+    ]
+  }
+}

@@ -31,8 +31,8 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Uncensia
-        CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "2"
+        CFBundleShortVersionString: "1.1.0"
+        CFBundleVersion: "3"
         UILaunchScreen: {}
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -48,6 +48,8 @@ targets:
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1,2"
+        # The brand coral (web --primary) tints controls, links and selection.
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
   UncensiaTests:
     type: bundle.unit-test
     platform: iOS

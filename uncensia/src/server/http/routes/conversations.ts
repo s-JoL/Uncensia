@@ -54,7 +54,7 @@ export function conversationRoutes(services: Services) {
     if (wanted && (!spec?.enabled || !spec.configured || spec.kind !== "chat")) return fail(context, 422, "invalid_model", "The requested chat model is unavailable");
     const modelId = wanted || config.defaultModelId();
     if (!modelId) return fail(context, 422, "no_model", "Configure a model before starting a conversation");
-    return context.json(store.createConversation(modelId, body.title || "New conversation", body.projectId), 201);
+    return context.json(store.createConversation(modelId, body.title || "", body.projectId), 201);
   });
 
   /**
@@ -204,9 +204,8 @@ export function conversationRoutes(services: Services) {
 
     // Only after the model resolves, so a rejected run leaves history intact.
     const fromSeq = body.fromSeq;
-    if (typeof fromSeq === "number" && Number.isInteger(fromSeq) && fromSeq >= 0) {
-      await rewindConversation(store, services.sessions, conversationId, fromSeq);
-    }
+    const replayed = typeof fromSeq === "number" && Number.isInteger(fromSeq) && fromSeq >= 0;
+    if (replayed) await rewindConversation(store, services.sessions, conversationId, fromSeq);
 
     const run = store.createRun(conversationId, modelId);
     const seq = Number(store.db.get<{ seq: number }>("SELECT COALESCE(MAX(seq), 0) AS seq FROM events")?.seq ?? 0);
@@ -214,7 +213,7 @@ export function conversationRoutes(services: Services) {
     if (key) rememberIdempotency(key, response);
 
     void runtime
-      .start(run.id, conversationId, { message: text, modelId, attachments: body.attachments, imageReferences: body.imageReferences })
+      .start(run.id, conversationId, { message: text, modelId, attachments: body.attachments, imageReferences: body.imageReferences, replayed })
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         store.setRunStatus(run.id, "failed", message);

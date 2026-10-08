@@ -38,6 +38,8 @@ export const paths = {
   files: path.join(DATA_DIR, "files"),
   /** Folders of written procedures the agent can load on demand. */
   skills: path.join(DATA_DIR, "skills"),
+  /** Declarative interface extensions, one folder with a mod.json each. */
+  mods: path.join(DATA_DIR, "mods"),
   /**
    * The two editable prompt slots as files, so the agent can revise them the
    * same way it revises a skill. The settings row stays the HTTP write; these
@@ -58,6 +60,12 @@ export const paths = {
   webDist: path.join(ROOT, "dist"),
 };
 
+/** The release, from package.json, so the server, its clients and MCP peers agree. */
+export const VERSION: string = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version ?? "0.0.0"; }
+  catch { return "0.0.0"; }
+})();
+
 export const PORT = Number(process.env.UNCENSIA_PORT ?? 8090);
 export const HOST = process.env.UNCENSIA_HOST ?? "127.0.0.1";
 
@@ -69,6 +77,7 @@ export function ensureDirectories() {
     paths.data,
     paths.files,
     paths.skills,
+    paths.mods,
     paths.prompts,
     paths.workflows,
     paths.assets,
