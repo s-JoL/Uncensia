@@ -133,6 +133,8 @@ const { createPiLoop } = await import("../src/server/agent/loop.ts");
 const directLoops = new Set<AgentLoop>();
 const services = createServices();
 const app = createApp(services);
+// Learning reviews run in the background after a run and would add stub requests this audit does not expect.
+services.config.saveCapabilities({ learning: { ...services.config.capabilities().learning!, proposals: false } });
 let closed = false;
 let auth = "";
 const events: Array<{ runId: string; type: string; data: unknown }> = [];

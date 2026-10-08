@@ -42,6 +42,8 @@ for (const target of Object.values(paths)) {
   assert(!relative.startsWith("..") && !path.isAbsolute(relative), `Unisolated path: ${target}`);
 }
 let services = createServices();
+// Learning reviews run in the background after a run and would add stub requests this audit does not expect.
+services.config.saveCapabilities({ learning: { ...services.config.capabilities().learning!, proposals: false } });
 let app = createApp(services);
 let token = "";
 let action: { name: string; args: Record<string, unknown> } | undefined;

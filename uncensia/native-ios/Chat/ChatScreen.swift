@@ -72,7 +72,7 @@ public struct ChatScreen: View {
                         Button(uncensiaText("对话设定"), systemImage: "slider.horizontal.3") { showContext = true }
                         Button(uncensiaText("分支"), systemImage: "arrow.triangle.branch") { showBranches = true }
                         Button(uncensiaText("后台任务"), systemImage: "clock") { showTasks = true }
-                        Button(uncensiaText("成果与记录"), systemImage: "checklist") { showEvidence = true }.disabled(app.selectedConversationID == nil)
+                        Button(uncensiaText("成果与记录"), systemImage: "checklist") { showEvidence = true }.disabled(app.selectedConversationID == nil).accessibilityIdentifier("conversation.results")
                         Button(uncensiaText("整理上下文"), systemImage: "arrow.down.right.and.arrow.up.left") { runCommand("compact") }
                         Button(uncensiaText("继续"), systemImage: "play") { runCommand("continue") }
                         Button(uncensiaText("导出对话"), systemImage: "square.and.arrow.up") { exportConversation() }.disabled(app.selectedConversationID == nil)
