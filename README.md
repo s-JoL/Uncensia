@@ -147,7 +147,11 @@ Generate a character (here on a local ComfyUI GPU), relocate her with an image-t
 
 ## A real agent, not just tool buttons
 
-The assistant can read and write files, run commands in a sandboxed workspace (destructive actions pause for your approval), search the web and your library, remember facts across conversations, call MCP tools, and generate images and video — all as first-class tools in the same turn. It can carry a task forward on a schedule while the server stays online.
+The assistant can search the web and your library, remember facts across conversations, call MCP tools, and generate images and video — all as first-class tools in the same turn. It can carry a task forward on a schedule while the server stays online. File and command tools are **developer tools**, off until you turn them on (destructive actions still pause for your approval).
+
+**It gets better the more you use it.** After a reply you corrected, regenerated or left feedback on, the assistant proposes one thing worth keeping — a preference to remember, a skill to write or fix, or a mod — and nothing is saved until you click. Everything it learns is versioned and can be restored in one click.
+
+**Mods.** A mod adds buttons under replies, starting suggestions, or a side panel that shows the notes the assistant keeps (a story outline, the current scene). Mods are plain declarations that run no code, so you can simply ask the assistant to make one: *"add a button that translates a reply into English"*. A Creative kit ships enabled.
 
 ## Bring your own models — sensible defaults out of the box
 
@@ -155,8 +159,7 @@ A fresh install seeds a working set; add your keys in **Settings → Services** 
 
 | Role | Default model | Where |
 |---|---|---|
-| Chat | **GLM 5.3 Flash** | OpenRouter (your key) |
-| Chat | **MuseSpark 1.3** | OpenCode Zen (free tier) |
+| Chat | **GLM 5.3 Flash** (default), **DeepSeek V4.1 Flash**, **MiMo V2.6 Flash** | OpenRouter (your key) |
 | Image — generate / edit / compose | **Seedream 5.0 Pro** | Siray (your key) |
 | Video | **Wan 3.0** | Siray (your key) |
 | Image — local | **Lustify V10 Krea Turbo** | your own ComfyUI |
@@ -185,7 +188,7 @@ npm run build
 npm start
 ```
 
-Open [127.0.0.1:8090](http://127.0.0.1:8090) and sign in with the access code printed in the server log. Add your keys in **Settings → Services**, then pick your chat and generation models.
+Open [127.0.0.1:8090](http://127.0.0.1:8090) and sign in with the access code printed in the server log. Add your keys in **Settings → Services** — **Test** sends one tiny real request to prove a key works — then pick your chat and generation models. On a phone, *Add to Home Screen* installs the web app.
 
 - Cloud chat and media use your provider accounts and are billed by them.
 - Local generation needs a separate ComfyUI install with its model files and workflow dependencies.

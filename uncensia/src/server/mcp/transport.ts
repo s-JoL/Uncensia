@@ -7,11 +7,12 @@
  * and to nothing else. Remote servers use Streamable HTTP explicitly.
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { VERSION } from "../env.ts";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { McpServer } from "@shared/types.ts";
 
-const CLIENT = { name: "uncensia", version: "1.0.0" };
+const CLIENT = { name: "uncensia", version: VERSION };
 
 /** Connects one stored server, or throws with what the transport reported. */
 export async function connectServer(server: McpServer, expand: (value: string) => string): Promise<Client> {
