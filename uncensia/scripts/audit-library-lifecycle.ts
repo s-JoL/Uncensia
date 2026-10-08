@@ -130,8 +130,8 @@ try {
     assert.deepEqual(freshSeedream.ops, ["image_to_image"]);
     assert(!services.store.getProvider("venice"));
     assert(!services.store.getProvider("cometapi"));
-    assert.deepEqual(services.store.listModels().filter(m => m.providerId === "openrouter").map(m => m.model), ["z-ai/glm-5.3-flash"]);
-    assert.deepEqual(services.store.listModels().filter(m => m.providerId === "opencode").map(m => m.model), ["muse-spark-1.3-contributor-free"]);
+    assert.deepEqual(services.store.listModels().filter(m => m.providerId === "openrouter").map(m => m.model), ["z-ai/glm-5.3-flash", "deepseek/deepseek-v4.1-flash", "xiaomi/mimo-v2.6-flash"]);
+    assert.deepEqual(services.store.listModels().filter(m => m.providerId === "opencode").map(m => m.model), []);
     assert.deepEqual(services.store.listModels().filter(m => m.providerId === "siray" && m.enabled).map(m => m.model), ["bytedance/seedream-5.0-pro-i2i-spicy", "bytedance/seedream-5.0-pro-t2i-spicy", "alibaba/wan-3.0-t2v-spicy", "alibaba/wan-3.0-i2v-spicy", "alibaba/wan-3.0-ref2v-spicy"]);
     assert.deepEqual(services.store.listModels().filter(m => m.providerId === "siray" && m.agentTool).map(m => m.model), ["alibaba/wan-3.0-i2v-spicy", "alibaba/wan-3.0-ref2v-spicy"]);
     assert.equal(services.config.prompts().globalPrompt, DEFAULT_GLOBAL_PROMPT);

@@ -2,7 +2,7 @@
 
 [Documentation](README.en.md) · [简体中文](guide.md)
 
-Uncensia keeps chat, roleplay, book illustration, interleaved stories, and image and video creation in one chat-first flow. Configure working models in Settings first: a fresh install seeds OpenRouter GLM 5.3 Flash and OpenCode MuseSpark 1.3 (free) for chat, Siray Seedream 5.0 Pro Spicy for images (generate, edit, composite), Siray Wan 3.0 for video, and an optional local ComfyUI Lustify V10. Defaults include no keys or model weights: the chat model plans the work, and a generation model produces the pixels. A key for one hosted backend is enough to generate right away; local ComfyUI needs a separate install and the workflow's model files, so a chat key alone will not bring it online.
+Uncensia keeps chat, roleplay, book illustration, interleaved stories, and image and video creation in one chat-first flow. Configure working models in Settings first: a fresh install seeds OpenRouter GLM 5.3 Flash (default), DeepSeek V4.1 Flash and MiMo V2.6 Flash for chat, Siray Seedream 5.0 Pro Spicy for images (generate, edit, composite), Siray Wan 3.0 for video, and an optional local ComfyUI Lustify V10. Defaults include no keys or model weights: the chat model plans the work, and a generation model produces the pixels. A key for one hosted backend is enough to generate right away; local ComfyUI needs a separate install and the workflow's model files, so a chat key alone will not bring it online.
 
 ## Everything starts in chat
 
@@ -13,7 +13,7 @@ There is no mode to pick or command to run first. Open a new conversation and de
 - "Edit" a message and regenerate, or open "versions and branches" to fork and compare directions.
 - Leave "feedback" on a reply for the rest of the conversation to consider; "compact" a long conversation to condense its history.
 
-Among chat models, one marked "sees images" (such as MuseSpark 1.3) can look at pictures and judge them; a "text only" one (such as GLM 5.3 Flash) plans faster but cannot see the frame.
+Among chat models, one marked "sees images" can look at pictures and judge them; a "text only" one plans faster but cannot see the frame.
 
 ## Roleplay and companionship
 

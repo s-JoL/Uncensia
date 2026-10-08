@@ -27,7 +27,7 @@ Uncensia 是自托管、单用户的个人 AI 创作与陪伴工作室：把对�
 
 首次安装会预置一套可直接上手的模型（已有安装保留自己的选择）：
 
-- **对话**：OpenRouter 的 GLM 5.3 Flash 与 OpenCode 的 MuseSpark 1.3（免费），两者都已固定在切换器里。
+- **对话**：OpenRouter 的 GLM 5.3 Flash（默认）、DeepSeek V4.1 Flash 与 MiMo V2.6 Flash，三者都能看图并已固定在切换器里。
 - **图片**：Siray Seedream 5.0 Pro，覆盖生成、改图与多图合成。
 - **视频**：Siray Wan 3.0（文生视频）。
 - **本地选项**：ComfyUI Lustify V10，在自有 GPU 上离线出图。
