@@ -32,7 +32,7 @@ Open `http://127.0.0.1:8090`. The first access code is printed in the server log
 | `EMBEDDING_API_KEY` | Independent first-install embedding credential |
 | `SIRAY_API_KEY` / `TAVILY_API_KEY` | First-install media / search credentials |
 
-Saved credentials are not overwritten by environment variables on later starts. Fresh installations seed GLM 5.3 Flash (OpenRouter) and MuseSpark 1.3 (OpenCode, free) for chat, Qwen3 Embedding 8B for retrieval, Siray Seedream 5.0 Pro for images (generate, edit and composite), Siray Wan 3.0 for video, and Lustify V10 as a local ComfyUI option. Defaults do not include keys, model weights or provider credit. Existing installations retain their model choices.
+Saved credentials are not overwritten by environment variables on later starts. Fresh installations seed GLM 5.3 Flash (default), DeepSeek V4.1 Flash and MiMo V2.6 Flash (all OpenRouter) for chat, Qwen3 Embedding 8B for retrieval, Siray Seedream 5.0 Pro for images (generate, edit and composite), Siray Wan 3.0 for video, and Lustify V10 as a local ComfyUI option. Defaults do not include keys, model weights or provider credit. Existing installations retain their model choices.
 
 To connect a phone, use an address reachable from it and configure the server’s listening address. For remote access, use a controlled HTTPS reverse proxy. Manage access codes, TOTP and signed-in devices in Settings.
 

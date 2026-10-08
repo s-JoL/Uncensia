@@ -20,7 +20,13 @@ const PROVIDERS: Array<ProviderInput & { id: string }> = [
   { id: "comfy", name: "ComfyUI", baseUrl: "http://127.0.0.1:8188" },
 ];
 const CHAT_ID = "openrouter-glm-5.3-flash";
-const MUSE_ID = "opencode-muse-spark-1.3";
+// The three most-used OpenRouter models for both roleplay and tool calling;
+// all accept images, so the agent can judge what it generated.
+const CHAT_MODELS: Array<[id: string, name: string, model: string]> = [
+  [CHAT_ID, "GLM 5.3 Flash · OpenRouter", "z-ai/glm-5.3-flash"],
+  ["openrouter-deepseek-v4.1-flash", "DeepSeek V4.1 Flash · OpenRouter", "deepseek/deepseek-v4.1-flash"],
+  ["openrouter-mimo-v2.6-flash", "MiMo V2.6 Flash · OpenRouter", "xiaomi/mimo-v2.6-flash"],
+];
 // The default image/edit/video picks are hosted, so a fresh install with only a
 // Siray key can generate at once; the local Lustify model is seeded beside them.
 const IMAGE_ID = "siray:seedream-5.0-pro-t2i-spicy";
@@ -29,38 +35,20 @@ const VIDEO_ID = "siray:wan-3.0-t2v-spicy";
 const COMFY_IMAGE_ID = "comfy:lustify-v10";
 const GENERATION_DEFAULTS = { enabled: true, pinned: false, reasoning: false, input: ["text"] as Array<"text" | "image">, contextWindow: 4096, maxTokens: 4096, thinkingLevel: "off" as const };
 const MODELS: ModelInput[] = [
-  {
-    id: CHAT_ID,
-    name: "GLM 5.3 Flash · OpenRouter",
+  ...CHAT_MODELS.map(([id, name, model]) => ({
+    id,
+    name,
     providerId: "openrouter",
-    model: "z-ai/glm-5.3-flash",
+    model,
     enabled: true,
     pinned: true,
     reasoning: true,
-    input: ["text"],
+    input: ["text", "image"] as Array<"text" | "image">,
     contextWindow: 200_000,
     maxTokens: 65_536,
-    thinkingLevel: "medium",
-    apiMode: "openai-chat",
-  },
-  {
-    id: MUSE_ID,
-    name: "MuseSpark 1.3 · OpenCode（免费）",
-    providerId: "opencode",
-    model: "muse-spark-1.3-contributor-free",
-    enabled: true,
-    pinned: true,
-    reasoning: true,
-    input: ["text", "image"],
-    contextWindow: 200_000,
-    maxTokens: 65_536,
-    thinkingLevel: "medium",
-    thinkingLevelMap: { off: null, minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" },
-    apiMode: "openai-responses",
-    // MuseSpark on Zen is a Responses model whose session is carried in the
-    // provider header, so pi must not manage OpenAI-style session affinity.
-    compat: { sessionAffinityFormat: "openai-nosession" },
-  },
+    thinkingLevel: "medium" as const,
+    apiMode: "openai-chat" as const,
+  })),
   {
     ...GENERATION_DEFAULTS,
     id: COMFY_IMAGE_ID,
