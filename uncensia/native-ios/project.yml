@@ -31,8 +31,8 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Uncensia
-        CFBundleShortVersionString: "1.0.1"
-        CFBundleVersion: "2"
+        CFBundleShortVersionString: "1.1.0"
+        CFBundleVersion: "3"
         UILaunchScreen: {}
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

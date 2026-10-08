@@ -60,6 +60,12 @@ export const paths = {
   webDist: path.join(ROOT, "dist"),
 };
 
+/** The release, from package.json, so the server, its clients and MCP peers agree. */
+export const VERSION: string = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version ?? "0.0.0"; }
+  catch { return "0.0.0"; }
+})();
+
 export const PORT = Number(process.env.UNCENSIA_PORT ?? 8090);
 export const HOST = process.env.UNCENSIA_HOST ?? "127.0.0.1";
 
