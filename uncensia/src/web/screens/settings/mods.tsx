@@ -20,9 +20,9 @@ const TEMPLATE = {
 function summary(mod: ModRecord) {
   const c = mod.contributes;
   return [
-    c.messageActions?.length ? uiText("{0} 个回复按钮", [c.messageActions.length]) : "",
-    c.starters?.length ? uiText("{0} 个开场建议", [c.starters.length]) : "",
-    c.panels?.length ? uiText("{0} 个侧边面板", [c.panels.length]) : "",
+    c.messageActions?.length ? (c.messageActions.length === 1 ? uiText("1 个回复按钮") : uiText("{0} 个回复按钮", [c.messageActions.length])) : "",
+    c.starters?.length ? (c.starters.length === 1 ? uiText("1 个开场建议") : uiText("{0} 个开场建议", [c.starters.length])) : "",
+    c.panels?.length ? (c.panels.length === 1 ? uiText("1 个侧边面板") : uiText("{0} 个侧边面板", [c.panels.length])) : "",
   ].filter(Boolean).join(" · ");
 }
 

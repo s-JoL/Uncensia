@@ -862,7 +862,7 @@ export function Chat({
       <div className={cn("shrink-0 bg-background px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6", !visibleTurns.length && "mb-auto")}>
         <div
           className={cn(
-            "mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-[28px] border border-border bg-card p-3 shadow-[0_8px_30px_rgb(31_26_30/0.06)] transition-[border-color,box-shadow] focus-within:border-primary/40 focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-primary)_14%,transparent)] sm:p-4",
+            "mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-[28px] border border-border bg-card p-3 shadow-[0_8px_30px_rgb(31_26_30/0.06)] transition-[border-color,box-shadow] focus-within:border-primary/30 focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-primary)_8%,transparent)] sm:p-4",
             dragging && "border-primary bg-accent/40",
           )}
           onDragOver={(event) => {

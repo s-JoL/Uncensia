@@ -6,12 +6,14 @@ struct MessageRow: View {
   let message: ChatMessage
   let api: APIClient?
   private let parts: [TranscriptPart]
+  private let toolResults: TranscriptToolResults
   /// False for a failed attempt that a retry in the same turn replaced.
   private let showsFailure: Bool
-  init(message: ChatMessage, api: APIClient?, inlineMedia: Set<String> = [], showsFailure: Bool = true) {
+  init(message: ChatMessage, api: APIClient?, inlineMedia: Set<String> = [], showsFailure: Bool = true, toolResults: TranscriptToolResults = .init()) {
     self.message = message
     self.api = api
     self.showsFailure = showsFailure
+    self.toolResults = toolResults
     parts = Self.visibleParts(message: message, inlineMedia: inlineMedia)
   }
 
@@ -49,11 +51,11 @@ struct MessageRow: View {
 
   private var messageContent: some View {
     VStack(alignment: .leading, spacing: 10) {
-      if message.role == "toolResult" {
+      if message.role == "toolResult", !toolResults.pairs(message) {
         ToolTranscriptCard(name: message.content["toolName"].stringValue ?? message.raw["toolName"].stringValue ?? uncensiaText("工具结果"), arguments: .null, result: message.text)
       }
       ForEach(parts) { part in
-        TranscriptPartView(part: part, api: api, user: message.role == "user")
+        TranscriptPartView(part: part, api: api, user: message.role == "user", toolResults: toolResults.results)
       }
       if showsFailure, message.role == "assistant", message.content["stopReason"].stringValue == "error" {
         ProviderFailureNotice(raw: message.content["errorMessage"].stringValue ?? "")
@@ -163,7 +165,7 @@ struct TranscriptPart: Identifiable {
     case image(String, String?)
     case video(String, String?)
     case file(String, String, String)
-    case tool(String, JSONValue)
+    case tool(String, JSONValue, String?)
     case unknown(String)
   }
   let id: String
@@ -202,7 +204,7 @@ struct TranscriptPart: Identifiable {
           ]
         } ?? []
       case "toolCall":
-        return [.init(id: id, kind: .tool(part["name"].stringValue ?? "tool", part["arguments"]))]
+        return [.init(id: id, kind: .tool(part["name"].stringValue ?? "tool", part["arguments"], part["id"].stringValue))]
       default:
         if let nested = part["content"].arrayValue { return decode(.array(nested), prefix: id) }
         return [.init(id: id, kind: .unknown(part.pretty))]
@@ -215,6 +217,7 @@ private struct TranscriptPartView: View {
   let part: TranscriptPart
   let api: APIClient?
   let user: Bool
+  var toolResults: [String: String] = [:]
   @State private var preview: TranscriptPreview?
   var body: some View {
     Group {
@@ -255,8 +258,8 @@ private struct TranscriptPartView: View {
         } label: {
           Label(name, systemImage: mime == "application/pdf" ? "doc.text" : "doc").lineLimit(1)
         }.buttonStyle(.bordered)
-      case .tool(let name, let arguments):
-        ToolTranscriptCard(name: name, arguments: arguments, result: nil)
+      case .tool(let name, let arguments, let call):
+        ToolTranscriptCard(name: name, arguments: arguments, result: call.flatMap { toolResults[$0] })
       case .unknown(let raw):
         if !raw.isEmpty {
           DisclosureGroup(uncensiaText("详细内容")) { Text(raw).font(.caption.monospaced()).textSelection(.enabled) }
@@ -276,8 +279,15 @@ private struct ToolTranscriptCard: View {
   let name: String
   let arguments: JSONValue
   let result: String?
+  /// The skill a `read` of a skill's own SKILL.md loads, named as the web client names it.
+  private var skill: String? {
+    guard name == "read", let path = arguments["path"].stringValue else { return nil }
+    let parts = path.split(whereSeparator: { $0 == "/" || $0 == "\\" })
+    return parts.count > 1 && parts.last == "SKILL.md" ? String(parts[parts.count - 2]) : nil
+  }
   private var label: String {
-    [
+    if let skill { return "\(uncensiaText("使用技能")) · \(skill)" }
+    return [
       "read": uncensiaText("读取资料"), "write": uncensiaText("写入文件"), "edit": uncensiaText("修改文件"), "grep": uncensiaText("搜索内容"), "find": uncensiaText("查找文件"), "ls": uncensiaText("查看目录"),
       "bash": uncensiaText("执行命令"), "web_search": uncensiaText("搜索网页"), "file_search": uncensiaText("查阅文件"), "view_image": uncensiaText("查看图片"),
       "generate_image": uncensiaText("生成图片"), "edit_image": uncensiaText("编辑图片"), "generate_video": uncensiaText("生成视频"),
@@ -710,9 +720,14 @@ private struct AuthenticatedTranscriptImage: View {
     Rectangle().fill(.quaternary).aspectRatio(4.0 / 3.0, contentMode: .fit)
       .overlay {
         if let image {
+          // A blurred copy fills the canvas around an image of another shape,
+          // as Photos does, instead of grey bars.
           GeometryReader { geometry in
-            image.resizable().scaledToFit()
-              .frame(width: geometry.size.width, height: geometry.size.height)
+            ZStack {
+              image.resizable().scaledToFill().blur(radius: 28).opacity(0.55)
+              image.resizable().scaledToFit()
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
           }
         } else if failed {
           Button { failed = false; attempt += 1 } label: { Label(uncensiaText("重试"), systemImage: "arrow.clockwise") }
@@ -875,6 +890,30 @@ extension JSONValue {
     return (try? JSONSerialization.jsonObject(with: data)).flatMap {
       try? JSONSerialization.data(withJSONObject: $0, options: [.prettyPrinted, .sortedKeys])
     }.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+  }
+}
+
+/// Pairs each tool call with its result so a step shows once, as on the web:
+/// the call's card carries the result, and the result's own row keeps only the
+/// media it returned.
+struct TranscriptToolResults {
+  private(set) var results: [String: String] = [:]
+  private var calls: Set<String> = []
+  mutating func replaceMessages(_ messages: [ChatMessage]) {
+    var results: [String: String] = [:], calls: Set<String> = []
+    for message in messages {
+      if message.role == "toolResult", let id = message.content["toolCallId"].stringValue { results[id] = message.text }
+      guard message.role == "assistant" else { continue }
+      for part in message.content["content"].arrayValue ?? [] where part["type"].stringValue == "toolCall" {
+        if let id = part["id"].stringValue { calls.insert(id) }
+      }
+    }
+    self.results = results
+    self.calls = calls
+  }
+  /// True when this result belongs to a call shown in the transcript.
+  func pairs(_ message: ChatMessage) -> Bool {
+    message.role == "toolResult" && message.content["toolCallId"].stringValue.map(calls.contains) == true
   }
 }
 

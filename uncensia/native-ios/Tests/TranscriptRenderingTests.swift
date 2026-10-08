@@ -39,6 +39,25 @@ final class TranscriptRenderingTests: XCTestCase {
             "content": .object(["toolName": .string("view_image"), "content": message("toolResult").content])]))!
         XCTAssertTrue(MessageRow.visibleParts(message: inspected, inlineMedia: []).isEmpty)
     }
+    func testToolResultIsShownWithItsCall() {
+        func message(_ id: String, _ role: String, _ content: [String: JSONValue]) -> ChatMessage {
+            ChatMessage(.object(["id": .string(id), "role": .string(role), "content": .object(content)]))!
+        }
+        let call = message("call", "assistant", ["role": .string("assistant"), "content": .array([
+            .object(["type": .string("toolCall"), "id": .string("call_1"), "name": .string("generate_image"), "arguments": .object([:])])
+        ])])
+        let result = message("result", "toolResult", ["role": .string("toolResult"), "toolCallId": .string("call_1"), "toolName": .string("generate_image"),
+            "content": .array([.object(["type": .string("text"), "text": .string("Produced image img_a.")])])])
+        let orphan = message("orphan", "toolResult", ["role": .string("toolResult"), "toolCallId": .string("call_gone"), "content": .string("Done.")])
+        var index = TranscriptToolResults()
+        index.replaceMessages([call, result, orphan])
+        XCTAssertTrue(index.pairs(result))
+        XCTAssertFalse(index.pairs(orphan), "a result whose call is not loaded keeps its own card")
+        XCTAssertFalse(index.pairs(call))
+        XCTAssertEqual(index.results["call_1"], "Produced image img_a.")
+        guard case .tool(_, _, let id) = TranscriptPart.decode(call.content["content"], prefix: "call").first?.kind else { return XCTFail("Expected a tool part") }
+        XCTAssertEqual(id, "call_1")
+    }
     func testLongFenceKeepsShorterFenceAndMediaLiteral() {
         let blocks = MarkdownBlock.parse("````markdown\n```\n![example](image://img_code)\n```\n````\n![real](image://img_real)")
         guard case .code(let language, let code) = blocks.first?.kind else { return XCTFail("Expected fenced code") }

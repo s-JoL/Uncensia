@@ -155,7 +155,7 @@
 "[来源·%@]" = "[Source · %@]";
 "无法打开" = "Could not open";
 "正在读取…" = "Reading…";
-"完成" = "Complete";
+"完成" = "Done";
 "未记录" = "Not recorded";
 "后端" = "Provider";
 "提示词" = "Prompt";
@@ -696,3 +696,4 @@
 "查找资料" = "Find materials";
 "核对生成记录" = "Check generations";
 "添加模组" = "Add mod";
+"使用技能" = "Using skill";

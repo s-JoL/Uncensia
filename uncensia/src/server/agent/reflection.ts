@@ -96,6 +96,30 @@ export function excerpt(messages: AgentMessage[], feedback: string[]) {
   return text;
 }
 
+const ENGLISH_WORDS = new Set("the a an and or to of in on at is are was it that this you your i me my we for with not don't do be please can more less keep too so just what how".split(" "));
+
+/**
+ * The language the person writes in, from their own recent messages, or null
+ * when it is not one of the scripts recognised here. Left to "the person's
+ * language", a model reviewing an English exchange still wrote its summary in
+ * Chinese; naming the language removes the guess.
+ */
+export function personLanguage(messages: AgentMessage[]) {
+  const text = messages.filter(message => (message as { role?: string }).role === "user").map(messageText).join(" ");
+  const han = (text.match(/[\u3400-\u9fff]/g) ?? []).length;
+  const kana = (text.match(/[\u3040-\u30ff]/g) ?? []).length;
+  const hangul = (text.match(/[\uac00-\ud7af]/g) ?? []).length;
+  const latin = (text.match(/[A-Za-z]/g) ?? []).length;
+  if (kana > 0 && kana * 2 >= han) return "Japanese";
+  if (hangul > 0 && hangul * 2 > latin) return "Korean";
+  // One Chinese character carries roughly what three Latin letters do.
+  if (han > 0 && han * 3 >= latin) return "Chinese";
+  // Latin script alone does not say English; its common small words do.
+  const words = text.toLowerCase().match(/[a-z']+/g) ?? [];
+  const english = words.filter(word => ENGLISH_WORDS.has(word)).length;
+  return words.length && english / words.length >= 0.15 ? "English" : null;
+}
+
 /** The first JSON object in a reply, tolerating a fence or a preface. */
 export function parseProposal(reply: string): Record<string, unknown> | null {
   const start = reply.indexOf("{");
@@ -153,6 +177,7 @@ export class Reflection {
     const previous = this.list(input.conversationId);
     const context = [
       `Why this exchange is being reviewed: ${input.reason}.`,
+      `Write "summary" and any saved text in ${[personLanguage(input.messages), "the language the person writes in"].filter(Boolean).join(", ")}.`,
       `Existing skills:\n${skills.map(skill => `- ${skill.name}: ${skill.description}`).join("\n") || "(none)"}`,
       `Existing memories:\n${memories.map(memory => `- ${memory.key}: ${memory.value.slice(0, 200)}`).join("\n") || "(none)"}`,
       `Existing mods:\n${listMods().items.map(mod => `- ${mod.name}: ${mod.title} — ${(mod.contributes.messageActions ?? []).map(action => action.label).concat((mod.contributes.starters ?? []).map(starter => starter.label)).join(", ")}`).join("\n") || "(none)"}`,

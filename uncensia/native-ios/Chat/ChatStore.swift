@@ -28,9 +28,10 @@ public final class ChatStore {
         snapshotOrder.removeAll { $0 == id }; snapshotOrder.append(id)
         while snapshotOrder.count > 4 { snapshots.removeValue(forKey: snapshotOrder.removeFirst()) }
     }
-    public var messages: [ChatMessage] = [] { didSet { citations.replaceMessages(messages); mediaIndex.replaceMessages(messages) } }
+    public var messages: [ChatMessage] = [] { didSet { citations.replaceMessages(messages); mediaIndex.replaceMessages(messages); toolResults.replaceMessages(messages) } }
     let citations = TranscriptCitationIndex()
     var mediaIndex = TranscriptMediaIndex()
+    var toolResults = TranscriptToolResults()
     public struct DraftScope: Equatable, Sendable {
         public let server: URL
         public let conversationID: String?

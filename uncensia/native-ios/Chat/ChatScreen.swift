@@ -246,7 +246,7 @@ private struct TranscriptView: View {
                         restoreReadingPosition()
                     }
                 }.disabled(loadingOlder) }
-                ForEach(store.messages) { message in transcriptMessage(message) }
+                ForEach(store.messages.filter { !resultShownWithCall($0) }) { message in transcriptMessage(message) }
                 ForEach(store.approvals) { approval in ApprovalCard(item: approval, store: store, api: api) }
                 ForEach(store.questions) { question in QuestionCard(item: question, store: store, api: api) }
                 if store.isRunning || !store.liveText.isEmpty { LiveTranscriptRow(store: store, api: api).id("live") }
@@ -349,8 +349,13 @@ private struct TranscriptView: View {
         }
         }
     }
+    /// A tool result is shown in its call's card; its own row stays only for returned media.
+    private func resultShownWithCall(_ message: ChatMessage) -> Bool {
+        store.toolResults.pairs(message)
+            && MessageRow.visibleParts(message: message, inlineMedia: store.mediaIndex.byMessage[message.id] ?? []).isEmpty
+    }
     private func transcriptMessage(_ message: ChatMessage) -> some View {
-        MessageRow(message: message, api: api, inlineMedia: store.mediaIndex.byMessage[message.id] ?? [], showsFailure: !retriedFailures.contains(message.id))
+        MessageRow(message: message, api: api, inlineMedia: store.mediaIndex.byMessage[message.id] ?? [], showsFailure: !retriedFailures.contains(message.id), toolResults: store.toolResults)
             .environment(store.citations.scope(for: message.id))
             .id(message.id).accessibilityElement(children: .contain)
             .accessibilityIdentifier("chat.message.\(message.id)").contextMenu {

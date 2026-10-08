@@ -15,7 +15,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uncensia-reflection-"));
 process.env.UNCENSIA_DATA_DIR = dir;
 process.env.UNCENSIA_ACCESS_CODE = "REFLECTIONAUDITCODE";
 const { createServices } = await import("../src/server/services.ts");
-const { reflectionReason, parseProposal } = await import("../src/server/agent/reflection.ts");
+const { reflectionReason, parseProposal, personLanguage } = await import("../src/server/agent/reflection.ts");
 const { managedSkills } = await import("../src/server/tools/skill-management.ts");
 const { learningHistory } = await import("../src/server/tools/learning.ts");
 const { createApp } = await import("../src/server/http/app.ts");
@@ -46,6 +46,11 @@ try {
   assert.equal(reflectionReason({ ...base, userTurns: 7 }), null);
   assert.deepEqual(parseProposal('```json\n{"action":"none"}\n```'), { action: "none" });
   assert.equal(parseProposal("no json here"), null);
+  const said = (text: string) => [{ role: "user", content: [{ type: "text", text }], timestamp: 1 }] as never;
+  assert.equal(personLanguage(said("Too long. Keep replies to three short paragraphs.")), "English");
+  assert.equal(personLanguage(said("太长了，每次回复控制在三段以内。")), "Chinese");
+  assert.equal(personLanguage(said("*推门进来* Still open? 给我一杯热可可吧。")), "Chinese");
+  assert.equal(personLanguage(said("Demasiado largo. Mantén cada respuesta en tres párrafos cortos.")), null, "Latin script is not assumed to be English");
   console.log("PASS signals: feedback, replay, recovery, tool-heavy and periodic review; tolerant JSON reading");
 
   const conv = services.store.createConversation("fixture");
@@ -65,6 +70,7 @@ try {
   assert.equal(await reflect('{"action":"skill_patch","skill":"missing","old":"a","new":"b","summary":"s"}'), null);
   assert.equal(reflection.list(conv.id).length, 0);
   assert.ok(prompts.at(-1)!.includes("Recommend a film."), "the exchange reaches the reviewer");
+  assert.ok(prompts.at(-1)!.includes("in English, the language the person writes in"), "the reviewer is told which language to write");
   console.log("PASS invalid proposals are discarded before anything is stored");
 
   // Memory: pending until accepted; accepting saves through the budgeted path.
