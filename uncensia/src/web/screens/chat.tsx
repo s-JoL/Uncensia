@@ -1539,7 +1539,8 @@ function LearningProposalBar({ proposal, onSettled }: { proposal: LearningPropos
   const p = proposal.payload;
   const details = proposal.kind === "memory" ? `${p.key}: ${p.value}`
     : proposal.kind === "skill_new" ? `${p.name}\n${p.description}\n\n${p.body}`
-      : `${p.skill}\n\n- ${p.old}\n+ ${p.new}`;
+      : proposal.kind === "mod" ? JSON.stringify(JSON.parse(p.manifest ?? "{}"), null, 2)
+        : `${p.skill}\n\n- ${p.old}\n+ ${p.new}`;
   const act = async (work: () => Promise<unknown>, done: string) => {
     setBusy(true);
     try {
@@ -1560,8 +1561,8 @@ function LearningProposalBar({ proposal, onSettled }: { proposal: LearningPropos
       </p>
       {open ? <pre className="ml-6 max-h-60 overflow-auto rounded-lg bg-muted/50 px-3 py-2 text-xs whitespace-pre-wrap">{details}</pre> : null}
       <div className="ml-6 flex flex-wrap items-center gap-1">
-        <Button size="sm" variant="primary" disabled={busy} onClick={() => void act(() => api.acceptLearningProposal(proposal.id), proposal.kind === "memory" ? uiText("已记住") : uiText("技能已保存，下次对话起使用"))}>
-          {proposal.kind === "memory" ? uiText("记住") : proposal.kind === "skill_new" ? uiText("存成技能") : uiText("更新技能")}
+        <Button size="sm" variant="primary" disabled={busy} onClick={() => void act(async () => { await api.acceptLearningProposal(proposal.id); if (proposal.kind === "mod") modsChanged(); }, proposal.kind === "memory" ? uiText("已记住") : proposal.kind === "mod" ? uiText("模组已添加") : uiText("技能已保存，下次对话起使用"))}>
+          {proposal.kind === "memory" ? uiText("记住") : proposal.kind === "skill_new" ? uiText("存成技能") : proposal.kind === "mod" ? uiText("添加模组") : uiText("更新技能")}
         </Button>
         {proposal.kind !== "memory" ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => api.acceptLearningProposal(proposal.id, "memory"), uiText("已记住"))}>{uiText("只记住")}</Button> : null}
         <Button size="sm" variant="ghost" onClick={() => setOpen(value => !value)}>{open ? uiText("收起") : uiText("查看内容")}</Button>

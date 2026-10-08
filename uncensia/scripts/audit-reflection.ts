@@ -19,6 +19,7 @@ const { reflectionReason, parseProposal } = await import("../src/server/agent/re
 const { managedSkills } = await import("../src/server/tools/skill-management.ts");
 const { learningHistory } = await import("../src/server/tools/learning.ts");
 const { createApp } = await import("../src/server/http/app.ts");
+const { listMods } = await import("../src/server/mods.ts");
 
 const replies: string[] = [];
 const prompts: string[] = [];
@@ -106,6 +107,17 @@ try {
   assert.ok(refined && refined.kind === "memory" && refined.payload.key === "answer_length");
   reflection.accept(refined.id);
   assert.equal(services.store.listMemories().find(item => item.key === "answer_length")?.value, "Keep recommendations to two short points.");
+
+  // A mod: validated before it is stored, written as learned on accept.
+  assert.equal(await reflect('{"action":"mod","manifest":{"name":"Bad Name","title":"x","contributes":{"starters":[{"label":"a","prompt":"b"}]}},"summary":"s"}'), null);
+  const modProposal = await reflect('{"action":"mod","manifest":{"name":"translate-button","title":"Translate","description":"","contributes":{"messageActions":[{"label":"English","prompt":"Translate: {excerpt}"}]}},"summary":"A translate button"}');
+  assert.ok(modProposal && modProposal.kind === "mod");
+  assert.ok(!listMods().items.some(mod => mod.name === "translate-button"), "a mod proposal writes nothing on its own");
+  reflection.accept(modProposal.id);
+  const learnedMod = listMods().items.find(mod => mod.name === "translate-button");
+  assert.ok(learnedMod?.origin === "learned" && learnedMod.contributes.messageActions?.[0]?.label === "English");
+  assert.equal(learningHistory()[0]!.kind, "mod");
+  assert.ok(prompts.at(-1)!.includes("Existing mods"), "the reviewer sees existing mods");
 
   // Dismissed: nothing written, and the reviewer is told not to repeat it.
   const dismissed = await reflect('{"action":"memory","key":"emoji","value":"Likes emoji.","summary":"Likes emoji"}');
