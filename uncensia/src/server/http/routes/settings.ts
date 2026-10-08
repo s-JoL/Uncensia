@@ -27,6 +27,7 @@ import {
   updatePackage,
 } from "../../tools/extension-management.ts";
 import { learningHistory } from "../../tools/learning.ts";
+import { deleteMod, listMods, readMod, saveMod, setModEnabled } from "../../mods.ts";
 import { providerAuth } from "../../models/auth.ts";
 import { DEFAULT_GLOBAL_PROMPT, DEFAULT_TOOL_PROMPT } from "../../prompts/defaults.ts";
 import type { Services } from "../../services.ts";
@@ -49,6 +50,31 @@ export function settingsRoutes(services: Services) {
   const app = new Hono();
   const { store, config, vault, registry, mcp } = services;
   app.get("/learning/history", context => context.json({ items: learningHistory() }));
+
+  // ------------------------------------------------------------------- mods
+  // The owner edits mods here; the assistant through manage_mod. Both validate
+  // the same schema, and nothing in a mod runs.
+  app.get("/mods", context => context.json(listMods()));
+  app.get("/mods/:name", context => {
+    try { return context.json(readMod(context.req.param("name"))); }
+    catch (error) { return proposalFailure(context, error); }
+  });
+  app.put("/mods/:name", async context => {
+    const body = await readJson<{ manifest: unknown; revision?: string }>(context);
+    const manifest = body.manifest && typeof body.manifest === "object" ? { ...(body.manifest as object), name: context.req.param("name") } : body.manifest;
+    try { const saved = saveMod(manifest, body.revision); return context.json({ name: saved.name }); }
+    catch (error) { return proposalFailure(context, error); }
+  });
+  app.patch("/mods/:name", async context => {
+    const body = await readJson<{ enabled: boolean }>(context);
+    if (typeof body.enabled !== "boolean") return fail(context, 400, "invalid", "enabled must be true or false");
+    try { setModEnabled(context.req.param("name"), body.enabled); return context.json({ enabled: body.enabled }); }
+    catch (error) { return proposalFailure(context, error); }
+  });
+  app.delete("/mods/:name", context => {
+    try { deleteMod(context.req.param("name")); return context.body(null, 204); }
+    catch (error) { return proposalFailure(context, error); }
+  });
 
   // Proposals wait for the person; accepting writes through the same skill and
   // memory paths as everything else, so history and next-run discovery apply.

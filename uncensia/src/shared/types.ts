@@ -632,6 +632,36 @@ export interface LearningCapability {
   proposals?: boolean;
 }
 
+/**
+ * A mod: a declarative extension of the interface. Nothing in it runs; every
+ * contribution is text the clients render in a fixed slot, so the assistant
+ * can author one as safely as a skill.
+ */
+export interface ModContributions {
+  /** Buttons under an assistant reply that put a prompt in the composer; `{excerpt}` is the reply's opening. */
+  messageActions?: Array<{ label: string; prompt: string }>;
+  /** Suggestion chips on the empty conversation that put a prompt in the composer. */
+  starters?: Array<{ label: string; prompt: string }>;
+  /** Side panels that show the conversation notes with these keys, as the assistant keeps them. */
+  panels?: Array<{ title: string; notes: string[] }>;
+}
+
+export interface ModManifest {
+  name: string;
+  title: string;
+  description: string;
+  /** "learned" when the assistant wrote it. */
+  origin?: "learned";
+  contributes: ModContributions;
+}
+
+export interface ModRecord extends ModManifest {
+  enabled: boolean;
+  revision: string;
+}
+
+export const MOD_LIMITS = { label: 24, prompt: 2000, title: 60, description: 300, perSlot: 6, notesPerPanel: 8 } as const;
+
 export type LearningProposalKind = "memory" | "skill_new" | "skill_patch";
 
 export interface LearningProposal {
@@ -654,7 +684,7 @@ export interface LearningChange {
   id: string;
   at: string;
   conversationId: string;
-  kind: "skill" | "prompt";
+  kind: "skill" | "prompt" | "mod";
   target: string;
   before: string | null;
   after: string;

@@ -38,6 +38,8 @@ export const paths = {
   files: path.join(DATA_DIR, "files"),
   /** Folders of written procedures the agent can load on demand. */
   skills: path.join(DATA_DIR, "skills"),
+  /** Declarative interface extensions, one folder with a mod.json each. */
+  mods: path.join(DATA_DIR, "mods"),
   /**
    * The two editable prompt slots as files, so the agent can revise them the
    * same way it revises a skill. The settings row stays the HTTP write; these
@@ -69,6 +71,7 @@ export function ensureDirectories() {
     paths.data,
     paths.files,
     paths.skills,
+    paths.mods,
     paths.prompts,
     paths.workflows,
     paths.assets,
