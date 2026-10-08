@@ -30,7 +30,7 @@ Gemini 原生协议的请求参数由 `models/params.ts` 处理；用户保存�
 
 模组是声明式的界面扩展，每个位于 `data/mods/<name>/mod.json`，不运行任何代码。可用位置：`messageActions`（助手回复下方的按钮，把一段提示词放进输入框，`{excerpt}` 代表那段回复的开头）、`starters`（空对话里的开场建议）、`panels`（侧边面板，按键名显示对话笔记，由技能通过 `update_conversation_notes` 维护）。服务端用同一份 schema 校验设置页与助手的写入，字段长度和每类数量有上限，未知字段直接拒绝。
 
-包内的 `mods/` 与技能一样安装：未改动的文件随升级替换，改过的保留，用户删除的不再装回。启停写入 `data/mod-preferences.json`，升级不会改回；删除移到 `data/mod-trash`。助手在“持续学习 → 技能”开启时有 `manage_mod`（list/read/create/update/enable），写入的模组标记 `origin: learned`，修改记入改进记录，并通过 `mods.changed` 事件让网页立即刷新。iOS 暂不渲染模组。回归入口：`scripts/audit-mods.ts`。
+包内的 `mods/` 与技能一样安装：未改动的文件随升级替换，改过的保留，用户删除的不再装回。启停写入 `data/mod-preferences.json`，升级不会改回；删除移到 `data/mod-trash`。助手在“持续学习 → 技能”开启时有 `manage_mod`（list/read/create/update/enable），写入的模组标记 `origin: learned`，修改记入改进记录，并通过 `mods.changed` 事件让网页立即刷新。iOS 读取同一份 `/mods`：开场建议显示在空对话里，回复按钮放进助手消息的长按菜单，有内容的面板从导航栏按钮以底部面板打开。回归入口：`scripts/audit-mods.ts`。
 
 ## 文件、检索与记忆
 
