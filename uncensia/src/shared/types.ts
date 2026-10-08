@@ -662,7 +662,7 @@ export interface ModRecord extends ModManifest {
 
 export const MOD_LIMITS = { label: 24, prompt: 2000, title: 60, description: 300, perSlot: 6, notesPerPanel: 8 } as const;
 
-export type LearningProposalKind = "memory" | "skill_new" | "skill_patch";
+export type LearningProposalKind = "memory" | "skill_new" | "skill_patch" | "mod";
 
 export interface LearningProposal {
   id: string;
@@ -671,7 +671,7 @@ export interface LearningProposal {
   kind: LearningProposalKind;
   /** One sentence, in the person's language, of what would be kept. */
   summary: string;
-  /** memory: key/value; skill_new: name/description/body; skill_patch: skill/old/new/revision. */
+  /** memory: key/value; skill_new: name/description/body; skill_patch: skill/old/new/revision; mod: name and the manifest as JSON. */
   payload: Record<string, string>;
   status: "pending" | "accepted" | "dismissed";
   /** What accepting did, e.g. the memory key or skill name written. */

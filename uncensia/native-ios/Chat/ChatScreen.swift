@@ -252,7 +252,11 @@ private struct TranscriptView: View {
                 if store.isRunning || !store.liveText.isEmpty { LiveTranscriptRow(store: store, api: api).id("live") }
                 if !store.isRunning {
                     ForEach(proposals, id: \.self) { proposal in
-                        LearningProposalCard(proposal: proposal, api: api) { id in proposals.removeAll { $0["id"].stringValue == id } }
+                        LearningProposalCard(proposal: proposal, api: api) { id in
+                            // An accepted mod changes what the screen offers; reload it.
+                            if proposal["kind"].stringValue == "mod" { store.modsRevision += 1 }
+                            proposals.removeAll { $0["id"].stringValue == id }
+                        }
                     }
                 }
                 Color.clear.frame(height: 1).id("bottom")
@@ -868,6 +872,7 @@ struct LearningProposalCard: View {
         switch kind {
         case "memory": return "\(p["key"].stringValue ?? ""): \(p["value"].stringValue ?? "")"
         case "skill_new": return "\(p["name"].stringValue ?? "")\n\(p["description"].stringValue ?? "")\n\n\(p["body"].stringValue ?? "")"
+        case "mod": return p["manifest"].stringValue ?? ""
         default: return "\(p["skill"].stringValue ?? "")\n\n- \(p["old"].stringValue ?? "")\n+ \(p["new"].stringValue ?? "")"
         }
     }
@@ -881,7 +886,7 @@ struct LearningProposalCard: View {
             if showsDetails { Text(details).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled) }
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             HStack(spacing: 8) {
-                Button(kind == "memory" ? uncensiaText("记住") : kind == "skill_new" ? uncensiaText("存成技能") : uncensiaText("更新技能")) { act("accept") }
+                Button(kind == "memory" ? uncensiaText("记住") : kind == "skill_new" ? uncensiaText("存成技能") : kind == "mod" ? uncensiaText("添加模组") : uncensiaText("更新技能")) { act("accept") }
                     .buttonStyle(.borderedProminent)
                 if kind != "memory" { Button(uncensiaText("只记住")) { act("accept", as: "memory") }.buttonStyle(.bordered) }
                 Spacer(minLength: 0)

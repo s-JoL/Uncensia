@@ -19,6 +19,7 @@ import { countTokens } from "../prompts/context.ts";
 import type { Store } from "../store/store.ts";
 import { record } from "../tools/learning.ts";
 import { composeSkill, createSkill, managedSkills, SKILL_NAME, updateSkill } from "../tools/skill-management.ts";
+import { listMods, saveMod, validateMod } from "../mods.ts";
 
 export interface ReflectionSignals {
   /** The turn was an edit or a regeneration of an earlier one. */
@@ -56,6 +57,9 @@ Reply with JSON only, one of:
 {"action":"memory","key":"snake_case_key","value":"the preference in one or two sentences","summary":"..."}
 {"action":"skill_new","name":"kebab-case-name","description":"one line: when to use this skill","body":"concise Markdown procedure, with a short before/after example from the exchange when it helps","summary":"..."}
 {"action":"skill_patch","skill":"existing-skill-name","old":"an exact passage of that skill","new":"its replacement","summary":"..."}
+{"action":"mod","manifest":{"name":"kebab-case-name","title":"short title","description":"what it adds","contributes":{"messageActions":[{"label":"short","prompt":"what to ask, {excerpt} for the reply's opening"}],"starters":[{"label":"short","prompt":"..."}],"panels":[{"title":"short","notes":["note_key"]}]}},"summary":"..."}
+
+Propose a mod only when the person keeps asking for the same follow-up on replies (a button would save them retyping it), keeps starting the same kind of conversation, or wants a piece of conversation state always visible; include only the slots that help, and never repeat an existing mod.
 
 "summary" is one short sentence in the person's language saying what would be kept. When in doubt, answer {"action":"none"}.`;
 
@@ -151,6 +155,7 @@ export class Reflection {
       `Why this exchange is being reviewed: ${input.reason}.`,
       `Existing skills:\n${skills.map(skill => `- ${skill.name}: ${skill.description}`).join("\n") || "(none)"}`,
       `Existing memories:\n${memories.map(memory => `- ${memory.key}: ${memory.value.slice(0, 200)}`).join("\n") || "(none)"}`,
+      `Existing mods:\n${listMods().items.map(mod => `- ${mod.name}: ${mod.title} — ${(mod.contributes.messageActions ?? []).map(action => action.label).concat((mod.contributes.starters ?? []).map(starter => starter.label)).join(", ")}`).join("\n") || "(none)"}`,
       previous.length ? `Already proposed in this conversation (do not repeat):\n${previous.map(item => `- ${item.summary}`).join("\n")}` : "",
       `The exchange:\n${excerpt(input.messages, this.feedbackSince(input.conversationId))}`,
     ].filter(Boolean).join("\n\n");
@@ -200,6 +205,15 @@ export class Reflection {
       if (!skill?.editable || !old || old === replacement || skill.content.split(old).length - 1 !== 1) return null;
       return { kind: "skill_patch" as const, summary, payload: { skill: skill.name, old, new: replacement, revision: skill.revision } };
     }
+    if (raw.action === "mod") {
+      try {
+        const manifest = validateMod({ ...(raw.manifest as object), origin: "learned" });
+        if (listMods().items.some(mod => mod.name === manifest.name)) return null;
+        return { kind: "mod" as const, summary, payload: { name: manifest.name, manifest: JSON.stringify(manifest) } };
+      } catch {
+        return null;
+      }
+    }
     return null;
   }
 
@@ -217,11 +231,17 @@ export class Reflection {
       const memory = this.config.capabilities().memory;
       if (!memory.enabled) throw Object.assign(new Error("记忆已关闭，无法保存"), { status: 409 });
       const key = proposal.kind === "memory" ? payload.key! : (payload.name ?? payload.skill ?? "preference").replaceAll("-", "_").slice(0, 64);
+      if (!isMemoryKey(key)) throw Object.assign(new Error("Cannot keep this proposal as a memory"), { status: 400 });
       const value = proposal.kind === "memory" ? payload.value! : proposal.summary;
       if (!this.store.saveMemoryWithinBudget(key, value, countTokens(value), memory.tokenLimit, proposal.conversationId)) {
         throw Object.assign(new Error("记忆空间已满，请先整理记忆"), { status: 409 });
       }
       result = `memory:${key}`;
+    } else if (proposal.kind === "mod") {
+      if (listMods().items.some(mod => mod.name === payload.name)) throw Object.assign(new Error("同名模组已经存在，请忽略这条建议"), { status: 409 });
+      const saved = saveMod(JSON.parse(payload.manifest!));
+      record(proposal.conversationId, "mod", saved.name, null, saved.after, `Accepted learning proposal: ${proposal.summary}`);
+      result = `mod:${saved.name}`;
     } else if (proposal.kind === "skill_new") {
       const content = composeSkill({ name: payload.name!, description: payload.description!, body: payload.body!, learned: true });
       createSkill(content);
