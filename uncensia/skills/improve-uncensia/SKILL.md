@@ -18,6 +18,8 @@ These are files. The next run reloads them. No restart.
 | `uncensia/data/skills/<name>/SKILL.md` | A skill, loaded through native `read` or explicit `/skill:name` |
 | `uncensia/skills/` | Shipped seeds. An untouched `data/skills` file is replaced on upgrade; an edited one is kept |
 
+A recurring button under replies, a starting suggestion or an always-visible panel of conversation notes is a mod, not a skill: use `manage_mod` (declarative JSON in `data/mods/<name>/mod.json`, shown in the web client at once). A procedure the assistant follows is a skill.
+
 Image craft is split into standard skills: `image-generate`, `image-edit`, `image-compose`, `image-style`, `image-series`, plus `video`. Prefer editing the matching skill over stuffing procedure back into `tools.md`.
 
 ## What needs a restart

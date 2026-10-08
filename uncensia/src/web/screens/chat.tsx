@@ -11,6 +11,7 @@ import {
   FileText,
   ImageIcon,
   Lightbulb,
+  PanelRight,
   Menu as MenuIcon,
   Paperclip,
   Pencil,
@@ -23,6 +24,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TaskPanel } from "../ui/task-panel.tsx";
 import { classifyProviderFailure, needsSettings } from "@shared/provider-error.ts";
 import { openPath } from "../navigation.ts";
+import { modsChanged, useMods } from "../mods.ts";
 import { ConversationEvidence } from "../resource-view.tsx";
 import type {
   Approval,
@@ -139,6 +141,20 @@ export function Chat({
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
   /** Lessons proposed after a run, waiting for the reader to keep or dismiss. */
   const [proposals, setProposals] = useState<LearningProposal[]>([]);
+  const mods = useMods();
+  // Shipped mods are translated like the rest of the interface; others pass through as written.
+  const modStarters = useMemo(() => mods.flatMap(mod => mod.contributes.starters ?? []).map(item => ({ label: uiText(item.label), text: uiText(item.prompt) })), [mods]);
+  const modActions = useMemo(() => mods.flatMap(mod => mod.contributes.messageActions ?? []).map(item => ({ label: uiText(item.label), prompt: uiText(item.prompt) })), [mods]);
+  // A panel appears once the assistant has written at least one of its notes.
+  const panels = useMemo(() => mods.flatMap(mod => mod.contributes.panels ?? []).map(panel => ({
+    title: uiText(panel.title),
+    entries: panel.notes.map(key => notes.find(note => note.key === key && note.value.trim())).filter((note): note is ConversationNote => Boolean(note)),
+  })).filter(panel => panel.entries.length), [mods, notes]);
+  const [showPanel, setShowPanel] = useState(() => { try { return localStorage.getItem("uncensia.panel") !== "closed"; } catch { return true; } });
+  const togglePanel = (open: boolean) => { setShowPanel(open); try { localStorage.setItem("uncensia.panel", open ? "open" : "closed"); } catch { /* preference only */ } };
+  const narrow = typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches;
+  // On a phone the panel is a sheet opened on request, never on arrival.
+  const [panelSheet, setPanelSheet] = useState(false);
   const [editingSeq, setEditingSeq] = useState<number | null>(null);
   const [runningInstruction, setRunningInstruction] = useState<"steer" | "follow-up">("steer");
 
@@ -248,6 +264,7 @@ export function Chat({
               void onConversationChanged();
             }
             if (type === "conversation.notes" && Array.isArray(data.notes)) setNotes(data.notes as ConversationNote[]);
+            if (type === "mods.changed") modsChanged();
             if (type === "run.failed") toast(String(data.message ?? uiText("运行失败")), true);
             if (type === "agent.extension_notify" && typeof data.message === "string") {
               toast(`${data.level === "warning" ? uiText("提醒：") : ""}${data.message}`, data.level === "error");
@@ -610,8 +627,7 @@ export function Chat({
   // the request lands in the composer so the reader can add a style first.
   const canIllustrate = !running && bootstrap.models.some(model => model.enabled && model.configured && (model.ops ?? []).includes("text_to_image"));
   const illustrate = (turn: Turn, latest: boolean) => {
-    const passage = turnText(turn).replace(/[#*_`>~|]+/g, " ").replace(/\s+/g, " ").trim();
-    setDraft(latest ? uiText("给上面这段内容配一张插图。") : uiText("给这段内容配一张插图：「{0}」", [passage.length > 120 ? `${passage.slice(0, 120)}…` : passage]));
+    setDraft(latest ? uiText("给上面这段内容配一张插图。") : uiText("给这段内容配一张插图：「{0}」", [excerptOf(turn)]));
     textareaRef.current?.focus();
   };
 
@@ -773,6 +789,7 @@ export function Chat({
           <MenuItem disabled={!turns.length} onSelect={() => exportMarkdown(title, turns)}>{uiText("导出为 Markdown")}</MenuItem>
           <MenuItem disabled={running} onSelect={async () => { try { setRunning(true); const run = await api.compactConversation(conversationId); await follow(conversationId, run.runId, run.seq, new Set()); } catch (error) { setRunning(false); toast(error instanceof Error ? error.message : String(error), true); } }}>{uiText("整理上下文")}</MenuItem>
         </Menu> : null}
+        {panels.length ? <Button variant="ghost" size="icon" aria-label={uiText("侧边面板")} aria-pressed={narrow ? panelSheet : showPanel} className={!narrow && showPanel ? "text-primary" : ""} onClick={() => (narrow ? setPanelSheet(true) : togglePanel(!showPanel))}><PanelRight /></Button> : null}
         <Button variant="ghost" size="sm" className="relative" aria-label={uiText("任务与成果")} onClick={() => setShowTasks(true)}><ListTodo /><span className="hidden sm:inline">{uiText("任务与成果")}</span>{backgroundTasks.some(task => ["pending", "running"].includes(task.status)) ? <span aria-hidden className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary sm:static" /> : null}</Button>
         {showTree && conversationId ? <ConversationTree id={conversationId} onClose={() => setShowTree(false)} onFork={onConversationCreated} /> : null}
 
@@ -792,6 +809,8 @@ export function Chat({
         ) : null}
       </header>
 
+      <div className="flex min-h-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
       <div
         className={cn("min-h-0 overflow-y-auto overscroll-contain", visibleTurns.length ? "flex-1" : "mt-[clamp(2rem,16vh,10rem)] shrink-0")}
         ref={threadRef}
@@ -829,6 +848,8 @@ export function Chat({
                 }
                 onContinue={canAct && turn === visibleTurns.at(-1) && turn.role === "assistant" ? resume : undefined}
                 onIllustrate={canIllustrate && turn.role === "assistant" && turnText(turn).trim().length > 40 ? () => illustrate(turn, turn === visibleTurns.at(-1)) : undefined}
+                actions={!running && turn.role === "assistant" && turnText(turn).trim() ? modActions : undefined}
+                onAction={prompt => { setDraft(prompt.replaceAll("{excerpt}", excerptOf(turn))); textareaRef.current?.focus(); }}
               />
             ))}
             {!running ? proposals.map(proposal => (
@@ -1004,10 +1025,16 @@ export function Chat({
         </div>
 
         {!visibleTurns.length ? <div className="mx-auto mt-5 flex max-w-3xl flex-wrap justify-center gap-2">
-          {[{label:uiText("写点东西"), text:uiText("帮我把一个故事想法写成开场：")}, {label:uiText("创作图片"), text:uiText("生成一张图片：")}].map(item => <Button key={item.label} variant="outline" className="rounded-full bg-card/60 px-4 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground [&_svg]:text-primary" onClick={() => { setDraft(item.text); textareaRef.current?.focus(); }}><Sparkles />{item.label}</Button>)}
+          {[{label:uiText("写点东西"), text:uiText("帮我把一个故事想法写成开场：")}, {label:uiText("创作图片"), text:uiText("生成一张图片：")}, ...modStarters].map(item => <Button key={item.label} variant="outline" className="rounded-full bg-card/60 px-4 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground [&_svg]:text-primary" onClick={() => { setDraft(item.text); textareaRef.current?.focus(); }}><Sparkles />{item.label}</Button>)}
           <Button variant="outline" className="rounded-full bg-card/60 px-4 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground [&_svg]:text-primary" onClick={() => setPickingAsset(true)}><FileText />{uiText("使用我的资料")}</Button>
         </div> : <p className="mx-auto mt-2 max-w-3xl text-center text-[11px] text-muted-foreground">{running ? uiText("你可以随时停止，或继续补充要求") : uiText("重要内容请核对。图片与文件可在资料库中继续使用。")}</p>}
       </div>
+      </div>
+      {showPanel && panels.length ? <aside className="hidden w-80 shrink-0 overflow-y-auto border-l bg-sidebar/50 px-4 py-4 lg:block"><NotePanels panels={panels} onClose={() => togglePanel(false)} /></aside> : null}
+      </div>
+      <Modal open={panelSheet && panels.length > 0} onOpenChange={setPanelSheet} title={uiText("侧边面板")}>
+        <NotePanels panels={panels} />
+      </Modal>
 
       <Modal open={showTasks} onOpenChange={setShowTasks} title={uiText("任务与成果")} description={uiText("安排时间、持续推进，随时查看进度和结果。")}>
         {conversationId ? <ConversationEvidence key={conversationId} id={conversationId} revision={`${messages.length}:${running}:${feedbackRevision}`} /> : null}
@@ -1256,6 +1283,8 @@ const TurnView = memo(function TurnView({
   onContinue,
   onFeedback,
   onIllustrate,
+  actions,
+  onAction,
 }: {
   turn: Turn;
   citations: Map<string, Citation>;
@@ -1270,6 +1299,9 @@ const TurnView = memo(function TurnView({
   onFeedback?: (text: string) => Promise<void>;
   /** Puts an illustration request for this reply in the composer. */
   onIllustrate?: () => void;
+  /** Buttons contributed by mods; each puts its prompt in the composer. */
+  actions?: Array<{ label: string; prompt: string }>;
+  onAction?: (prompt: string) => void;
 }) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState("");
@@ -1421,6 +1453,14 @@ const TurnView = memo(function TurnView({
               <ImageIcon />
               {uiText("配图")}</Button>
           ) : null}
+          {/* A couple of mod buttons sit inline; more go behind one menu so the row stays a row. */}
+          {actions && actions.length > 2 ? (
+            <Menu trigger={<Button variant="ghost" size="sm"><Sparkles />{uiText("更多操作")}</Button>}>
+              {actions.map(action => <MenuItem key={action.label} onSelect={() => onAction?.(action.prompt)}>{action.label}</MenuItem>)}
+            </Menu>
+          ) : actions?.map(action => (
+            <Button key={action.label} variant="ghost" size="sm" onClick={() => onAction?.(action.prompt)}>{action.label}</Button>
+          ))}
           <CopyButton text={turnText(turn)} />
         </div>
       ) : null}
@@ -1432,6 +1472,39 @@ const TurnView = memo(function TurnView({
     </div>
   );
 });
+
+/** A reply's opening as plain text, for prompts that quote the passage they act on. */
+function excerptOf(turn: Turn) {
+  const passage = turnText(turn).replace(/[#*_`>~|]+/g, " ").replace(/\s+/g, " ").trim();
+  return passage.length > 120 ? `${passage.slice(0, 120)}…` : passage;
+}
+
+const NO_CITATIONS = new Map<string, Citation>();
+
+/** Names for the note keys the shipped skills keep; any other key shows as written. */
+const NOTE_NAMES: Record<string, string> = { outline: "大纲", continuity: "连续性", style: "写作风格", scene: "场景", relationship: "关系", today: "今天" };
+
+/** Conversation notes a mod asked to show, kept current by the assistant. */
+function NotePanels({ panels, onClose }: { panels: Array<{ title: string; entries: ConversationNote[] }>; onClose?: () => void }) {
+  return (
+    <div className="flex flex-col gap-5">
+      {panels.map(panel => (
+        <section key={panel.title} className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{panel.title}</h2>
+            {onClose && panel === panels[0] ? <Button variant="ghost" size="icon-sm" aria-label={uiText("收起")} onClick={onClose}><X /></Button> : null}
+          </div>
+          {panel.entries.map(note => (
+            <div key={note.key} className="rounded-xl border bg-card px-3 py-2.5 text-sm">
+              <p className="mb-1 text-xs font-medium text-primary">{note.label || (NOTE_NAMES[note.key] ? uiText(NOTE_NAMES[note.key]!) : note.key)}</p>
+              <div className="prose-sm text-[13px] leading-relaxed"><Markdown text={note.value} citations={NO_CITATIONS} /></div>
+            </div>
+          ))}
+        </section>
+      ))}
+    </div>
+  );
+}
 
 /**
  * The conversation as a readable document: a story or a draft taken out of the

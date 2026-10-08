@@ -96,6 +96,7 @@ Bearer 与同源 cookie 均可用。Cookie 写请求检查来源；访问码、T
 | 记忆 | GET `/memory`；PUT/DELETE `/memory/:key` |
 | 提供方 | GET/POST `/providers`；PATCH/DELETE `/providers/:id`；PUT/DELETE `/providers/:id/key` |
 | 在线模型目录 | GET `/providers/:id/models` |
+| 模组 | GET `/mods`；GET/PUT/PATCH/DELETE `/mods/:name`（PUT 带 `manifest` 与读取时的 `revision`；PATCH 只改 `enabled`） |
 | 学习建议 | GET `/conversations/:id/learning-proposals`；POST `/learning-proposals/:id/accept`（可选 `as: "memory"`，把技能提议只记为一条偏好）；POST `/learning-proposals/:id/dismiss` |
 | 连接测试 | POST `/providers/:id/test`（可选 `modelId`），经该服务的对话模型发一次极短的真实请求，返回 `ok`、模型与耗时或原始错误 |
 | 模型 | GET/POST `/models`；PATCH/DELETE `/models/:id`；POST `/models/bulk` |

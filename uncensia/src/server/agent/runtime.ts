@@ -391,7 +391,8 @@ export class Runtime {
     tools.push(...codingTools(capabilities.coding));
     tools.push(...resourceTools(this.config, this.store, conversationId, file => this.retrieval.indexFile(file)));
     tools.push(...learningTools(this.config, this.store, conversationId,
-      capabilities.files.searchEnabled ? file => this.retrieval.indexFile(file) : undefined));
+      capabilities.files.searchEnabled ? file => this.retrieval.indexFile(file) : undefined,
+      () => this.emit(runId, conversationId, "mods.changed", {})));
     if (capabilities.files.enabled) tools.push(...workspaceFileTools(this.store, capabilities.coding, conversationId,
       capabilities.files.searchEnabled ? file => this.retrieval.indexFile(file) : undefined));
     tools.push(

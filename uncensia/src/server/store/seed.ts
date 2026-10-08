@@ -118,6 +118,7 @@ export function seed(store: Store, config: Config, vault: SecretVault) {
   }
   migrateSkillName(store);
   installFiles(store, "skills", paths.skills, () => true);
+  installFiles(store, "mods", paths.mods, name => name === "mod.json");
   installFiles(store, "workflows", paths.workflows, name => name.endsWith(".json"));
   installPrompts(store, config, firstBoot);
   if (firstBoot) store.setMeta("initialized", "true");
@@ -149,7 +150,7 @@ function migrateSkillName(store: Store) {
 function installFiles(store: Store, folder: string, destination: string, include: (name: string) => boolean) {
   const source = path.join(paths.root, folder);
   if (!fs.existsSync(source)) return;
-  const key = folder === "skills" ? "skill_hashes" : "workflow_hashes";
+  const key = folder === "skills" ? "skill_hashes" : folder === "mods" ? "mod_hashes" : "workflow_hashes";
   const installed = json<Record<string, string>>(store.getMeta(key), {});
   const kept: string[] = [];
   let changed = false;

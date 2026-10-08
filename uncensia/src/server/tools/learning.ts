@@ -9,6 +9,7 @@ import type { FileRecord, LearningChange } from "@shared/types.ts";
 import { paths } from "../env.ts";
 import { ingestFile } from "../library.ts";
 import { composeSkill, createSkill, managedSkills, SKILL_NAME, updateSkill } from "./skill-management.ts";
+import { listMods, readMod, saveMod, setModEnabled } from "../mods.ts";
 
 const revision = (text: string) => createHash("sha256").update(text).digest("hex");
 const result = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }], details: {} });
@@ -33,7 +34,8 @@ export function record(conversationId: string, kind: LearningChange["kind"], tar
 }
 
 export function learningTools(config: Config, store: Store, conversationId: string,
-  index?: (file: FileRecord & { diskPath: string }) => Promise<unknown>): AgentTool[] {
+  index?: (file: FileRecord & { diskPath: string }) => Promise<unknown>,
+  onModsChanged?: () => void): AgentTool[] {
   const caps = config.capabilities();
   const tools: AgentTool[] = [];
   if (caps.files.enabled) tools.push({
@@ -63,7 +65,7 @@ export function learningTools(config: Config, store: Store, conversationId: stri
   if (caps.learning?.skills || caps.learning?.prompts) tools.push({ name: "learning_history", label: "Review changes", description: "Read the latest 50 persistent behavior change attempts, with reasons and old/new content. Use old content to restore through manage_prompt or manage_skill with the current revision. Each record is written after the change was saved.", parameters: Type.Object({}), execute: async () => {
     const permissions = config.capabilities().learning;
     if (!permissions?.skills && !permissions?.prompts) throw new Error("Learning history is disabled");
-    return result(learningHistory().filter(row => row.kind === "skill" ? permissions.skills : permissions.prompts));
+    return result(learningHistory().filter(row => row.kind === "prompt" ? permissions.prompts : permissions.skills));
   } });
   if (caps.learning?.skills) tools.push({
     name: "manage_skill", label: "Manage skills",
@@ -126,6 +128,42 @@ export function learningTools(config: Config, store: Store, conversationId: stri
       updateSkill(skill, a);
       const history = record(conversationId, "skill", skill.filePath, skill.content, a.content ?? skill.content, `${a.reason}; enabled before=${skill.enabled}, after=${a.enabled ?? skill.enabled}`);
       return result({ saved: true, history, effective: "next run" });
+    },
+  });
+  if (caps.learning?.skills) tools.push({
+    name: "manage_mod", label: "Manage mods",
+    description: "Extend the interface with a mod: declarative JSON, no code. Slots: messageActions (buttons under a reply that put a prompt in the composer; {excerpt} is the reply's opening), starters (suggestion chips on an empty conversation), panels (a side panel showing conversation notes by key, which you keep with update_conversation_notes). "
+      + "list: names, titles and revisions. read: one mod's JSON. create: give manifest {name (kebab-case), title, description, contributes}. update: give the whole manifest and the current revision. enable: name and enabled. "
+      + "Use a mod when the person wants a recurring button, starting point or always-visible panel; a procedure belongs in a skill. Every change needs a reason; it shows in the web client at once.",
+    executionMode: "sequential",
+    parameters: Type.Object({
+      action: Type.Union([Type.Literal("list"), Type.Literal("read"), Type.Literal("create"), Type.Literal("update"), Type.Literal("enable")]),
+      name: Type.Optional(Type.String({ maxLength: 64 })),
+      manifest: Type.Optional(Type.Unsafe<Record<string, unknown>>({ type: "object", description: "{ name, title, description, contributes: { messageActions?: [{label, prompt}], starters?: [{label, prompt}], panels?: [{title, notes: [noteKey]}] } }" })),
+      revision: Type.Optional(Type.String()),
+      enabled: Type.Optional(Type.Boolean()),
+      reason: Type.Optional(Type.String({ maxLength: 4000 })),
+    }),
+    execute: async (_id, args) => {
+      allowed("skills");
+      const a = args as { action: string; name?: string; manifest?: Record<string, unknown>; revision?: string; enabled?: boolean; reason?: string };
+      if (a.action === "list") return result({ items: listMods().items.map(({ name, title, description, enabled, origin, revision }) => ({ name, title, description, enabled, learned: origin === "learned", revision })), errors: listMods().errors });
+      if (a.action === "read") return result(readMod(a.name ?? ""));
+      if (!a.reason?.trim()) throw new Error("A reason is required: say what the person asked for");
+      if (a.action === "enable") {
+        if (typeof a.enabled !== "boolean") throw new Error("enabled is required");
+        setModEnabled(a.name ?? "", a.enabled);
+        onModsChanged?.();
+        return result({ saved: true, enabled: a.enabled });
+      }
+      if (a.action !== "create" && a.action !== "update") throw new Error("Unknown action");
+      if (!a.manifest) throw new Error("manifest is required");
+      const manifest: Record<string, unknown> = { ...a.manifest, origin: "learned" };
+      if (a.action === "create" && listMods().items.some(mod => mod.name === manifest.name)) throw new Error(`A mod named ${String(manifest.name)} exists; read it and update it instead`);
+      const saved = saveMod(manifest, a.action === "update" ? a.revision : undefined);
+      const history = record(conversationId, "mod", saved.name, saved.before, saved.after, a.reason);
+      onModsChanged?.();
+      return result({ saved: true, name: saved.name, history, effective: "now, in the web client" });
     },
   });
   if (caps.learning?.prompts) tools.push({

@@ -26,6 +26,12 @@ Gemini 原生协议的请求参数由 `models/params.ts` 处理；用户保存�
 
 对话笔记（`conversations.notes`）是按名字保存的对话级状态：关系进展、场景时钟、大纲、连续性事实等，最多 24 条，键名 `[a-z0-9][a-z0-9_-]{0,47}`，正文 12000 字以内。用户在 Web/iOS 的对话设定里编辑；模型通过 `update_conversation_notes` 以整值覆盖方式更新某一键，变更以 `conversation.notes` 事件推送给在线客户端；分支复制笔记。笔记只在声明了对应 `contexts` 的技能加载后进入模型上下文，是数据而非指令，不影响工具权限。因此新增一类"要持续记住的状态"只需在技能里声明键名，无需改后端。
 
+## 模组
+
+模组是声明式的界面扩展，每个位于 `data/mods/<name>/mod.json`，不运行任何代码。可用位置：`messageActions`（助手回复下方的按钮，把一段提示词放进输入框，`{excerpt}` 代表那段回复的开头）、`starters`（空对话里的开场建议）、`panels`（侧边面板，按键名显示对话笔记，由技能通过 `update_conversation_notes` 维护）。服务端用同一份 schema 校验设置页与助手的写入，字段长度和每类数量有上限，未知字段直接拒绝。
+
+包内的 `mods/` 与技能一样安装：未改动的文件随升级替换，改过的保留，用户删除的不再装回。启停写入 `data/mod-preferences.json`，升级不会改回；删除移到 `data/mod-trash`。助手在“持续学习 → 技能”开启时有 `manage_mod`（list/read/create/update/enable），写入的模组标记 `origin: learned`，修改记入改进记录，并通过 `mods.changed` 事件让网页立即刷新。iOS 暂不渲染模组。回归入口：`scripts/audit-mods.ts`。
+
 ## 文件、检索与记忆
 
 `save_knowledge` 在资料库启用时提供给 agent，用于用户授权的研究和知识积累。它接收整理后的正文及来源 URL/文件 ID，通过同一入库路径保存 Markdown、去重并建立索引；不是 URL 下载工具。模型先搜索已有资料，保存后用返回的文件 ID 验证检索。返回持久化的实际索引状态：`indexed` 是关键词索引，`ready` 包含向量；索引关闭或失败必须明确报告，保存成功不等于检索验证通过。周期研究使用已有任务调度，不新增独立循环。

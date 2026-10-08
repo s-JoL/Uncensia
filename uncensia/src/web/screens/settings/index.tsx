@@ -3,7 +3,7 @@ import { uiText } from "../../i18n.tsx";
  * Settings, one section per file. The section lives in the path, so a link can
  * point at one — `/settings/security` — and the back button behaves.
  */
-import { Boxes, KeyRound, Plug, Server, SlidersHorizontal, Terminal } from "lucide-react";
+import { Boxes, KeyRound, Plug, Server, SlidersHorizontal, Terminal, Puzzle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Bootstrap } from "@shared/types.ts";
 import { cn, PageHeader, Section, SectionBody, Button, Field, Select, Input, useAction } from "../../ui.tsx";
@@ -14,9 +14,10 @@ import { PromptsSection } from "./prompts.tsx";
 import { SecuritySection } from "./security.tsx";
 import { ToolsSection } from "./tools.tsx";
 import { SkillsSection } from "./skills.tsx";
+import { ModsSection } from "./mods.tsx";
 import { TasksSection } from "./tasks.tsx";
 
-type Tab = "overview" | "providers" | "models" | "skills" | "tasks" | "tools" | "capabilities" | "prompts" | "security";
+type Tab = "overview" | "providers" | "models" | "skills" | "mods" | "tasks" | "tools" | "capabilities" | "prompts" | "security";
 
 /**
  * Ordered the way a deployment is set up: an endpoint, then something to talk to,
@@ -33,6 +34,7 @@ const TABS: Array<{ id: Tab; label: string; group: string; icon: typeof Boxes }>
   { id: "models", label: uiText("模型"), group: uiText("连接"), icon: Boxes },
   { id: "tools", label: uiText("扩展连接"), group: uiText("能力"), icon: Server },
   { id: "skills", label: uiText("技能"), group: uiText("能力"), icon: Boxes },
+  { id: "mods", label: uiText("模组"), group: uiText("能力"), icon: Puzzle },
   { id: "capabilities", label: uiText("工具与权限"), group: uiText("能力"), icon: SlidersHorizontal },
   { id: "tasks", label: uiText("任务"), group: uiText("系统"), icon: SlidersHorizontal },
   { id: "prompts", label: uiText("个性化"), group: uiText("系统"), icon: Terminal },
@@ -91,14 +93,14 @@ export function Settings({
               <button
                 aria-current={tab === id ? "page" : undefined}
                 className={cn(
-                  "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors lg:w-full",
+                  "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm whitespace-nowrap transition-colors lg:w-full",
                   tab === id
-                    ? "bg-accent font-medium text-accent-foreground"
+                    ? "bg-accent font-medium text-accent-foreground [&_svg]:text-primary"
                     : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
                 )}
                 onClick={() => open(id)}
               >
-                <Icon className="size-4" />
+                <Icon className="size-4 shrink-0" />
                 {label}
               </button>
             </div>
@@ -109,7 +111,7 @@ export function Settings({
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 sm:p-6">
             <Input aria-label={uiText("查找设置")} placeholder={uiText("查找模型、记忆、提示词、连接…")} className="h-11 rounded-xl" value={search} onChange={event => setSearch(event.target.value)} />
             {search.trim() ? <div className="rounded-2xl border p-2">
-              {TABS.filter(item => `${item.label} ${{overview:uiText("默认 记忆 文件 资料"),providers:uiText("提供方 API 密钥 服务"),models:uiText("模型 生成 参数 上下文 长度 输出 温度"),skills:uiText("skill 技能 安装 编辑 启用 停用"),tasks:uiText("任务 定时 后台 计划 取消"),tools:uiText("MCP 工具 扩展 包 extension package"),capabilities:uiText("搜索 权限 文件 编码 记忆 嵌入 embedding 分块"),prompts:uiText("提示词 身份 作家 人设"),security:uiText("访问码 登录 安全 数据")}[item.id]}`.toLowerCase().includes(search.trim().toLowerCase())).map(item => <Button key={item.id} variant="ghost" className="w-full justify-start rounded-lg" onClick={() => { open(item.id); setSearch(""); }}>{item.label}</Button>)}
+              {TABS.filter(item => `${item.label} ${{overview:uiText("默认 记忆 文件 资料"),providers:uiText("提供方 API 密钥 服务"),models:uiText("模型 生成 参数 上下文 长度 输出 温度"),skills:uiText("skill 技能 安装 编辑 启用 停用"),mods:uiText("mod 模组 按钮 面板 界面 扩展"),tasks:uiText("任务 定时 后台 计划 取消"),tools:uiText("MCP 工具 扩展 包 extension package"),capabilities:uiText("搜索 权限 文件 编码 记忆 嵌入 embedding 分块"),prompts:uiText("提示词 身份 作家 人设"),security:uiText("访问码 登录 安全 数据")}[item.id]}`.toLowerCase().includes(search.trim().toLowerCase())).map(item => <Button key={item.id} variant="ghost" className="w-full justify-start rounded-lg" onClick={() => { open(item.id); setSearch(""); }}>{item.label}</Button>)}
               <p className="px-3 py-2 text-xs text-muted-foreground">{uiText("选择分组查看和修改设置。")}</p>
             </div> : null}
             {tab === "overview" ? <>
@@ -158,6 +160,7 @@ export function Settings({
             ) : null}
             {tab === "tools" ? <ToolsSection reload={reload} /> : null}
             {tab === "skills" ? <SkillsSection /> : null}
+            {tab === "mods" ? <ModsSection /> : null}
             {tab === "tasks" ? <TasksSection /> : null}
             {tab === "capabilities" ? <CapabilitiesSection reload={reload} /> : null}
             {tab === "prompts" ? <PromptsSection reload={reload} /> : null}
