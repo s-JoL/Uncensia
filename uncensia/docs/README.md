@@ -7,7 +7,7 @@ Uncensia 是自托管、单用户的个人 AI 创作与陪伴工作室：对话�
 ## 开始使用
 
 - [安装、配置、更新与备份](12-operations.md)
-- [创作指南：小说配图、RP、图文续写](guide.md)
+- [创作指南：写小说、角色扮演、图文故事、学习建议与模组](guide.md)
 - [iOS 构建、连接与使用](15-ios-native.md)
 - [真实演示素材与生成参数](showcase/README.zh-CN.md)
 
