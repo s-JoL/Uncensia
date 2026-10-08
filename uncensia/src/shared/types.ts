@@ -207,6 +207,8 @@ export interface ManagedSkill {
   editable: boolean;
   enabled: boolean;
   manualOnly: boolean;
+  /** Written by the assistant (`origin: learned` in its frontmatter) rather than shipped or hand-made. */
+  learned: boolean;
   content: string;
   revision: string;
 }
@@ -369,7 +371,7 @@ export interface Capabilities {
   web: WebCapability;
   coding: CodingCapability;
   /** Optional only for pre-split clients/configurations; Config normalizes it. */
-  learning?: { skills: boolean; prompts: boolean };
+  learning?: LearningCapability;
   embedding: EmbeddingCapability;
   studio: StudioCapability;
 }
@@ -621,11 +623,68 @@ export interface RunSummary {
 export type BackgroundTaskStatus = "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
 
 export type TaskMode = "once" | "continuous" | "interval";
+export interface LearningCapability {
+  /** The assistant may create and revise skills. */
+  skills: boolean;
+  /** The assistant may revise the persistent instructions. */
+  prompts: boolean;
+  /** After a run, propose a lesson worth keeping; nothing is saved until the person accepts. */
+  proposals?: boolean;
+}
+
+/**
+ * A mod: a declarative extension of the interface. Nothing in it runs; every
+ * contribution is text the clients render in a fixed slot, so the assistant
+ * can author one as safely as a skill.
+ */
+export interface ModContributions {
+  /** Buttons under an assistant reply that put a prompt in the composer; `{excerpt}` is the reply's opening. */
+  messageActions?: Array<{ label: string; prompt: string }>;
+  /** Suggestion chips on the empty conversation that put a prompt in the composer. */
+  starters?: Array<{ label: string; prompt: string }>;
+  /** Side panels that show the conversation notes with these keys, as the assistant keeps them. */
+  panels?: Array<{ title: string; notes: string[] }>;
+}
+
+export interface ModManifest {
+  name: string;
+  title: string;
+  description: string;
+  /** "learned" when the assistant wrote it. */
+  origin?: "learned";
+  contributes: ModContributions;
+}
+
+export interface ModRecord extends ModManifest {
+  enabled: boolean;
+  revision: string;
+}
+
+export const MOD_LIMITS = { label: 24, prompt: 2000, title: 60, description: 300, perSlot: 6, notesPerPanel: 8 } as const;
+
+export type LearningProposalKind = "memory" | "skill_new" | "skill_patch" | "mod";
+
+export interface LearningProposal {
+  id: string;
+  conversationId: string;
+  runId: string | null;
+  kind: LearningProposalKind;
+  /** One sentence, in the person's language, of what would be kept. */
+  summary: string;
+  /** memory: key/value; skill_new: name/description/body; skill_patch: skill/old/new/revision; mod: name and the manifest as JSON. */
+  payload: Record<string, string>;
+  status: "pending" | "accepted" | "dismissed";
+  /** What accepting did, e.g. the memory key or skill name written. */
+  result: string | null;
+  createdAt: number;
+  resolvedAt: number | null;
+}
+
 export interface LearningChange {
   id: string;
   at: string;
   conversationId: string;
-  kind: "skill" | "prompt";
+  kind: "skill" | "prompt" | "mod";
   target: string;
   before: string | null;
   after: string;

@@ -115,7 +115,7 @@ export function validateParams(schema: JsonSchema, params: Record<string, unknow
     // Reuse the SDK's schema validation and transport-type normalization.
     // Bounds/enums are checked, never clamped or replaced with another value.
     return validateToolArguments({ name: "generation", description: "", parameters: schema as never },
-      { type: "toolCall", id: "generation", name: "generation", arguments: params }) as Record<string, unknown>;
+      { type: "toolCall", id: "generation", name: "generation", arguments: params as never }) as Record<string, unknown>;
   } catch (error) {
     throw new GenerationError(error instanceof Error ? error.message : String(error), "invalid_request");
   }

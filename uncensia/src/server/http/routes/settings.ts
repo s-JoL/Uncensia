@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type {
   ApiMode,
   Capabilities,
@@ -13,6 +13,7 @@ import { SECRET, type Config } from "../../config.ts";
 import { adapterOps, GenerationError } from "../../generation/index.ts";
 import { slug } from "../../ids.ts";
 import { discoverModels } from "../../models/catalogue.ts";
+import { sideRequestOptions } from "../../models/registry.ts";
 import { modelReference } from "../../models/reference.ts";
 import { managedSkills, createSkill, updateSkill } from "../../tools/skill-management.ts";
 import {
@@ -26,6 +27,7 @@ import {
   updatePackage,
 } from "../../tools/extension-management.ts";
 import { learningHistory } from "../../tools/learning.ts";
+import { deleteMod, listMods, readMod, saveMod, setModEnabled } from "../../mods.ts";
 import { providerAuth } from "../../models/auth.ts";
 import { DEFAULT_GLOBAL_PROMPT, DEFAULT_TOOL_PROMPT } from "../../prompts/defaults.ts";
 import type { Services } from "../../services.ts";
@@ -39,10 +41,53 @@ function apiMode(input: unknown): ApiMode | undefined {
   return typeof input === "string" && API_MODE_IDS.has(input as ApiMode) ? (input as ApiMode) : undefined;
 }
 
+const proposalFailure = (context: Context, error: unknown) => {
+  const status = (error as { status?: number }).status;
+  return fail(context, status === 404 || status === 409 ? status : 400, status === 404 ? "not_found" : "invalid", error instanceof Error ? error.message : String(error));
+};
+
 export function settingsRoutes(services: Services) {
   const app = new Hono();
   const { store, config, vault, registry, mcp } = services;
   app.get("/learning/history", context => context.json({ items: learningHistory() }));
+
+  // ------------------------------------------------------------------- mods
+  // The owner edits mods here; the assistant through manage_mod. Both validate
+  // the same schema, and nothing in a mod runs.
+  app.get("/mods", context => context.json(listMods()));
+  app.get("/mods/:name", context => {
+    try { return context.json(readMod(context.req.param("name"))); }
+    catch (error) { return proposalFailure(context, error); }
+  });
+  app.put("/mods/:name", async context => {
+    const body = await readJson<{ manifest: unknown; revision?: string }>(context);
+    const manifest = body.manifest && typeof body.manifest === "object" ? { ...(body.manifest as object), name: context.req.param("name") } : body.manifest;
+    try { const saved = saveMod(manifest, body.revision); return context.json({ name: saved.name }); }
+    catch (error) { return proposalFailure(context, error); }
+  });
+  app.patch("/mods/:name", async context => {
+    const body = await readJson<{ enabled: boolean }>(context);
+    if (typeof body.enabled !== "boolean") return fail(context, 400, "invalid", "enabled must be true or false");
+    try { setModEnabled(context.req.param("name"), body.enabled); return context.json({ enabled: body.enabled }); }
+    catch (error) { return proposalFailure(context, error); }
+  });
+  app.delete("/mods/:name", context => {
+    try { deleteMod(context.req.param("name")); return context.body(null, 204); }
+    catch (error) { return proposalFailure(context, error); }
+  });
+
+  // Proposals wait for the person; accepting writes through the same skill and
+  // memory paths as everything else, so history and next-run discovery apply.
+  app.get("/conversations/:id/learning-proposals", context => context.json({ items: services.runtime.reflection.list(context.req.param("id")) }));
+  app.post("/learning-proposals/:id/accept", async context => {
+    const body = await readJson<{ as?: "memory" }>(context);
+    try { return context.json(services.runtime.reflection.accept(context.req.param("id"), body.as === "memory" ? "memory" : undefined)); }
+    catch (error) { return proposalFailure(context, error); }
+  });
+  app.post("/learning-proposals/:id/dismiss", context => {
+    try { return context.json(services.runtime.reflection.dismiss(context.req.param("id"))); }
+    catch (error) { return proposalFailure(context, error); }
+  });
 
   const workspace = () => config.capabilities().coding.workspace;
   const statusOf = (error: unknown) => ((error as { status?: number }).status === 404 ? 404 : (error as { status?: number }).status === 409 ? 409 : 400);
@@ -206,6 +251,34 @@ export function settingsRoutes(services: Services) {
     vault.delete(SECRET.provider(context.req.param("id")));
     services.reload();
     return context.body(null, 204);
+  });
+
+  /**
+   * Sends one tiny real request through a chat model of this provider. A model
+   * list that loads proves the address, not the key: OpenRouter lists models to
+   * anyone. Only a completion shows the key, the model and the route all work.
+   */
+  app.post("/providers/:id/test", async (context) => {
+    const provider = store.getProvider(context.req.param("id"));
+    if (!provider) return fail(context, 404, "not_found", "Provider not found");
+    const body = await readJson<{ modelId?: string }>(context);
+    const candidates = store.listModels().filter(spec => spec.providerId === provider.id && spec.enabled && isChatKind(spec.kind));
+    const spec = candidates.find(item => item.id === body.modelId) ?? candidates.find(item => item.id === config.defaultModelId()) ?? candidates[0];
+    if (!spec) return context.json({ ok: false, reason: "no_chat_model", message: `${provider.name} has no enabled chat model to test` });
+    const started = Date.now();
+    const signal = AbortSignal.any([context.req.raw.signal, AbortSignal.timeout(30_000)]);
+    try {
+      const { model } = registry.resolve(spec.id);
+      const reply = await registry.runtime.completeSimple(model, {
+        systemPrompt: "Reply with the single word OK.",
+        messages: [{ role: "user", content: [{ type: "text", text: "OK?" }], timestamp: Date.now() }],
+      } as never, { signal, ...sideRequestOptions(spec), maxTokens: spec.reasoning ? 512 : 16 } as never);
+      const failed = (reply as { stopReason?: string; errorMessage?: string }).stopReason === "error";
+      if (failed) return context.json({ ok: false, modelId: spec.id, model: spec.name, latencyMs: Date.now() - started, message: (reply as { errorMessage?: string }).errorMessage ?? "" });
+      return context.json({ ok: true, modelId: spec.id, model: spec.name, latencyMs: Date.now() - started });
+    } catch (error) {
+      return context.json({ ok: false, modelId: spec.id, model: spec.name, latencyMs: Date.now() - started, message: error instanceof Error ? error.message : String(error) });
+    }
   });
 
   /** Live catalogue from the provider, so models can be added without typing ids. */

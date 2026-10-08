@@ -11,8 +11,8 @@ const services = createServices();
 try {
   assert.deepEqual(services.store.listMemories(), []);
   const models = services.store.listModels();
-  assert.deepEqual(models.filter(m => m.kind === 'chat').map(m => m.model), ['z-ai/glm-5.3-flash', 'muse-spark-1.3-contributor-free']);
-  assert.equal(models.length, 8);
+  assert.deepEqual(models.filter(m => m.kind === 'chat').map(m => m.model), ['z-ai/glm-5.3-flash', 'deepseek/deepseek-v4.1-flash', 'xiaomi/mimo-v2.6-flash']);
+  assert.equal(models.length, 9);
   assert.ok(models.every(m => m.enabled));
   assert.deepEqual(services.store.listProviders().map(p => p.id).sort(), ['comfy', 'opencode', 'openrouter', 'siray']);
   assert.equal(services.config.defaultModelId(), 'openrouter-glm-5.3-flash');
@@ -20,8 +20,11 @@ try {
   assert.equal(caps.embedding.baseUrl, 'https://openrouter.ai/api/v1');
   assert.equal(caps.embedding.model, 'qwen/qwen3-embedding-8b');
   assert.equal(caps.embedding.hasKey, false);
-  assert.equal(caps.coding.write, true);
-  assert.equal(caps.coding.shell, true);
+  // Developer tools start off; skill learning starts on, persistent instructions off.
+  assert.equal(caps.coding.read, false);
+  assert.equal(caps.coding.write, false);
+  assert.equal(caps.coding.shell, false);
+  assert.deepEqual(caps.learning, { skills: true, prompts: false, proposals: true });
   assert.equal(caps.embedding.chunkOverlap, 150);
   services.store.upsertMemory('fixture', 'User-owned memory', 1);
   services.config.setDefaultModelId('user-choice');
@@ -30,7 +33,7 @@ try {
   assert.equal(services.store.listMemories()[0]?.value, 'User-owned memory');
   assert.equal(services.config.defaultModelId(), 'user-choice');
   assert.equal(services.config.capabilities().coding.write, false);
-  console.log('PASS release: empty memory, GLM 5.3 Flash + MuseSpark chat defaults, enabled AIGC profiles, OpenRouter embedding, portable defaults, existing user settings retained');
+  console.log('PASS release: empty memory, GLM 5.3 Flash default + DeepSeek/MiMo chat, enabled AIGC profiles, OpenRouter embedding, portable defaults, existing user settings retained');
 } finally {
   await services.close();
   assert.equal(path.dirname(dir), os.tmpdir());

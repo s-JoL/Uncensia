@@ -293,6 +293,23 @@ CREATE TABLE IF NOT EXISTS questions (
 CREATE INDEX IF NOT EXISTS questions_pending ON questions(status, created_at);
 CREATE INDEX IF NOT EXISTS questions_conversation ON questions(conversation_id, created_at DESC);
 
+-- Lessons the assistant proposes after a run: a preference to remember or a
+-- skill to create or patch. Nothing is applied until the person accepts;
+-- dismissed rows stay so the same lesson is not proposed again.
+CREATE TABLE IF NOT EXISTS learning_proposals (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  run_id          TEXT,
+  kind            TEXT NOT NULL,
+  summary         TEXT NOT NULL,
+  payload         TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending',
+  result          TEXT,
+  created_at      INTEGER NOT NULL,
+  resolved_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS learning_proposals_conversation ON learning_proposals(conversation_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS memories (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,

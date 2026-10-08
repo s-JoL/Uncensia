@@ -3,14 +3,17 @@ import SwiftUI
 public struct SettingsScreen: View {
   @Environment(AppModel.self) private var appModel
   @State private var store = SettingsStore()
-  @State private var selection: SettingsDestination? = .overview
+  // Nothing is pre-selected on iPhone: a compact split view would otherwise open
+  // straight into that page with a back button instead of showing the list.
+  @State private var selection: SettingsDestination?
+  @Environment(\.horizontalSizeClass) private var sizeClass
 
   public init() {}
 
   public var body: some View {
     NavigationSplitView {
       List(SettingsDestination.allCases, selection: $selection) { item in
-        Label(item.title, image: item.icon).tag(item)
+        Label(item.title, systemImage: item.icon).tag(item)
       }
       .navigationTitle(uncensiaText("设置"))
     } detail: {
@@ -18,10 +21,11 @@ public struct SettingsScreen: View {
         if let selection {
           SettingsDetail(destination: selection, store: store, appModel: appModel)
         } else {
-          ContentUnavailableView(uncensiaText("选择一项设置"), image: "lucide-settings-2")
+          ContentUnavailableView(uncensiaText("选择一项设置"), systemImage: "gearshape")
         }
       }
     }
+    .onAppear { if sizeClass == .regular, selection == nil { selection = .overview } }
     .task { await store.load(using: appModel) }
     .alert(
       uncensiaText("操作失败"),
@@ -68,16 +72,16 @@ enum SettingsDestination: String, CaseIterable, Identifiable {
   }
   var icon: String {
     switch self {
-    case .overview: "lucide-sliders-horizontal"
-    case .providers: "lucide-network"
-    case .models: "lucide-cpu"
-    case .extensions: "lucide-box"
-    case .skills: "lucide-sparkles"
-    case .capabilities: "lucide-wrench"
-    case .tasks: "lucide-clock"
-    case .prompts: "lucide-quote"
-    case .memory: "lucide-brain"
-    case .security: "lucide-shield"
+    case .overview: "slider.horizontal.3"
+    case .providers: "network"
+    case .models: "cpu"
+    case .extensions: "shippingbox"
+    case .skills: "sparkles"
+    case .capabilities: "wrench.and.screwdriver"
+    case .tasks: "clock"
+    case .prompts: "quote.opening"
+    case .memory: "brain"
+    case .security: "shield"
     }
   }
 }

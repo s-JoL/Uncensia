@@ -1,4 +1,4 @@
-import brandMark from "./assets/uncensia.svg";
+import brandMark from "./assets/uncensia-mark.svg";
 import { uiText, LanguageSelect } from "./i18n.tsx";
 import {
   FolderClosed,
@@ -50,6 +50,9 @@ interface Route {
   /** Message the transcript should open on, when arriving from a search hit. */
   focusSeq?: number;
 }
+
+/** Untitled until named; older servers stored an English placeholder instead of nothing. */
+const displayTitle = (title: string | undefined) => !title || title === "New conversation" ? uiText("未命名对话") : title;
 
 const SCREEN_PATHS: Record<Exclude<Screen, "chat">, string> = {
   studio: "/studio",
@@ -189,9 +192,9 @@ function Login({ onDone }: { onDone: () => Promise<void> }) {
   }, []);
 
   return (
-    <div className="flex h-full items-center justify-center p-6">
+    <div className="flex h-full items-center justify-center bg-[radial-gradient(60%_50%_at_50%_0%,color-mix(in_oklab,var(--color-primary)_16%,transparent),transparent)] p-6">
       <form
-        className="flex w-full max-w-sm flex-col gap-4 rounded-xl border bg-card p-6 shadow-sm"
+        className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border bg-card/90 p-7 shadow-[0_20px_60px_rgb(0_0_0/0.18)] backdrop-blur"
         onSubmit={async (event) => {
           event.preventDefault();
           setBusy(true);
@@ -212,11 +215,9 @@ function Login({ onDone }: { onDone: () => Promise<void> }) {
           }
         }}
       >
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2 text-lg font-semibold">
-            <Mark />
-            Uncensia
-          </div>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <Mark className="size-12" />
+          <div className="text-xl font-semibold tracking-tight">Uncensia</div>
           <LanguageSelect />
           <p className="text-sm text-muted-foreground">{uiText("输入访问码进入。第一次启动时，访问码会打在服务器日志里。")}</p>
         </div>
@@ -253,8 +254,8 @@ function Login({ onDone }: { onDone: () => Promise<void> }) {
   );
 }
 
-const Mark = () => (
-  <img src={brandMark} alt="" className="size-6 rounded-md" />
+const Mark = ({ className = "size-7" }: { className?: string }) => (
+  <img src={brandMark} alt="" className={className} />
 );
 
 /** Buckets by recency, the way a reader thinks about their own threads. */
@@ -300,7 +301,7 @@ function SearchResults({
       {[...grouped.values()].map((group) => (
         <div key={group[0]!.conversationId} className="flex flex-col gap-1">
           <div className="truncate px-1 text-xs font-medium text-muted-foreground">
-            {group[0]!.title || uiText("未命名对话")}
+            {displayTitle(group[0]!.title)}
           </div>
           {group.map((hit) => (
             <button
@@ -405,42 +406,20 @@ function Workspace({ bootstrap, reload }: { bootstrap: Bootstrap; reload: () => 
 
   const rail = (
     <>
-      <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
-        <div className="flex items-center gap-2 font-semibold">
+      <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-3">
+        <div className="flex items-center gap-2.5">
           <Mark />
-          Uncensia
+          <span className="text-[15px] font-semibold tracking-tight">Uncensia</span>
         </div>
-        <div className="flex items-center gap-0.5">
-          <ThemeToggle />
-          <LanguageSelect />
-          <Menu
-            trigger={
-              <Button variant="ghost" size="icon-sm" aria-label={uiText("更多")}>
-                <MoreHorizontal />
-              </Button>
-            }
-          >
-            <MenuItem
-              danger
-              onSelect={async () => {
-                await api.logout().catch(() => undefined);
-                token.clear();
-                await reload();
-              }}
-            >
-              <LogOut />
-              {uiText("退出登录")}</MenuItem>
-          </Menu>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="md:hidden"
-            aria-label={uiText("收起")}
-            onClick={() => setRailOpen(false)}
-          >
-            <X />
-          </Button>
-        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="md:hidden"
+          aria-label={uiText("收起")}
+          onClick={() => setRailOpen(false)}
+        >
+          <X />
+        </Button>
       </div>
 
       <div className="flex flex-col gap-2 px-3 pb-2">
@@ -472,7 +451,7 @@ function Workspace({ bootstrap, reload }: { bootstrap: Bootstrap; reload: () => 
             className={cn(
               "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
               screen === id || (id === "files" && screen === "memory")
-                ? "bg-sidebar-accent text-foreground"
+                ? "bg-sidebar-accent font-medium text-foreground [&_svg]:text-primary"
                 : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
             )}
             onClick={() =>
@@ -522,7 +501,7 @@ function Workspace({ bootstrap, reload }: { bootstrap: Bootstrap; reload: () => 
                       className="min-w-0 flex-1 truncate px-3 py-2 text-left text-sm"
                       onClick={() => navigate({ screen: "chat", conversationId: conversation.id })}
                     >
-                      {conversation.title || uiText("未命名对话")}
+                      {displayTitle(conversation.title)}
                     </button>
                     <Button
                       variant="ghost"
@@ -544,8 +523,30 @@ function Workspace({ bootstrap, reload }: { bootstrap: Bootstrap; reload: () => 
           ))
         )}
       </div>
-
-
+      {/* Preferences and the session live at the foot, out of the way of the work. */}
+      <div className="flex items-center gap-1 border-t border-sidebar-border px-3 py-2">
+        <ThemeToggle />
+        <LanguageSelect />
+        <span className="flex-1" />
+        <Menu
+          trigger={
+            <Button variant="ghost" size="icon-sm" aria-label={uiText("更多")}>
+              <MoreHorizontal />
+            </Button>
+          }
+        >
+          <MenuItem
+            danger
+            onSelect={async () => {
+              await api.logout().catch(() => undefined);
+              token.clear();
+              await reload();
+            }}
+          >
+            <LogOut />
+            {uiText("退出登录")}</MenuItem>
+        </Menu>
+      </div>
     </>
   );
 
@@ -567,7 +568,7 @@ function Workspace({ bootstrap, reload }: { bootstrap: Bootstrap; reload: () => 
         title={uiText("删除对话")}
         description={
           pendingDelete
-            ? uiText("「{0}」的转写会一并删掉，无法恢复。", [pendingDelete.title || uiText("未命名对话")])
+            ? uiText("「{0}」的转写会一并删掉，无法恢复。", [displayTitle(pendingDelete.title)])
             : undefined
         }
         footer={

@@ -36,7 +36,7 @@ struct ConversationEvidenceSheet: View {
                     ProgressView(uncensiaText("正在读取…"))
                 }
             }
-            .navigationTitle(uncensiaText("交付、反馈与执行记录"))
+            .navigationTitle(uncensiaText("成果与记录"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button(uncensiaText("完成")) { dismiss() } }

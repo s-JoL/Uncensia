@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
 import { API_MODES, type Bootstrap } from "@shared/types.ts";
-import { MAX_ATTACHMENTS, MAX_UPLOAD_BYTES, paths } from "../env.ts";
+import { MAX_ATTACHMENTS, MAX_UPLOAD_BYTES, paths, VERSION } from "../env.ts";
 import type { Services } from "../services.ts";
 import {
   checkLogin,
@@ -26,7 +26,7 @@ import { securityRoutes } from "./routes/security.ts";
 import { settingsRoutes } from "./routes/settings.ts";
 import { studioRoutes } from "./routes/studio.ts";
 
-export const VERSION = "1.0.0";
+export { VERSION } from "../env.ts";
 
 const STATIC_MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -148,7 +148,8 @@ export function createApp(services: Services) {
     return new Response(new Uint8Array(fs.readFileSync(file)), {
       headers: {
         "content-type": STATIC_MIME[path.extname(file)] ?? "application/octet-stream",
-        "cache-control": file.endsWith("index.html") ? "no-cache" : "public, max-age=31536000, immutable",
+        // Hashed build assets never change; the page and the manifest keep their names across releases.
+        "cache-control": /(?:index\.html|\.webmanifest)$/.test(file) ? "no-cache" : "public, max-age=31536000, immutable",
       },
     });
   });

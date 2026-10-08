@@ -13,6 +13,8 @@ import type {
   BackgroundTask,
   TaskSchedule,
   LearningChange,
+  LearningProposal,
+  ModRecord,
   Bootstrap,
   BulkAddResult,
   Capabilities,
@@ -139,6 +141,14 @@ export const api = {
   modelReference: (model: string) => request<{ reference: ModelReference | null }>("GET", `/model-reference?model=${encodeURIComponent(model)}`),
   skills: () => request<{ items: ManagedSkill[]; diagnostics: string[] }>("GET", "/skills"),
   learningHistory: () => request<{ items: LearningChange[] }>("GET", "/learning/history"),
+  mods: () => request<{ items: ModRecord[]; errors: string[] }>("GET", "/mods"),
+  readMod: (name: string) => request<{ content: string; revision: string }>("GET", `/mods/${name}`),
+  saveMod: (name: string, manifest: unknown, revision?: string) => request<{ name: string }>("PUT", `/mods/${name}`, { manifest, revision }),
+  setModEnabled: (name: string, enabled: boolean) => request<{ enabled: boolean }>("PATCH", `/mods/${name}`, { enabled }),
+  deleteMod: (name: string) => request<void>("DELETE", `/mods/${name}`),
+  learningProposals: (conversationId: string) => request<{ items: LearningProposal[] }>("GET", `/conversations/${conversationId}/learning-proposals`),
+  acceptLearningProposal: (id: string, as?: "memory") => request<LearningProposal>("POST", `/learning-proposals/${id}/accept`, as ? { as } : {}),
+  dismissLearningProposal: (id: string) => request<LearningProposal>("POST", `/learning-proposals/${id}/dismiss`, {}),
   createSkill: (content: string) => request("POST", "/skills", { content }),
   updateSkill: (id: string, input: { content?: string; revision?: string; enabled?: boolean }) => request("PATCH", `/skills/${id}`, input),
   extensions: () => request<AgentResources>("GET", "/extensions"),
@@ -251,6 +261,8 @@ export const api = {
   deleteProvider: (id: string) => request<void>("DELETE", `/providers/${id}`),
   setProviderKey: (id: string, value: string) => request<void>("PUT", `/providers/${id}/key`, { value }),
   remoteModels: (id: string) => request<{ items: DiscoveredModel[] }>("GET", `/providers/${id}/models`),
+  testProvider: (id: string, modelId?: string) =>
+    request<{ ok: boolean; modelId?: string; model?: string; latencyMs?: number; message?: string; reason?: string }>("POST", `/providers/${id}/test`, modelId ? { modelId } : {}),
 
   models: () =>
     request<{

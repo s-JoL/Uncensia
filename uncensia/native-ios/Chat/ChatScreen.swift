@@ -10,6 +10,8 @@ public struct ChatScreen: View {
     @State private var showTasks = false
     @State private var showBranches = false
     @State private var showEvidence = false
+    @State private var showPanels = false
+    @State private var mods = ModContributions()
     @State private var showErrorDetails = false
     @State private var exporting = false
     @State private var exportDocument = ExportDocument(data: Data())
@@ -27,7 +29,7 @@ public struct ChatScreen: View {
                 if let error = store.error {
                     HStack(alignment: .top, spacing: 8) {
                         Button { showErrorDetails = true } label: {
-                            Label(error, image: "lucide-triangle-alert")
+                            Label(error, systemImage: "exclamationmark.triangle")
                                 .font(.footnote).lineLimit(3).multilineTextAlignment(.leading)
                         }.buttonStyle(.plain).foregroundStyle(.red)
                         Spacer(minLength: 0)
@@ -35,7 +37,7 @@ public struct ChatScreen: View {
                             .accessibilityLabel(uncensiaText("关闭"))
                     }.padding(.horizontal, 16).padding(.vertical, 8)
                 }
-                TranscriptView(store: store, conversationID: app.selectedConversationID, api: app.api, edit: edit)
+                TranscriptView(store: store, conversationID: app.selectedConversationID, api: app.api, edit: edit, mods: mods)
                     .id(app.selectedConversationID ?? "new")
                     .environment(store.citations)
                 ComposerView(store: store, app: app, editingSeq: $editingSeq)
@@ -46,7 +48,7 @@ public struct ChatScreen: View {
                 ToolbarItem(placement: .topBarLeading) { Button {
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     withAnimation(.easeOut(duration: 0.2)) { showList = true }
-                } label: { Image("lucide-menu") }.accessibilityIdentifier("conversation.history") }
+                } label: { Image(systemName: "line.3.horizontal") }.accessibilityIdentifier("conversation.history") }
                 ToolbarItem(placement: .principal) {
                     Menu {
                         Picker(uncensiaText("模型"), selection: Binding(get: { store.selectedModelID }, set: { setModel($0) })) {
@@ -60,20 +62,26 @@ public struct ChatScreen: View {
                     }.disabled(store.isRunning || store.isLoading || store.isSending).accessibilityLabel(uncensiaText("模型"))
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { app.selectedConversationID = nil } label: { Image("lucide-square-pen") }
+                    if !filledPanels.isEmpty {
+                        Button { showPanels = true } label: { Image(systemName: "sidebar.right") }
+                            .accessibilityLabel(uncensiaText("侧边面板")).accessibilityIdentifier("conversation.panels")
+                    }
+                    Button { app.selectedConversationID = nil } label: { Image(systemName: "square.and.pencil") }
                         .accessibilityLabel(uncensiaText("新对话")).accessibilityIdentifier("conversation.newQuick")
                     Menu {
-                        Button(uncensiaText("对话设定"), image: "lucide-sliders-horizontal") { showContext = true }
-                        Button(uncensiaText("分支"), image: "lucide-git-branch") { showBranches = true }
-                        Button(uncensiaText("后台任务"), image: "lucide-clock") { showTasks = true }
-                        Button(uncensiaText("交付、反馈与执行记录"), image: "lucide-list-todo") { showEvidence = true }.disabled(app.selectedConversationID == nil)
-                        Button(uncensiaText("整理上下文"), image: "lucide-minimize-2") { runCommand("compact") }
-                        Button(uncensiaText("继续"), image: "lucide-play") { runCommand("continue") }
-                        Button(uncensiaText("导出 JSONL"), image: "lucide-share") { exportConversation() }.disabled(app.selectedConversationID == nil)
-                    } label: { Image("lucide-ellipsis") }.accessibilityIdentifier("conversation.actions")
+                        Button(uncensiaText("对话设定"), systemImage: "slider.horizontal.3") { showContext = true }
+                        Button(uncensiaText("分支"), systemImage: "arrow.triangle.branch") { showBranches = true }
+                        Button(uncensiaText("后台任务"), systemImage: "clock") { showTasks = true }
+                        Button(uncensiaText("成果与记录"), systemImage: "checklist") { showEvidence = true }.disabled(app.selectedConversationID == nil).accessibilityIdentifier("conversation.results")
+                        Button(uncensiaText("整理上下文"), systemImage: "arrow.down.right.and.arrow.up.left") { runCommand("compact") }
+                        Button(uncensiaText("继续"), systemImage: "play") { runCommand("continue") }
+                        Button(uncensiaText("导出对话"), systemImage: "square.and.arrow.up") { exportConversation() }.disabled(app.selectedConversationID == nil)
+                    } label: { Image(systemName: "ellipsis") }.accessibilityIdentifier("conversation.actions")
                 }
             }
 
+            .sheet(isPresented: $showPanels) { NotePanelsSheet(panels: filledPanels) }
+            .task(id: store.modsRevision) { mods = await ModContributions.load(api: app.api) }
             .sheet(isPresented: $showContext) { ConversationContextSheet(details: store.conversationDetails, id: app.selectedConversationID, api: app.api, store: store) }
             .sheet(isPresented: $showBranches) { BranchSheet(id: app.selectedConversationID, api: app.api, app: app, store: store) }
             .sheet(isPresented: $showTasks) { BackgroundTasksSheet(id: app.selectedConversationID, api: app.api, app: app) }
@@ -190,6 +198,7 @@ public struct ChatScreen: View {
         let name = models.first { $0["id"].stringValue == store.selectedModelID }?["name"].stringValue ?? uncensiaText("模型")
         return name.components(separatedBy: " · ").first ?? name
     }
+    private var filledPanels: [(ModContributions.Panel, [JSONValue])] { mods.filledPanels(notes: store.conversationDetails["notes"].arrayValue ?? []) }
     private var currentTitle: String { store.conversations.first { $0.id == app.selectedConversationID }?.title ?? "Uncensia" }
     private func runCommand(_ command: String) { guard let id = app.selectedConversationID, let api = app.api else { return }; Task { await store.command(command, id: id, api: api) } }
     private func setModel(_ modelID: String) { guard !modelID.isEmpty else { return }; guard let id = app.selectedConversationID, let api = app.api else { store.selectedModelID = modelID; return }; Task { await store.setModel(modelID, id: id, api: api) } }
@@ -207,6 +216,7 @@ private struct ExportDocument: FileDocument {
 
 private struct TranscriptView: View {
     let store: ChatStore; let conversationID: String?; let api: APIClient?; let edit: (ChatMessage) -> Void
+    var mods = ModContributions()
     @State private var position = ScrollPosition(edge: .bottom)
     @State private var closeToBottom = true
     @State private var viewport = ViewportTracker()
@@ -214,6 +224,7 @@ private struct TranscriptView: View {
     @State private var scrollFollow = TranscriptScrollScheduler()
     @State private var loadingOlder = false
     @State private var feedbackMessage: ChatMessage?
+    @State private var proposals: [JSONValue] = []
     var body: some View {
         ScrollViewReader { reader in
         ScrollView {
@@ -239,10 +250,20 @@ private struct TranscriptView: View {
                 ForEach(store.approvals) { approval in ApprovalCard(item: approval, store: store, api: api) }
                 ForEach(store.questions) { question in QuestionCard(item: question, store: store, api: api) }
                 if store.isRunning || !store.liveText.isEmpty { LiveTranscriptRow(store: store, api: api).id("live") }
+                if !store.isRunning {
+                    ForEach(proposals, id: \.self) { proposal in
+                        LearningProposalCard(proposal: proposal, api: api) { id in
+                            // An accepted mod changes what the screen offers; reload it.
+                            if proposal["kind"].stringValue == "mod" { store.modsRevision += 1 }
+                            proposals.removeAll { $0["id"].stringValue == id }
+                        }
+                    }
+                }
                 Color.clear.frame(height: 1).id("bottom")
             }.scrollTargetLayout().padding(.horizontal, 20).padding(.vertical, 20)
         }
         .coordinateSpace(name: "transcriptViewport")
+        .readableUnderNavigationBar()
         .accessibilityIdentifier("chat.transcript")
         .scrollDismissesKeyboard(.interactively)
         .scrollPosition($position)
@@ -294,12 +315,22 @@ private struct TranscriptView: View {
                 closeToBottom = true; viewport.restoration = nil; followLatest()
             }
         }
+        // A proposal is written in the background after a run ends, so it is
+        // looked for when the conversation opens and a few times after a run.
+        .task(id: "\(conversationID ?? "")|\(store.isRunning)") {
+            guard !store.isRunning else { return }
+            for delay in [0, 4, 10, 20] as [UInt64] {
+                if delay > 0 { try? await Task.sleep(nanoseconds: delay * 1_000_000_000) }
+                guard !Task.isCancelled else { return }
+                await refreshProposals()
+            }
+        }
         .onAppear { viewport.scrollToBottom = { reader.scrollTo("bottom", anchor: .bottom) }; followLatest() }
         .onDisappear { scrollFollow.cancel(); viewport.restoration = nil; viewport.scrollToBottom = nil }
         .sheet(item: $feedbackMessage) { message in
             if let conversationID { MessageFeedbackSheet(conversationID: conversationID, messageSeq: message.seq, api: api) }
         }
-        .overlay { if store.isLoading && store.messages.isEmpty { ProgressView() } else if store.messages.isEmpty && !store.isRunning { ContentUnavailableView(uncensiaText("开始对话"), image: "lucide-sparkles", description: Text(uncensiaText("可以聊天、处理资料，也可以直接创作图片和视频。"))) } }
+        .overlay { if store.isLoading && store.messages.isEmpty { ProgressView() } else if store.messages.isEmpty && !store.isRunning { ChatEmptyState(store: store, starters: mods.starters) } }
         .overlay(alignment: .bottom) {
             if !closeToBottom {
                 Button {
@@ -308,7 +339,7 @@ private struct TranscriptView: View {
                     closeToBottom = true
                     followLatest()
                 } label: {
-                    Image("lucide-arrow-down").frame(width: 44, height: 44)
+                    Image(systemName: "arrow.down").frame(width: 44, height: 44)
                 }
                 .accessibilityLabel(uncensiaText("返回最新消息"))
                 .buttonStyle(.plain).background(.regularMaterial, in: Circle())
@@ -319,7 +350,7 @@ private struct TranscriptView: View {
         }
     }
     private func transcriptMessage(_ message: ChatMessage) -> some View {
-        MessageRow(message: message, api: api, inlineMedia: store.mediaIndex.byMessage[message.id] ?? [])
+        MessageRow(message: message, api: api, inlineMedia: store.mediaIndex.byMessage[message.id] ?? [], showsFailure: !retriedFailures.contains(message.id))
             .environment(store.citations.scope(for: message.id))
             .id(message.id).accessibilityElement(children: .contain)
             .accessibilityIdentifier("chat.message.\(message.id)").contextMenu {
@@ -329,11 +360,18 @@ private struct TranscriptView: View {
                     }
                 }
                 if message.role == "user", store.isCanonicalMessage(id: message.id) {
-                    Button(uncensiaText("编辑并重试"), image: "lucide-pencil") { edit(message) }
+                    Button(uncensiaText("编辑并重试"), systemImage: "pencil") { edit(message) }
                 }
                 if message.role == "assistant", conversationID != nil, store.isCanonicalMessage(id: message.id) {
-                    Button(uncensiaText("保存反馈"), image: "lucide-pencil") { feedbackMessage = message }
+                    Button(uncensiaText("保存反馈"), systemImage: "pencil") { feedbackMessage = message }
                         .accessibilityIdentifier("message.feedback.open.\(message.id)")
+                }
+                if message.role == "assistant", !message.text.isEmpty, !store.isRunning, !mods.actions.isEmpty {
+                    Section {
+                        ForEach(mods.actions, id: \.self) { action in
+                            Button(action.label, systemImage: "sparkles") { store.draft = action.prompt.replacingOccurrences(of: "{excerpt}", with: excerpt(of: message)) }
+                        }
+                    }
                 }
             }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("transcriptViewport")) } action: { frame in
@@ -343,6 +381,19 @@ private struct TranscriptView: View {
                 if message.id == store.messages.last?.id { followLatest() }
             }
             .onDisappear { viewport.frames.removeValue(forKey: message.id) }
+    }
+    /// Failed attempts followed by another reply in the same turn: the SDK retried them.
+    private var retriedFailures: Set<String> {
+        let items = store.messages
+        return Set(items.indices.filter { index in
+            items[index].role == "assistant" && items[index].content["stopReason"].stringValue == "error"
+                && index + 1 < items.count && items[index + 1].role == "assistant"
+        }.map { items[$0].id })
+    }
+    private func refreshProposals() async {
+        guard let conversationID, let api else { proposals = []; return }
+        guard let response = try? await api.request("GET", "/conversations/\(conversationID)/learning-proposals") else { return }
+        proposals = (response["items"].arrayValue ?? []).filter { $0["status"].stringValue == "pending" }
     }
     private func followLatest() {
         guard closeToBottom, !userScrolling else { return }
@@ -428,7 +479,7 @@ private struct LiveTranscriptRow: View {
 
 private struct ApprovalCard: View {
     let item: ApprovalItem; let store: ChatStore; let api: APIClient?
-    var body: some View { VStack(alignment: .leading, spacing: 10) { Label(uncensiaText("需要确认"), image: "lucide-shield-alert").font(.headline); Text(item.summary); Text(item.action).font(.caption).foregroundStyle(.secondary); HStack { Button(uncensiaText("拒绝"), role: .destructive) { decide(false) }; Button(uncensiaText("允许")) { decide(true) }.buttonStyle(.borderedProminent) } }.padding().background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 16)) }
+    var body: some View { VStack(alignment: .leading, spacing: 10) { Label(uncensiaText("需要确认"), systemImage: "exclamationmark.shield").font(.headline); Text(item.summary); Text(item.action).font(.caption).foregroundStyle(.secondary); HStack { Button(uncensiaText("拒绝"), role: .destructive) { decide(false) }; Button(uncensiaText("允许")) { decide(true) }.buttonStyle(.borderedProminent) } }.padding().background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 16)) }
     private func decide(_ value: Bool) { guard let api else { return }; Task { await store.decide(item, approved: value, api: api) } }
 }
 
@@ -439,7 +490,7 @@ private struct QuestionCard: View {
     @State private var text = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(uncensiaText("扩展提问"), image: "lucide-messages-square").font(.headline)
+            Label(uncensiaText("扩展提问"), systemImage: "bubble.left.and.bubble.right").font(.headline)
             Text(item.title)
             if !item.message.isEmpty { Text(item.message).font(.caption).foregroundStyle(.secondary) }
             if !item.isPending {
@@ -525,7 +576,7 @@ private struct ComposerView: View {
             }
             if let editingSeq {
                 HStack {
-                    Label(uncensiaText("正在编辑第 %@ 条消息", String(editingSeq)), image: "lucide-pencil")
+                    Label(uncensiaText("正在编辑第 %@ 条消息", String(editingSeq)), systemImage: "pencil")
                     Spacer()
                     Button(uncensiaText("取消")) { self.editingSeq = nil }
                 }.font(.caption).foregroundStyle(.secondary)
@@ -534,7 +585,7 @@ private struct ComposerView: View {
                 Menu {
                     Button(uncensiaText("照片与视频"), systemImage: "photo.on.rectangle") { choosingPhotos = true }
                     Button(uncensiaText("选取文件"), systemImage: "folder") { importing = true }
-                } label: { Image("lucide-plus").frame(width: 44, height: 44) }
+                } label: { Image(systemName: "plus").frame(width: 44, height: 44) }
                     .accessibilityLabel(uncensiaText("添加附件"))
                     .buttonStyle(.plain).disabled(store.isRunning || store.isSending || store.isLoading)
                 VStack(alignment: .leading, spacing: 2) {
@@ -556,7 +607,7 @@ private struct ComposerView: View {
                     Button(action: stop) {
                         Group {
                             if pendingStop != nil { ProgressView() }
-                            else { Image("lucide-square") }
+                            else { Image(systemName: "stop.fill") }
                         }.frame(width: 44, height: 44)
                     }.accessibilityLabel(uncensiaText("停止"))
                         .buttonStyle(.plain).background(Color.primary.opacity(0.09), in: Circle())
@@ -566,7 +617,7 @@ private struct ComposerView: View {
                     Button(action: send) {
                         Group {
                             if store.isSending || pendingCommand != nil { ProgressView().tint(.white) }
-                            else { Image("lucide-arrow-up") }
+                            else { Image(systemName: "arrow.up") }
                         }.frame(width: 44, height: 44)
                     }
                     .accessibilityLabel(editingSeq == nil ? uncensiaText("发送") : uncensiaText("编辑并重试"))
@@ -625,7 +676,7 @@ private struct ComposerView: View {
                 ForEach(Array(app.pendingAttachments.enumerated()), id: \.offset) { index, item in
                     let name = item["file"]["name"].stringValue ?? item["name"].stringValue ?? uncensiaText("附件")
                     HStack(spacing: 6) {
-                        Label(name, image: "lucide-paperclip").lineLimit(1)
+                        Label(name, systemImage: "paperclip").lineLimit(1)
                         Button {
                             guard app.pendingAttachments.indices.contains(index) else { return }
                             app.pendingAttachments.remove(at: index)
@@ -778,5 +829,124 @@ private struct ComposerView: View {
             app.pendingAttachments.append(attachment)
         }
         saveDraftNow()
+    }
+}
+
+/// The first screen of a conversation: what Uncensia is for, and a way to start.
+private struct ChatEmptyState: View {
+    let store: ChatStore
+    var starters: [ModContributions.Prompt] = []
+    var body: some View {
+        VStack(spacing: 14) {
+            Image("BrandMark").resizable().frame(width: 52, height: 52).accessibilityHidden(true)
+            Text(uncensiaText("今天，想做点什么？")).font(.title2.weight(.semibold))
+            Text(uncensiaText("从一个想法、一张图片，或一句话开始。")).font(.subheadline).foregroundStyle(.secondary)
+            // Wraps like the web chips: built-in starters first, then what mods add.
+            FlowRow(spacing: 10) {
+                suggestion(uncensiaText("写点东西"), systemImage: "pencil.line", text: uncensiaText("帮我把一个故事想法写成开场："))
+                suggestion(uncensiaText("创作图片"), systemImage: "photo", text: uncensiaText("生成一张图片："))
+                ForEach(starters, id: \.self) { starter in suggestion(starter.label, systemImage: "sparkles", text: starter.prompt) }
+            }.padding(.top, 6)
+        }
+        .multilineTextAlignment(.center)
+        .padding(24)
+    }
+    private func suggestion(_ title: String, systemImage: String, text: String) -> some View {
+        Button { store.draft = text } label: { Label(title, systemImage: systemImage) }
+            .buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.secondary)
+    }
+}
+
+/// One lesson the assistant proposes to keep; nothing is saved until the person chooses.
+struct LearningProposalCard: View {
+    let proposal: JSONValue
+    let api: APIClient?
+    let onSettled: (String) -> Void
+    @State private var busy = false
+    @State private var error: String?
+    @State private var showsDetails = false
+
+    private var kind: String { proposal["kind"].stringValue ?? "memory" }
+    private var details: String {
+        let p = proposal["payload"]
+        switch kind {
+        case "memory": return "\(p["key"].stringValue ?? ""): \(p["value"].stringValue ?? "")"
+        case "skill_new": return "\(p["name"].stringValue ?? "")\n\(p["description"].stringValue ?? "")\n\n\(p["body"].stringValue ?? "")"
+        case "mod": return p["manifest"].stringValue ?? ""
+        default: return "\(p["skill"].stringValue ?? "")\n\n- \(p["old"].stringValue ?? "")\n+ \(p["new"].stringValue ?? "")"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label {
+                Text(uncensiaText("学到了：")).foregroundStyle(.secondary) + Text(proposal["summary"].stringValue ?? "")
+            } icon: { Image(systemName: "lightbulb").foregroundStyle(.tint) }
+                .font(.subheadline)
+            if showsDetails { Text(details).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled) }
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            HStack(spacing: 8) {
+                Button(kind == "memory" ? uncensiaText("记住") : kind == "skill_new" ? uncensiaText("存成技能") : kind == "mod" ? uncensiaText("添加模组") : uncensiaText("更新技能")) { act("accept") }
+                    .buttonStyle(.borderedProminent)
+                if kind != "memory" { Button(uncensiaText("只记住")) { act("accept", as: "memory") }.buttonStyle(.bordered) }
+                Spacer(minLength: 0)
+                Menu {
+                    Button(showsDetails ? uncensiaText("收起") : uncensiaText("查看内容"), systemImage: "text.alignleft") { showsDetails.toggle() }
+                    Button(uncensiaText("忽略"), systemImage: "xmark", role: .destructive) { act("dismiss") }
+                } label: { Image(systemName: "ellipsis.circle").imageScale(.large) }
+                    .accessibilityLabel(uncensiaText("更多"))
+            }
+            .controlSize(.small).disabled(busy)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .accessibilityIdentifier("chat.learningProposal")
+    }
+
+    private func act(_ action: String, as alternative: String? = nil) {
+        guard let api, let id = proposal["id"].stringValue else { return }
+        busy = true; error = nil
+        Task {
+            defer { busy = false }
+            do {
+                _ = try await api.request("POST", "/learning-proposals/\(id)/\(action)", body: alternative.map { .object(["as": .string($0)]) } ?? .object([:]))
+                onSettled(id)
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+}
+
+/// Lays children out left to right and wraps them onto new rows, centred.
+private struct FlowRow: Layout {
+    var spacing: CGFloat = 8
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = rows(width: proposal.width ?? .infinity, subviews: subviews)
+        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
+        return CGSize(width: rows.map(\.width).max() ?? 0, height: height)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in rows(width: bounds.width, subviews: subviews) {
+            var x = bounds.midX - row.width / 2
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+    private func rows(width: CGFloat, subviews: Subviews) -> [(indices: [Int], width: CGFloat, height: CGFloat)] {
+        var rows: [(indices: [Int], width: CGFloat, height: CGFloat)] = []
+        var current: (indices: [Int], width: CGFloat, height: CGFloat) = ([], 0, 0)
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let added = current.indices.isEmpty ? size.width : current.width + spacing + size.width
+            if added > width, !current.indices.isEmpty { rows.append(current); current = ([index], size.width, size.height) }
+            else { current = (current.indices + [index], added, max(current.height, size.height)) }
+        }
+        if !current.indices.isEmpty { rows.append(current) }
+        return rows
     }
 }

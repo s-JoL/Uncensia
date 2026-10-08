@@ -67,6 +67,7 @@ import {
 import { resolveGeneration } from "./defaults.ts";
 import { type Sessions } from "./sessions.ts";
 import { fallbackTitle, generateTitle } from "./title.ts";
+import { Reflection, reflectionReason } from "./reflection.ts";
 
 /**
  * How long a settled run keeps its text deltas. Polling clients read in bursts,
@@ -88,6 +89,8 @@ export interface StartInput {
    * prompt. After a settled assistant message, use `message` as the nudge.
    */
   continue?: boolean;
+  /** The turn replaces an earlier one (edit or regenerate); a signal for learning. */
+  replayed?: boolean;
 }
 
 /**
@@ -195,6 +198,34 @@ export class Runtime {
 
   activeCount() {
     return this.active.size;
+  }
+
+  private reflectionService?: Reflection;
+  get reflection() {
+    return (this.reflectionService ??= new Reflection(this.store, this.config, this.registry));
+  }
+
+  /**
+   * After a completed chat turn with a learning signal, ask for one proposal in
+   * the background. The run has already ended; a missing proposal is harmless
+   * and never surfaces as a run failure.
+   */
+  private proposeLearning(runId: string, conversationId: string, input: StartInput, modelId: string, counts: { toolCalls: number; toolErrors: number }) {
+    if (input.taskId || input.compact || this.config.capabilities().learning?.proposals === false) return;
+    const messages = this.store.storedMessages(conversationId);
+    const reason = reflectionReason({
+      replayed: Boolean(input.replayed),
+      feedback: this.reflection.feedbackSince(conversationId).length > 0,
+      toolCalls: counts.toolCalls,
+      toolErrors: counts.toolErrors,
+      userTurns: messages.filter(message => message.role === "user").length,
+    });
+    if (!reason) return;
+    const model = this.store.getModel(modelId)?.enabled ? modelId : this.store.getConversation(conversationId)?.modelId ?? modelId;
+    void this.reflection
+      .reflect({ conversationId, runId, modelId: model, reason, messages: messages.slice(-16).map(message => message.content as AgentMessage), signal: AbortSignal.timeout(60_000) })
+      .then(proposal => console.log(`[learning] ${conversationId} (${reason}): ${proposal ? `proposed ${proposal.kind} — ${proposal.summary}` : "nothing to keep"}`))
+      .catch(error => console.error("[learning]", error instanceof Error ? error.message : error));
   }
 
   private emit(runId: string, conversationId: string, type: string, data: unknown) {
@@ -360,7 +391,8 @@ export class Runtime {
     tools.push(...codingTools(capabilities.coding));
     tools.push(...resourceTools(this.config, this.store, conversationId, file => this.retrieval.indexFile(file)));
     tools.push(...learningTools(this.config, this.store, conversationId,
-      capabilities.files.searchEnabled ? file => this.retrieval.indexFile(file) : undefined));
+      capabilities.files.searchEnabled ? file => this.retrieval.indexFile(file) : undefined,
+      () => this.emit(runId, conversationId, "mods.changed", {})));
     if (capabilities.files.enabled) tools.push(...workspaceFileTools(this.store, capabilities.coding, conversationId,
       capabilities.files.searchEnabled ? file => this.retrieval.indexFile(file) : undefined));
     tools.push(
@@ -386,6 +418,7 @@ export class Runtime {
     let requestIndex = 0;
     let toolBatchSize = 0;
     let toolCallIndex = 0;
+    let toolErrors = 0;
     const toolIndexes = new Map<string, number>();
     const toolImages = new Map<string, ImageRef[]>();
     const toolVideos = new Map<string, VideoRef>();
@@ -543,6 +576,9 @@ export class Runtime {
 
       // The agent awaits every listener, so tree writes stay in event order.
       unsubscribeRun = agent.subscribe(async (event) => {
+        // Pi 1.0 records the system prompt as a transcript message. It is model
+        // configuration, not a turn: never store it as one or stream it.
+        if ("message" in event && (event.message as { role?: string }).role === "system") return;
         if (event.type === "message_start" && (event.message as { role?: string }).role === "assistant") {
           modelCallIndex += 1;
         }
@@ -572,6 +608,7 @@ export class Runtime {
           }
         }
         if (event.type === "tool_execution_end") {
+          if (event.isError) toolErrors += 1;
           const meta = (event.result as { details?: { structuredContent?: unknown } } | undefined)?.details
             ?.structuredContent;
           const ref = imageRef(meta);
@@ -638,6 +675,7 @@ export class Runtime {
       if (entry.aborted) throw new Error("Run stopped by the user");
       this.store.setRunStatus(runId, "completed");
       this.emit(runId, conversationId, "run.completed", {});
+      this.proposeLearning(runId, conversationId, input, prompts.titleModelId || spec.id, { toolCalls: toolCallIndex, toolErrors });
     } catch (error) {
       await titlePromise.catch(() => undefined);
       try { await agent?.dispose?.(); } catch (cleanupError) {

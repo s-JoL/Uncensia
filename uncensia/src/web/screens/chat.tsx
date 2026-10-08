@@ -1,4 +1,5 @@
 import { uiText } from "../i18n.tsx";
+import brandMark from "../assets/uncensia-mark.svg";
 import {
   Check,
   ListTodo,
@@ -9,6 +10,8 @@ import {
   Sparkles,
   FileText,
   ImageIcon,
+  Lightbulb,
+  PanelRight,
   Menu as MenuIcon,
   Paperclip,
   Pencil,
@@ -19,6 +22,9 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TaskPanel } from "../ui/task-panel.tsx";
+import { classifyProviderFailure, needsSettings } from "@shared/provider-error.ts";
+import { openPath } from "../navigation.ts";
+import { modsChanged, useMods } from "../mods.ts";
 import { ConversationEvidence } from "../resource-view.tsx";
 import type {
   Approval,
@@ -26,6 +32,7 @@ import type {
   Bootstrap,
   ConversationNote,
   FileRecord,
+  LearningProposal,
   Question,
   RoleplayContext,
   StoredMessage,
@@ -132,6 +139,22 @@ export function Chat({
   const [savingContext, setSavingContext] = useState(false);
   const [showTasks, setShowTasks] = useState(false);
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
+  /** Lessons proposed after a run, waiting for the reader to keep or dismiss. */
+  const [proposals, setProposals] = useState<LearningProposal[]>([]);
+  const mods = useMods();
+  // Shipped mods are translated like the rest of the interface; others pass through as written.
+  const modStarters = useMemo(() => mods.flatMap(mod => mod.contributes.starters ?? []).map(item => ({ label: uiText(item.label), text: uiText(item.prompt) })), [mods]);
+  const modActions = useMemo(() => mods.flatMap(mod => mod.contributes.messageActions ?? []).map(item => ({ label: uiText(item.label), prompt: uiText(item.prompt) })), [mods]);
+  // A panel appears once the assistant has written at least one of its notes.
+  const panels = useMemo(() => mods.flatMap(mod => mod.contributes.panels ?? []).map(panel => ({
+    title: uiText(panel.title),
+    entries: panel.notes.map(key => notes.find(note => note.key === key && note.value.trim())).filter((note): note is ConversationNote => Boolean(note)),
+  })).filter(panel => panel.entries.length), [mods, notes]);
+  const [showPanel, setShowPanel] = useState(() => { try { return localStorage.getItem("uncensia.panel") !== "closed"; } catch { return true; } });
+  const togglePanel = (open: boolean) => { setShowPanel(open); try { localStorage.setItem("uncensia.panel", open ? "open" : "closed"); } catch { /* preference only */ } };
+  const narrow = typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches;
+  // On a phone the panel is a sheet opened on request, never on arrival.
+  const [panelSheet, setPanelSheet] = useState(false);
   const [editingSeq, setEditingSeq] = useState<number | null>(null);
   const [runningInstruction, setRunningInstruction] = useState<"steer" | "follow-up">("steer");
 
@@ -193,6 +216,12 @@ export function Chat({
    * second device. The transcript already holds the settled messages, so the
    * stream is replayed from the run's resume point.
    */
+  const loadProposals = useCallback((id: string) => {
+    void api.learningProposals(id).then(({ items }) => {
+      if (openConversationRef.current === id) setProposals(items.filter(item => item.status === "pending"));
+    }).catch(() => undefined);
+  }, []);
+
   const follow = useCallback(
     async (id: string, runId: string, from: number, known: Set<string>) => {
       abortRef.current?.abort();
@@ -235,6 +264,7 @@ export function Chat({
               void onConversationChanged();
             }
             if (type === "conversation.notes" && Array.isArray(data.notes)) setNotes(data.notes as ConversationNote[]);
+            if (type === "mods.changed") modsChanged();
             if (type === "run.failed") toast(String(data.message ?? uiText("运行失败")), true);
             if (type === "agent.extension_notify" && typeof data.message === "string") {
               toast(`${data.level === "warning" ? uiText("提醒：") : ""}${data.message}`, data.level === "error");
@@ -252,6 +282,9 @@ export function Chat({
           // A turn that drew three pictures took minutes, and the reader has
           // usually gone elsewhere by the time it lands.
           if (completed) notifyFinished(uiText("回复完成"), turnText(turn.snapshot()).trim().slice(0, 120));
+          // A proposal is written in the background after the run ends; it is
+          // looked for a few times rather than streamed on a closed run.
+          if (completed) for (const delay of [4_000, 10_000, 20_000]) setTimeout(() => loadProposals(id), delay);
           // The live turn is only swapped for the stored transcript once that
           // transcript is actually in hand; dropping it while the network is
           // down would blank an answer the reader was in the middle of.
@@ -267,7 +300,7 @@ export function Chat({
         }
       }
     },
-    [onConversationChanged, syncMessages, toast],
+    [onConversationChanged, syncMessages, toast, loadProposals],
   );
 
   useEffect(() => {
@@ -284,6 +317,8 @@ export function Chat({
     }
     openConversationRef.current = conversationId;
     setEditingSeq(null);
+    setProposals([]);
+    if (conversationId) loadProposals(conversationId);
     if (!conversationId) {
       setTitle("");
       setModelId(bootstrap.defaultModelId);
@@ -588,6 +623,14 @@ export function Chat({
     }
   };
 
+  // Illustrating a passage is the creative loop the product is built around:
+  // the request lands in the composer so the reader can add a style first.
+  const canIllustrate = !running && bootstrap.models.some(model => model.enabled && model.configured && (model.ops ?? []).includes("text_to_image"));
+  const illustrate = (turn: Turn, latest: boolean) => {
+    setDraft(latest ? uiText("给上面这段内容配一张插图。") : uiText("给这段内容配一张插图：「{0}」", [excerptOf(turn)]));
+    textareaRef.current?.focus();
+  };
+
   const resume = async () => {
     if (!conversationId || running) return;
     setRunning(true);
@@ -734,7 +777,7 @@ export function Chat({
 
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center gap-2 px-3 md:px-6">
+      <header className="flex h-16 shrink-0 items-center gap-1 px-2 sm:gap-2 sm:px-3 md:px-6">
         <Button variant="ghost" size="icon" className="md:hidden" aria-label={uiText("菜单")} onClick={onOpenRail}>
           <MenuIcon />
         </Button>
@@ -743,9 +786,11 @@ export function Chat({
         </div>
         {conversationId ? <Menu trigger={<Button variant="ghost" size="icon" aria-label={uiText("对话操作")}><MoreHorizontal /></Button>}>
           <MenuItem disabled={running} onSelect={() => setShowTree(true)}>{uiText("查看版本与分支")}</MenuItem>
+          <MenuItem disabled={!turns.length} onSelect={() => exportMarkdown(title, turns)}>{uiText("导出为 Markdown")}</MenuItem>
           <MenuItem disabled={running} onSelect={async () => { try { setRunning(true); const run = await api.compactConversation(conversationId); await follow(conversationId, run.runId, run.seq, new Set()); } catch (error) { setRunning(false); toast(error instanceof Error ? error.message : String(error), true); } }}>{uiText("整理上下文")}</MenuItem>
         </Menu> : null}
-        <Button variant="ghost" size="sm" aria-label={uiText("任务与成果")} onClick={() => setShowTasks(true)}><ListTodo />{uiText("任务与成果")}{backgroundTasks.some(task => ["pending", "running"].includes(task.status)) ? " ·" : ""}</Button>
+        {panels.length ? <Button variant="ghost" size="icon" aria-label={uiText("侧边面板")} aria-pressed={narrow ? panelSheet : showPanel} className={!narrow && showPanel ? "text-primary" : ""} onClick={() => (narrow ? setPanelSheet(true) : togglePanel(!showPanel))}><PanelRight /></Button> : null}
+        <Button variant="ghost" size="sm" className="relative" aria-label={uiText("任务与成果")} onClick={() => setShowTasks(true)}><ListTodo /><span className="hidden sm:inline">{uiText("任务与成果")}</span>{backgroundTasks.some(task => ["pending", "running"].includes(task.status)) ? <span aria-hidden className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary sm:static" /> : null}</Button>
         {showTree && conversationId ? <ConversationTree id={conversationId} onClose={() => setShowTree(false)} onFork={onConversationCreated} /> : null}
 
         <Button
@@ -758,12 +803,14 @@ export function Chat({
         </Button>
 
         {running ? (
-          <Button variant="danger" size="sm" onClick={() => void stop()}>
+          <Button variant="danger" size="sm" aria-label={uiText("停止")} onClick={() => void stop()}>
             <Square />
-            {uiText("停止")}</Button>
+            <span className="hidden sm:inline">{uiText("停止")}</span></Button>
         ) : null}
       </header>
 
+      <div className="flex min-h-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
       <div
         className={cn("min-h-0 overflow-y-auto overscroll-contain", visibleTurns.length ? "flex-1" : "mt-[clamp(2rem,16vh,10rem)] shrink-0")}
         ref={threadRef}
@@ -774,12 +821,14 @@ export function Chat({
       >
         {visibleTurns.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 px-6 pb-8 text-center">
-            <h1 className="text-3xl font-medium tracking-tight sm:text-4xl">{uiText("今天，想做点什么？")}</h1>
+            <img src={brandMark} alt="" className="mb-2 size-14 drop-shadow-[0_8px_24px_rgb(255_94_108/0.35)]" />
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{uiText("今天，想做点什么？")}</h1>
             <p className="max-w-md text-sm text-muted-foreground">{uiText("从一个想法、一张图片，或一句话开始。")}</p>
+            {bootstrap.models.some(model => model.enabled && (model.kind ?? "chat") === "chat" && model.configured) ? null : <SetupCard />}
           </div>
         ) : (
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-5 py-6 sm:px-6" ref={watchContent}>
-            {title ? <p className="text-center text-xs text-muted-foreground">{title}</p> : null}
+            {title && title !== "New conversation" ? <p className="text-center text-xs text-muted-foreground">{title}</p> : null}
             {visibleTurns.map((turn, index) => (
               <TurnView
                 key={`${turn.id}-${index}`}
@@ -798,8 +847,14 @@ export function Chat({
                     : undefined
                 }
                 onContinue={canAct && turn === visibleTurns.at(-1) && turn.role === "assistant" ? resume : undefined}
+                onIllustrate={canIllustrate && turn.role === "assistant" && turnText(turn).trim().length > 40 ? () => illustrate(turn, turn === visibleTurns.at(-1)) : undefined}
+                actions={!running && turn.role === "assistant" && turnText(turn).trim() ? modActions : undefined}
+                onAction={prompt => { setDraft(prompt.replaceAll("{excerpt}", excerptOf(turn))); textareaRef.current?.focus(); }}
               />
             ))}
+            {!running ? proposals.map(proposal => (
+              <LearningProposalBar key={proposal.id} proposal={proposal} onSettled={id => setProposals(items => items.filter(item => item.id !== id))} />
+            )) : null}
           </div>
         )}
       </div>
@@ -807,7 +862,7 @@ export function Chat({
       <div className={cn("shrink-0 bg-background px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6", !visibleTurns.length && "mb-auto")}>
         <div
           className={cn(
-            "mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-[28px] border border-border/60 bg-card p-3 shadow-[0_4px_24px_#00000008] transition-colors sm:p-4",
+            "mx-auto flex w-full max-w-3xl flex-col gap-3 rounded-[28px] border border-border bg-card p-3 shadow-[0_8px_30px_rgb(31_26_30/0.06)] transition-[border-color,box-shadow] focus-within:border-primary/40 focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-primary)_14%,transparent)] sm:p-4",
             dragging && "border-primary bg-accent/40",
           )}
           onDragOver={(event) => {
@@ -864,7 +919,7 @@ export function Chat({
                 ? runningInstruction === "steer"
                   ? uiText("补充方向，当前回合结束后立即生效")
                   : uiText("写下当前回答结束后要继续做的事")
-                : uiText("向 Uncensia 提问，或描述你想创作的内容")
+                : uiText("问点什么，或描述想创作的内容")
             }
             onChange={(event) => {
               setDraft(event.target.value);
@@ -958,7 +1013,7 @@ export function Chat({
                   size="sm"
                   data-testid="composer-send"
                   aria-label={uiText("发送消息")}
-                  className="size-9 rounded-full p-0"
+                  className="size-9 rounded-full border-0 bg-[image:var(--brand-gradient)] p-0 text-white shadow-sm disabled:bg-none disabled:bg-muted disabled:text-muted-foreground"
                   disabled={!draft.trim()}
                   onClick={() => void send()}
                 >
@@ -970,10 +1025,16 @@ export function Chat({
         </div>
 
         {!visibleTurns.length ? <div className="mx-auto mt-5 flex max-w-3xl flex-wrap justify-center gap-2">
-          {[{label:uiText("写点东西"), text:uiText("帮我把一个故事想法写成开场：")}, {label:uiText("创作图片"), text:uiText("生成一张图片：")}].map(item => <Button key={item.label} variant="outline" className="rounded-full px-4 text-sm text-muted-foreground" onClick={() => { setDraft(item.text); textareaRef.current?.focus(); }}><Sparkles />{item.label}</Button>)}
-          <Button variant="outline" className="rounded-full px-4 text-sm text-muted-foreground" onClick={() => setPickingAsset(true)}><FileText />{uiText("使用我的资料")}</Button>
+          {[{label:uiText("写点东西"), text:uiText("帮我把一个故事想法写成开场：")}, {label:uiText("创作图片"), text:uiText("生成一张图片：")}, ...modStarters].map(item => <Button key={item.label} variant="outline" className="rounded-full bg-card/60 px-4 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground [&_svg]:text-primary" onClick={() => { setDraft(item.text); textareaRef.current?.focus(); }}><Sparkles />{item.label}</Button>)}
+          <Button variant="outline" className="rounded-full bg-card/60 px-4 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground [&_svg]:text-primary" onClick={() => setPickingAsset(true)}><FileText />{uiText("使用我的资料")}</Button>
         </div> : <p className="mx-auto mt-2 max-w-3xl text-center text-[11px] text-muted-foreground">{running ? uiText("你可以随时停止，或继续补充要求") : uiText("重要内容请核对。图片与文件可在资料库中继续使用。")}</p>}
       </div>
+      </div>
+      {showPanel && panels.length ? <aside className="hidden w-80 shrink-0 overflow-y-auto border-l bg-sidebar/50 px-4 py-4 lg:block"><NotePanels panels={panels} onClose={() => togglePanel(false)} /></aside> : null}
+      </div>
+      <Modal open={panelSheet && panels.length > 0} onOpenChange={setPanelSheet} title={uiText("侧边面板")}>
+        <NotePanels panels={panels} />
+      </Modal>
 
       <Modal open={showTasks} onOpenChange={setShowTasks} title={uiText("任务与成果")} description={uiText("安排时间、持续推进，随时查看进度和结果。")}>
         {conversationId ? <ConversationEvidence key={conversationId} id={conversationId} revision={`${messages.length}:${running}:${feedbackRevision}`} /> : null}
@@ -1005,7 +1066,13 @@ export function Chat({
           />
           {roleplay.enabled ? (
             <>
-              <CharacterCardImport onApply={card => setRoleplay(current => ({ ...current, character: card.character, scene: card.scene, examples: card.examples }))} />
+              <CharacterCardImport onApply={card => setRoleplay(current => ({
+                ...current,
+                character: card.character,
+                scene: [card.scene, card.opening ? uiText("开场白（第一条回复从这里开始）：\n{0}", [card.opening]) : ""].filter(Boolean).join("\n\n"),
+                examples: card.examples,
+                world: card.lore || current.world,
+              }))} />
               <Field label={uiText("角色")} hint={uiText("身份、性格、说话方式与关系")}>
                 <Textarea
                   rows={4}
@@ -1215,6 +1282,9 @@ const TurnView = memo(function TurnView({
   onRegenerate,
   onContinue,
   onFeedback,
+  onIllustrate,
+  actions,
+  onAction,
 }: {
   turn: Turn;
   citations: Map<string, Citation>;
@@ -1227,6 +1297,11 @@ const TurnView = memo(function TurnView({
   onRegenerate?: () => void;
   onContinue?: () => void;
   onFeedback?: (text: string) => Promise<void>;
+  /** Puts an illustration request for this reply in the composer. */
+  onIllustrate?: () => void;
+  /** Buttons contributed by mods; each puts its prompt in the composer. */
+  actions?: Array<{ label: string; prompt: string }>;
+  onAction?: (prompt: string) => void;
 }) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState("");
@@ -1264,7 +1339,7 @@ const TurnView = memo(function TurnView({
         ) : (
           <>
             {text ? (
-              <div className="max-w-[85%] rounded-3xl bg-muted px-5 py-3 whitespace-pre-wrap text-foreground">
+              <div className="max-w-[85%] rounded-3xl rounded-br-md bg-secondary px-5 py-3 whitespace-pre-wrap text-foreground">
                 {text}
               </div>
             ) : null}
@@ -1301,9 +1376,9 @@ const TurnView = memo(function TurnView({
         }
         if (part.kind === "thinking") {
           return (
-            <details key={index} className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
-              <summary className="cursor-pointer text-muted-foreground select-none">{uiText("思考过程")}</summary>
-              <div className="mt-2 whitespace-pre-wrap text-muted-foreground">{part.text}</div>
+            <details key={index} className="group/think max-w-full text-sm">
+              <summary className="w-fit cursor-pointer rounded-md px-2 py-1 text-muted-foreground select-none hover:bg-muted/60 hover:text-foreground">{uiText("思考过程")}</summary>
+              <div className="mt-1 ml-2 border-l-2 border-border pl-3 whitespace-pre-wrap text-muted-foreground">{part.text}</div>
             </details>
           );
         }
@@ -1349,7 +1424,8 @@ const TurnView = memo(function TurnView({
         if (part.kind === "job") {
           return <JobCard key={part.jobId} job={part.job} onZoom={onImageClick} />;
         }
-        return <ToolView key={index} part={part} onImageClick={onImageClick} />;
+        const retried = part.isError && turn.parts.slice(index + 1).some(later => later.kind === "tool" && later.name === part.name && !later.isError && !later.running);
+        return <ToolView key={index} part={part} onImageClick={onImageClick} retried={retried} />;
       })}
 
       {turn.cancelled ? <p role="status" className="text-sm text-muted-foreground">{uiText("已停止")}</p> : turn.status ? <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner />{turn.status}</p> : null}
@@ -1358,11 +1434,7 @@ const TurnView = memo(function TurnView({
           <Spinner />
           {uiText("正在思考…")}</div>
       ) : null}
-      {turn.error ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {turn.error}
-        </p>
-      ) : null}
+      {turn.error ? <ErrorNotice raw={turn.error} /> : null}
 
       {onRegenerate || onContinue || onFeedback ? (
         <div className="flex flex-wrap items-center gap-1 text-muted-foreground">
@@ -1376,6 +1448,19 @@ const TurnView = memo(function TurnView({
             <Button variant="ghost" size="sm" onClick={onContinue}>
               {uiText("继续")}</Button>
           ) : null}
+          {onIllustrate ? (
+            <Button variant="ghost" size="sm" onClick={onIllustrate}>
+              <ImageIcon />
+              {uiText("配图")}</Button>
+          ) : null}
+          {/* A couple of mod buttons sit inline; more go behind one menu so the row stays a row. */}
+          {actions && actions.length > 2 ? (
+            <Menu trigger={<Button variant="ghost" size="sm"><Sparkles />{uiText("更多操作")}</Button>}>
+              {actions.map(action => <MenuItem key={action.label} onSelect={() => onAction?.(action.prompt)}>{action.label}</MenuItem>)}
+            </Menu>
+          ) : actions?.map(action => (
+            <Button key={action.label} variant="ghost" size="sm" onClick={() => onAction?.(action.prompt)}>{action.label}</Button>
+          ))}
           <CopyButton text={turnText(turn)} />
         </div>
       ) : null}
@@ -1387,6 +1472,150 @@ const TurnView = memo(function TurnView({
     </div>
   );
 });
+
+/** A reply's opening as plain text, for prompts that quote the passage they act on. */
+function excerptOf(turn: Turn) {
+  const passage = turnText(turn).replace(/[#*_`>~|]+/g, " ").replace(/\s+/g, " ").trim();
+  return passage.length > 120 ? `${passage.slice(0, 120)}…` : passage;
+}
+
+const NO_CITATIONS = new Map<string, Citation>();
+
+/** Names for the note keys the shipped skills keep; any other key shows as written. */
+const NOTE_NAMES: Record<string, string> = { outline: "大纲", continuity: "连续性", style: "写作风格", scene: "场景", relationship: "关系", today: "今天" };
+
+/** Conversation notes a mod asked to show, kept current by the assistant. */
+function NotePanels({ panels, onClose }: { panels: Array<{ title: string; entries: ConversationNote[] }>; onClose?: () => void }) {
+  return (
+    <div className="flex flex-col gap-5">
+      {panels.map(panel => (
+        <section key={panel.title} className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{panel.title}</h2>
+            {onClose && panel === panels[0] ? <Button variant="ghost" size="icon-sm" aria-label={uiText("收起")} onClick={onClose}><X /></Button> : null}
+          </div>
+          {panel.entries.map(note => (
+            <div key={note.key} className="rounded-xl border bg-card px-3 py-2.5 text-sm">
+              <p className="mb-1 text-xs font-medium text-primary">{note.label || (NOTE_NAMES[note.key] ? uiText(NOTE_NAMES[note.key]!) : note.key)}</p>
+              <div className="prose-sm text-[13px] leading-relaxed"><Markdown text={note.value} citations={NO_CITATIONS} /></div>
+            </div>
+          ))}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The conversation as a readable document: a story or a draft taken out of the
+ * chat. Pictures are named by their library id, since a standalone file cannot
+ * reach the server's authenticated image URLs.
+ */
+function exportMarkdown(title: string, turns: Turn[]) {
+  const heading = title && title !== "New conversation" ? title : uiText("未命名对话");
+  const body = turns.map(turn => {
+    const text = turnText(turn).trim();
+    const pictures = turn.parts.filter(part => part.kind === "image").map(part => `*[${uiText("图片")} ${(part as { imageId: string }).imageId}]*`);
+    const content = [text, ...pictures].filter(Boolean).join("\n\n");
+    if (!content) return "";
+    return turn.role === "user" ? content.split("\n").map(line => `> ${line}`).join("\n") : content;
+  }).filter(Boolean).join("\n\n---\n\n");
+  const blob = new Blob([`# ${heading}\n\n${body}\n`], { type: "text/markdown;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${heading.replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 80) || "conversation"}.md`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+}
+
+/**
+ * One lesson the assistant proposes to keep. Nothing is written until the
+ * reader chooses; the proposed text is one click away before deciding.
+ */
+function LearningProposalBar({ proposal, onSettled }: { proposal: LearningProposal; onSettled: (id: string) => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const p = proposal.payload;
+  const details = proposal.kind === "memory" ? `${p.key}: ${p.value}`
+    : proposal.kind === "skill_new" ? `${p.name}\n${p.description}\n\n${p.body}`
+      : proposal.kind === "mod" ? JSON.stringify(JSON.parse(p.manifest ?? "{}"), null, 2)
+        : `${p.skill}\n\n- ${p.old}\n+ ${p.new}`;
+  const act = async (work: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    try {
+      await work();
+      if (done) toast(done);
+      onSettled(proposal.id);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div role="status" className="flex flex-col gap-2 rounded-xl border bg-card px-3 py-2.5 text-sm">
+      <p className="flex items-start gap-2">
+        <Lightbulb className="mt-0.5 size-4 shrink-0 text-primary" />
+        <span className="min-w-0 flex-1"><span className="text-muted-foreground">{uiText("学到了：")}</span>{proposal.summary}</span>
+      </p>
+      {open ? <pre className="ml-6 max-h-60 overflow-auto rounded-lg bg-muted/50 px-3 py-2 text-xs whitespace-pre-wrap">{details}</pre> : null}
+      <div className="ml-6 flex flex-wrap items-center gap-1">
+        <Button size="sm" variant="primary" disabled={busy} onClick={() => void act(async () => { await api.acceptLearningProposal(proposal.id); if (proposal.kind === "mod") modsChanged(); }, proposal.kind === "memory" ? uiText("已记住") : proposal.kind === "mod" ? uiText("模组已添加") : uiText("技能已保存，下次对话起使用"))}>
+          {proposal.kind === "memory" ? uiText("记住") : proposal.kind === "skill_new" ? uiText("存成技能") : proposal.kind === "mod" ? uiText("添加模组") : uiText("更新技能")}
+        </Button>
+        {proposal.kind !== "memory" ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => api.acceptLearningProposal(proposal.id, "memory"), uiText("已记住"))}>{uiText("只记住")}</Button> : null}
+        <Button size="sm" variant="ghost" onClick={() => setOpen(value => !value)}>{open ? uiText("收起") : uiText("查看内容")}</Button>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void act(() => api.dismissLearningProposal(proposal.id), "")}>{uiText("忽略")}</Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A fresh install has models but no keys. Saying so before the first message
+ * beats letting that message fail with a provider's authentication error.
+ */
+function SetupCard() {
+  return (
+    <div className="mt-4 flex w-full max-w-md flex-col gap-3 rounded-xl border bg-card p-4 text-left">
+      <div>
+        <p className="font-medium">{uiText("先连接一个模型服务")}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{uiText("Uncensia 用你自己的密钥直接连接你选的服务商，没有我们的中转。推荐 OpenRouter：一个密钥就能用多种对话模型；生图和视频可另配 Siray 或本地 ComfyUI。")}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => openPath("/settings/providers")}>{uiText("填写密钥")}</Button>
+        <Button size="sm" variant="outline" onClick={() => window.open("https://openrouter.ai/keys", "_blank", "noopener")}>{uiText("获取 OpenRouter 密钥")}</Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A failed turn says what went wrong in words and, when the fix is a key, model
+ * or address, links to where it is made; retrying is the turn's own Regenerate.
+ * The provider's raw response stays one click away for diagnosis.
+ */
+function ErrorNotice({ raw }: { raw: string }) {
+  const failure = classifyProviderFailure(raw);
+  const settings = needsSettings(failure.kind);
+  return (
+    <div role="alert" className="flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+      <p className="text-destructive">
+        {uiText(failure.headline)}
+        {failure.status ? <span className="text-destructive/70"> · {failure.status}</span> : null}
+      </p>
+      {failure.detail && failure.detail !== raw ? <p className="text-xs text-muted-foreground">{failure.detail}</p> : null}
+      <div className="flex flex-wrap items-center gap-1">
+        {settings ? <Button size="sm" variant="outline" onClick={() => openPath("/settings/providers")}>{uiText("打开连接服务")}</Button> : null}
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none px-2 py-1">{uiText("原始错误")}</summary>
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-2">{raw}</pre>
+        </details>
+      </div>
+    </div>
+  );
+}
 
 /**
  * An attachment with nothing to preview. The name is all there is to recognise
