@@ -10,6 +10,8 @@ public struct ChatScreen: View {
     @State private var showTasks = false
     @State private var showBranches = false
     @State private var showEvidence = false
+    @State private var showPanels = false
+    @State private var mods = ModContributions()
     @State private var showErrorDetails = false
     @State private var exporting = false
     @State private var exportDocument = ExportDocument(data: Data())
@@ -35,7 +37,7 @@ public struct ChatScreen: View {
                             .accessibilityLabel(uncensiaText("关闭"))
                     }.padding(.horizontal, 16).padding(.vertical, 8)
                 }
-                TranscriptView(store: store, conversationID: app.selectedConversationID, api: app.api, edit: edit)
+                TranscriptView(store: store, conversationID: app.selectedConversationID, api: app.api, edit: edit, mods: mods)
                     .id(app.selectedConversationID ?? "new")
                     .environment(store.citations)
                 ComposerView(store: store, app: app, editingSeq: $editingSeq)
@@ -60,6 +62,10 @@ public struct ChatScreen: View {
                     }.disabled(store.isRunning || store.isLoading || store.isSending).accessibilityLabel(uncensiaText("模型"))
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    if !filledPanels.isEmpty {
+                        Button { showPanels = true } label: { Image(systemName: "sidebar.right") }
+                            .accessibilityLabel(uncensiaText("侧边面板")).accessibilityIdentifier("conversation.panels")
+                    }
                     Button { app.selectedConversationID = nil } label: { Image(systemName: "square.and.pencil") }
                         .accessibilityLabel(uncensiaText("新对话")).accessibilityIdentifier("conversation.newQuick")
                     Menu {
@@ -74,6 +80,8 @@ public struct ChatScreen: View {
                 }
             }
 
+            .sheet(isPresented: $showPanels) { NotePanelsSheet(panels: filledPanels) }
+            .task(id: store.modsRevision) { mods = await ModContributions.load(api: app.api) }
             .sheet(isPresented: $showContext) { ConversationContextSheet(details: store.conversationDetails, id: app.selectedConversationID, api: app.api, store: store) }
             .sheet(isPresented: $showBranches) { BranchSheet(id: app.selectedConversationID, api: app.api, app: app, store: store) }
             .sheet(isPresented: $showTasks) { BackgroundTasksSheet(id: app.selectedConversationID, api: app.api, app: app) }
@@ -190,6 +198,7 @@ public struct ChatScreen: View {
         let name = models.first { $0["id"].stringValue == store.selectedModelID }?["name"].stringValue ?? uncensiaText("模型")
         return name.components(separatedBy: " · ").first ?? name
     }
+    private var filledPanels: [(ModContributions.Panel, [JSONValue])] { mods.filledPanels(notes: store.conversationDetails["notes"].arrayValue ?? []) }
     private var currentTitle: String { store.conversations.first { $0.id == app.selectedConversationID }?.title ?? "Uncensia" }
     private func runCommand(_ command: String) { guard let id = app.selectedConversationID, let api = app.api else { return }; Task { await store.command(command, id: id, api: api) } }
     private func setModel(_ modelID: String) { guard !modelID.isEmpty else { return }; guard let id = app.selectedConversationID, let api = app.api else { store.selectedModelID = modelID; return }; Task { await store.setModel(modelID, id: id, api: api) } }
@@ -207,6 +216,7 @@ private struct ExportDocument: FileDocument {
 
 private struct TranscriptView: View {
     let store: ChatStore; let conversationID: String?; let api: APIClient?; let edit: (ChatMessage) -> Void
+    var mods = ModContributions()
     @State private var position = ScrollPosition(edge: .bottom)
     @State private var closeToBottom = true
     @State private var viewport = ViewportTracker()
@@ -316,7 +326,7 @@ private struct TranscriptView: View {
         .sheet(item: $feedbackMessage) { message in
             if let conversationID { MessageFeedbackSheet(conversationID: conversationID, messageSeq: message.seq, api: api) }
         }
-        .overlay { if store.isLoading && store.messages.isEmpty { ProgressView() } else if store.messages.isEmpty && !store.isRunning { ChatEmptyState(store: store) } }
+        .overlay { if store.isLoading && store.messages.isEmpty { ProgressView() } else if store.messages.isEmpty && !store.isRunning { ChatEmptyState(store: store, starters: mods.starters) } }
         .overlay(alignment: .bottom) {
             if !closeToBottom {
                 Button {
@@ -351,6 +361,13 @@ private struct TranscriptView: View {
                 if message.role == "assistant", conversationID != nil, store.isCanonicalMessage(id: message.id) {
                     Button(uncensiaText("保存反馈"), systemImage: "pencil") { feedbackMessage = message }
                         .accessibilityIdentifier("message.feedback.open.\(message.id)")
+                }
+                if message.role == "assistant", !message.text.isEmpty, !store.isRunning, !mods.actions.isEmpty {
+                    Section {
+                        ForEach(mods.actions, id: \.self) { action in
+                            Button(action.label, systemImage: "sparkles") { store.draft = action.prompt.replacingOccurrences(of: "{excerpt}", with: excerpt(of: message)) }
+                        }
+                    }
                 }
             }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("transcriptViewport")) } action: { frame in
@@ -814,14 +831,17 @@ private struct ComposerView: View {
 /// The first screen of a conversation: what Uncensia is for, and a way to start.
 private struct ChatEmptyState: View {
     let store: ChatStore
+    var starters: [ModContributions.Prompt] = []
     var body: some View {
         VStack(spacing: 14) {
             Image("BrandMark").resizable().frame(width: 52, height: 52).accessibilityHidden(true)
             Text(uncensiaText("今天，想做点什么？")).font(.title2.weight(.semibold))
             Text(uncensiaText("从一个想法、一张图片，或一句话开始。")).font(.subheadline).foregroundStyle(.secondary)
-            HStack(spacing: 10) {
+            // Wraps like the web chips: built-in starters first, then what mods add.
+            FlowRow(spacing: 10) {
                 suggestion(uncensiaText("写点东西"), systemImage: "pencil.line", text: uncensiaText("帮我把一个故事想法写成开场："))
                 suggestion(uncensiaText("创作图片"), systemImage: "photo", text: uncensiaText("生成一张图片："))
+                ForEach(starters, id: \.self) { starter in suggestion(starter.label, systemImage: "sparkles", text: starter.prompt) }
             }.padding(.top, 6)
         }
         .multilineTextAlignment(.center)
@@ -889,5 +909,39 @@ struct LearningProposalCard: View {
                 onSettled(id)
             } catch { self.error = error.localizedDescription }
         }
+    }
+}
+
+/// Lays children out left to right and wraps them onto new rows, centred.
+private struct FlowRow: Layout {
+    var spacing: CGFloat = 8
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = rows(width: proposal.width ?? .infinity, subviews: subviews)
+        let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
+        return CGSize(width: rows.map(\.width).max() ?? 0, height: height)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in rows(width: bounds.width, subviews: subviews) {
+            var x = bounds.midX - row.width / 2
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+    private func rows(width: CGFloat, subviews: Subviews) -> [(indices: [Int], width: CGFloat, height: CGFloat)] {
+        var rows: [(indices: [Int], width: CGFloat, height: CGFloat)] = []
+        var current: (indices: [Int], width: CGFloat, height: CGFloat) = ([], 0, 0)
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let added = current.indices.isEmpty ? size.width : current.width + spacing + size.width
+            if added > width, !current.indices.isEmpty { rows.append(current); current = ([index], size.width, size.height) }
+            else { current = (current.indices + [index], added, max(current.height, size.height)) }
+        }
+        if !current.indices.isEmpty { rows.append(current) }
+        return rows
     }
 }

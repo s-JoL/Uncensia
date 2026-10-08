@@ -48,6 +48,8 @@ public final class ChatStore {
     public var approvals: [ApprovalItem] = []
     public var questions: [QuestionItem] = []
     public var conversationDetails: JSONValue = .null
+    /// Bumped when a run changed a mod, so the screen reloads what mods contribute.
+    public var modsRevision = 0
     public var selectedModelID = ""
     public var olderCursor: Int?
     private var transientIDs: Set<String> = []
@@ -479,6 +481,7 @@ public final class ChatStore {
             if case .object(var details) = conversationDetails, case .array(let notes) = event.data["notes"] {
                 details["notes"] = .array(notes); conversationDetails = .object(details)
             }
+        case "mods.changed": modsRevision += 1
         case "run.completed": settleVisibleRun()
         case "run.cancelled": settleVisibleRun(); liveStatus = uncensiaText("已停止")
         case "run.failed": settleVisibleRun(); error = event.data["message"].stringValue ?? uncensiaText("运行失败")

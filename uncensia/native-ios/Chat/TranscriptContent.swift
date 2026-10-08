@@ -281,6 +281,10 @@ private struct ToolTranscriptCard: View {
       "read": uncensiaText("读取资料"), "write": uncensiaText("写入文件"), "edit": uncensiaText("修改文件"), "grep": uncensiaText("搜索内容"), "find": uncensiaText("查找文件"), "ls": uncensiaText("查看目录"),
       "bash": uncensiaText("执行命令"), "web_search": uncensiaText("搜索网页"), "file_search": uncensiaText("查阅文件"), "view_image": uncensiaText("查看图片"),
       "generate_image": uncensiaText("生成图片"), "edit_image": uncensiaText("编辑图片"), "generate_video": uncensiaText("生成视频"),
+      "set_memory": uncensiaText("记住"), "delete_memory": uncensiaText("忘记"), "update_conversation_notes": uncensiaText("更新对话笔记"),
+      "manage_skill": uncensiaText("管理技能"), "manage_mod": uncensiaText("管理模组"), "manage_prompt": uncensiaText("修改长期指令"),
+      "fetch_url": uncensiaText("读取网页"), "search_history": uncensiaText("查找历史"), "read_resource": uncensiaText("读取原文"),
+      "list_resources": uncensiaText("查找资料"), "create_task": uncensiaText("安排任务"), "inspect_generations": uncensiaText("核对生成记录"),
     ][name] ?? name
   }
   var body: some View {
