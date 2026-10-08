@@ -6,7 +6,7 @@ Uncensia is a self-hosted, single-user studio for personal AI creation and compa
 
 ## Start here
 
-- [Creative guide: book illustrations, roleplay and interleaved stories](guide.en.md)
+- [Creative guide: novels, roleplay, illustrated stories, learning and mods](guide.en.md)
 - [Real generation examples and parameters](showcase/README.md)
 - [Native iOS build and connection guide](15-ios-native.md) (Chinese)
 
